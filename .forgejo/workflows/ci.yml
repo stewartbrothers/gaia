@@ -33,10 +33,17 @@ jobs:
       - name: go vet
         run: make vet
 
+      # The Forgejo runner mirrors the actions/* namespace from
+      # code.forgejo.org but does not mirror third-party actions, so we
+      # install golangci-lint via `go install` rather than the official
+      # action. Keep version in lock-step with .golangci.yml comment.
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: v1.64.8
+        run: |
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          make lint
 
       - name: go test (with coverage)
         run: go test ./... -race -count=1 -covermode=atomic -coverprofile=coverage.out
