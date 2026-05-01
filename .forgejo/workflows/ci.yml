@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: gofmt check
+        run: |
+          set -e
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt would rewrite the following files — run \`make fmt\`:"
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: make vet
+
+      - name: go test
+        run: go test ./... -race -count=1
+
+      - name: go build
+        run: make build
+
+      # Lint (golangci-lint) is added by #8.
