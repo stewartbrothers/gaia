@@ -6,7 +6,10 @@ COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 LDFLAGS := -X 'github.com/stewartbrothers/gaia/internal/version.Version=$(VERSION)' \
            -X 'github.com/stewartbrothers/gaia/internal/version.Commit=$(COMMIT)'
 
-.PHONY: all build build-gaia build-mcp test vet fmt lint tidy clean
+COVER_PROFILE := coverage.out
+COVER_HTML    := coverage.html
+
+.PHONY: all build build-gaia build-mcp test test-race cover cover-html vet fmt lint tidy clean
 
 all: build
 
@@ -20,6 +23,17 @@ build-mcp:
 
 test:
 	$(GO) test ./...
+
+test-race:
+	$(GO) test ./... -race -count=1
+
+cover:
+	$(GO) test ./... -race -count=1 -covermode=atomic -coverprofile=$(COVER_PROFILE)
+	$(GO) tool cover -func=$(COVER_PROFILE)
+
+cover-html: cover
+	$(GO) tool cover -html=$(COVER_PROFILE) -o $(COVER_HTML)
+	@echo "→ open $(COVER_HTML)"
 
 vet:
 	$(GO) vet ./...

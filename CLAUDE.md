@@ -36,10 +36,13 @@ These are hard rules. Apply them on every change.
         -d '{"title":"...","body":"...","head":"feature/<slug>","base":"main"}'
    ```
 
-4. **Keep the gate green every commit.** `make vet test build` must succeed
-   locally before `git commit`. Once #7 lands, `make lint` joins the gate.
-   CI (`.forgejo/workflows/ci.yml`, mirrored to `.github/workflows/ci.yml`)
-   enforces the same.
+4. **Keep the gate green every commit.** `make vet cover build` must succeed
+   locally before `git commit` — `cover` runs the same `go test -race
+   -coverprofile=...` invocation CI runs and prints the per-function
+   summary. Once #8 lands, `make lint` joins the gate. CI
+   (`.forgejo/workflows/ci.yml`, mirrored to `.github/workflows/ci.yml`)
+   enforces the same on every PR (including every push to an open PR) and
+   every push to `main`.
 
 5. **Commit messages lead with the *why*.** Imperative subject, blank line,
    body explaining motivation, then `Closes #N` / `Refs #N`, then the
@@ -52,15 +55,65 @@ These are hard rules. Apply them on every change.
 7. **Never force-push without rebasing against `main` first**, and only on
    feature branches. Force-push to `main` is forbidden.
 
+## Testing discipline
+
+### TDD is the default
+
+Write the failing test first, then the minimum implementation that makes
+it pass. Every code change in `core/`, `cmd/`, and `internal/` ships with
+the test that justified it. Refactors don't need new tests, but the
+existing tests must stay green.
+
+Specific application:
+
+- **Provider methods** — every method on `core.Provider` is paired with
+  `httptest`-backed unit tests in the same package. A new method doesn't
+  merge until it has both happy-path coverage and at least two
+  error-path tests (e.g., 404 → `NotFound`, 401 → `Auth`).
+- **CLI subcommands** — end-to-end tests live in `cmd/gaia/testdata/` as
+  golden files driven by an in-process fake forge server. New subcommand
+  → new golden file.
+- **MCP tools** — each registered tool has a smoke test that calls
+  `tools/call` over an in-process MCP harness.
+- **Bug fixes** — write the regression test first, watch it fail, then
+  fix. The test is the proof the fix doesn't decay later.
+
+If a fix is small enough that writing the test takes longer than the
+fix itself, write the test first anyway.
+
+### Code coverage
+
+CI runs `go test ./... -race -count=1 -covermode=atomic
+-coverprofile=coverage.out` on every PR and every push to `main`, then
+prints the per-function coverage summary via `go tool cover -func=...`
+to the job log. The summary is the contract — read it on PR review.
+
+Locally:
+
+- `make cover` — runs the suite with coverage, prints the summary.
+- `make cover-html` — produces `coverage.html` for browser inspection.
+- `make test-race` — race suite without coverage, for fast iteration.
+
+**Never exclude files from coverage measurement to hit a target.** If
+coverage drops, the response is to write the missing tests, not to hide
+code from the measurement. A coverage threshold gate may be added once
+#23, #24, #28, and #29 land — at that point we'll set a starting
+threshold based on what the suite actually achieves and ratchet from
+there. Until then the summary is informational, but every test issue is
+expected to move the per-package number up, not down.
+
 ## Build / test / lint
 
 ```bash
-make build     # → bin/gaia, bin/gaia-mcp
-make test      # go test ./...
-make vet       # go vet ./...
-make fmt       # gofmt -s -w .
-make lint      # golangci-lint (install: https://golangci-lint.run/)
-make tidy      # go mod tidy
+make build       # → bin/gaia, bin/gaia-mcp
+make test        # go test ./...
+make test-race   # go test ./... -race -count=1
+make cover       # test-race + per-function coverage summary
+make cover-html  # like `make cover`, plus coverage.html
+make vet         # go vet ./...
+make fmt         # gofmt -s -w .
+make lint        # golangci-lint (install: https://golangci-lint.run/)
+make tidy        # go mod tidy
 make clean
 ```
 

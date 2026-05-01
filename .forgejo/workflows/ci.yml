@@ -33,8 +33,11 @@ jobs:
       - name: go vet
         run: make vet
 
-      - name: go test
-        run: go test ./... -race -count=1
+      - name: go test (with coverage)
+        run: go test ./... -race -count=1 -covermode=atomic -coverprofile=coverage.out
+
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out
 
       - name: go build
         run: make build
