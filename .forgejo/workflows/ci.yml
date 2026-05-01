@@ -33,6 +33,11 @@ jobs:
       - name: go vet
         run: make vet
 
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.8
+
       - name: go test (with coverage)
         run: go test ./... -race -count=1 -covermode=atomic -coverprofile=coverage.out
 
@@ -41,5 +46,3 @@ jobs:
 
       - name: go build
         run: make build
-
-      # Lint (golangci-lint) is added by #8.

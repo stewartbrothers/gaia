@@ -36,13 +36,14 @@ These are hard rules. Apply them on every change.
         -d '{"title":"...","body":"...","head":"feature/<slug>","base":"main"}'
    ```
 
-4. **Keep the gate green every commit.** `make vet cover build` must succeed
-   locally before `git commit` — `cover` runs the same `go test -race
-   -coverprofile=...` invocation CI runs and prints the per-function
-   summary. Once #8 lands, `make lint` joins the gate. CI
+4. **Keep the gate green every commit.** `make vet lint cover build` must
+   succeed locally before `git commit` — `cover` runs the same `go test
+   -race -coverprofile=...` invocation CI runs and prints the per-function
+   summary; `lint` runs `golangci-lint` against `.golangci.yml`. CI
    (`.forgejo/workflows/ci.yml`, mirrored to `.github/workflows/ci.yml`)
    enforces the same on every PR (including every push to an open PR) and
-   every push to `main`.
+   every push to `main`. The lint version pinned in CI must match what's
+   used locally — bump both at once.
 
 5. **Commit messages lead with the *why*.** Imperative subject, blank line,
    body explaining motivation, then `Closes #N` / `Refs #N`, then the

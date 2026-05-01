@@ -1,0 +1,48 @@
+# golangci-lint configuration for gaia.
+# Tested against v1.64.x. Update Go and lint versions together.
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck      # unchecked errors
+    - gocritic      # opinionated extra checks
+    - gofmt         # formatting (matches `make fmt`)
+    - goimports     # import grouping, with local prefix
+    - gosimple      # simplification suggestions
+    - govet         # `go vet` linters
+    - ineffassign   # ineffectual assignments
+    - misspell      # English typos in comments + identifiers
+    - revive        # replacement for golint
+    - staticcheck   # the big static analyser
+    - unused        # unused vars, funcs, types
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/stewartbrothers/gaia
+  revive:
+    severity: warning
+    rules:
+      - name: var-naming
+      - name: unexported-return
+      - name: error-naming
+      - name: error-return
+      - name: error-strings
+      - name: receiver-naming
+      - name: indent-error-flow
+      - name: increment-decrement
+      - name: range
+      - name: superfluous-else
+      - name: time-naming
+      - name: unreachable-code
+  gocritic:
+    disabled-checks:
+      - ifElseChain    # noisy on switch-vs-if-else style preference
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
