@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,7 +22,7 @@ func TestBearerAuthMiddleware(t *testing.T) {
 		"tok_alice": "alice",
 		"tok_bob":   "bob",
 	}
-	handler := bearerAuthMiddleware(tokens, labelEchoHandler())
+	handler := bearerAuthMiddleware(tokens, slog.New(slog.NewJSONHandler(io.Discard, nil)), labelEchoHandler())
 
 	cases := []struct {
 		name        string
@@ -102,7 +103,7 @@ func TestBearerAuthMiddlewarePassThroughWhenNoTokens(t *testing.T) {
 	// With no tokens configured, the middleware is a no-op (the bind
 	// policy already gated this — only loopback or
 	// --allow-public-no-auth reaches here).
-	handler := bearerAuthMiddleware(nil, labelEchoHandler())
+	handler := bearerAuthMiddleware(nil, nil, labelEchoHandler())
 	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -126,7 +127,7 @@ func TestBearerAuthMiddlewareConstantTime(t *testing.T) {
 		"abcdef_long_token_alice": "alice",
 		"abcdef_long_token_bob":   "bob",
 	}
-	handler := bearerAuthMiddleware(tokens, labelEchoHandler())
+	handler := bearerAuthMiddleware(tokens, slog.New(slog.NewJSONHandler(io.Discard, nil)), labelEchoHandler())
 	for _, attempt := range []string{
 		"abcdef_long_token_alice", // valid
 		"abcdef_long_token_bob",   // valid

@@ -124,7 +124,7 @@ func runHTTP(cfg httpConfig, s *server.MCPServer, tokens tokenStore) error {
 	// internal http.Server has no timeouts set — fine for tests, bad
 	// for a public daemon (slow-loris exposure, dangling connections).
 	streamable := server.NewStreamableHTTPServer(s)
-	authed := bearerAuthMiddleware(tokens, streamable)
+	authed := bearerAuthMiddleware(tokens, logger, streamable)
 	mux := http.NewServeMux()
 	mux.Handle(cfg.BasePath, authed)
 
