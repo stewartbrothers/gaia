@@ -89,11 +89,26 @@ gaia whoami | version
 
 ## Status
 
-Phases 1–3 are functionally complete: Forgejo + GitHub providers, full
-CLI + MCP surface (stdio and HTTP transports with pass-through bearer
-auth, healthz/readyz, container deploy). Phase 4 (cache, indexed
-search, webhook + CI helpers) and Distribution (#48 binaries → #49
-homebrew → #51 upstream) are in progress.
+**v0.1.0** — first developer-preview release. Phases 1–3 functionally
+complete: Forgejo + GitHub providers, full CLI + MCP surface (stdio
+and HTTP transports with pass-through bearer auth, healthz/readyz,
+container deploy), goreleaser-driven multi-arch binaries.
+
+### Versioning
+
+[SemVer](https://semver.org). While on `0.x.y`, **breaking changes
+to the public surface (CLI flag names, MCP tool names, envelope
+shape, exit codes) may land at minor bumps**. See
+[`RELEASING.md`](RELEASING.md) for the full convention and the
+cut-a-release procedure; see [`CHANGELOG.md`](CHANGELOG.md) for
+release notes.
+
+### What's next
+
+Phase 4 (cache #42, indexed search #43, webhook helpers #85/#44, CI
+runs/logs #45, NDJSON streaming #46), wider Distribution (homebrew
+#49, upstream submission #51), and broader surface (package
+registry #107, wikis #108).
 
 ## Roadmap
 
