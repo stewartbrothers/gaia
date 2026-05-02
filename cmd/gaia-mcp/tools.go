@@ -52,7 +52,19 @@ func repoFromArgs(args map[string]any) (owner, repo string, err error) {
 
 // build resolves config + credentials into a Forgejo provider. Each
 // tool calls this; failures map to an MCP tool error.
+//
+// Indirection via builderFn lets tests swap in a fake provider; the
+// production path goes through forgebuilder.
 func build() (*forgejo.Provider, error) {
+	return builderFn()
+}
+
+// builderFn is the swappable provider builder. Tests change this via
+// SetBuilderForTest in export_test.go; production stays on
+// defaultBuilder.
+var builderFn = defaultBuilder
+
+func defaultBuilder() (*forgejo.Provider, error) {
 	p, _, err := forgebuilder.Build(forgebuilder.Override{})
 	return p, err
 }
