@@ -78,3 +78,76 @@ type SearchOptions struct {
 	Limit  int
 	Cursor string
 }
+
+// CreateIssueOptions configures CreateIssue. JSON tags drive both
+// the dry-run output (so an agent sees the wire shape) and the
+// upstream POST body — both line up with what Forgejo expects.
+type CreateIssueOptions struct {
+	Title     string   `json:"title"`
+	Body      string   `json:"body,omitempty"`
+	Labels    []string `json:"labels,omitempty"`
+	Assignees []string `json:"assignees,omitempty"`
+}
+
+// EditIssueOptions configures EditIssue. Empty string fields are
+// dropped by omitempty so they're treated as "no change" by the
+// upstream — matching Forgejo's PATCH semantics. AddLabels and
+// RemoveLabels apply only the named changes (a Phase 1.5 follow-up
+// will route those through /issues/{n}/labels rather than the issue
+// PATCH endpoint).
+type EditIssueOptions struct {
+	Title        string   `json:"title,omitempty"`
+	Body         string   `json:"body,omitempty"`
+	State        string   `json:"state,omitempty"`
+	AddLabels    []string `json:"add_labels,omitempty"`
+	RemoveLabels []string `json:"remove_labels,omitempty"`
+	Assignees    []string `json:"assignees,omitempty"`
+}
+
+// CreatePullRequestOptions configures CreatePullRequest. Head/Base
+// take refs; cross-fork heads use "owner:ref".
+type CreatePullRequestOptions struct {
+	Title  string   `json:"title"`
+	Body   string   `json:"body,omitempty"`
+	Head   string   `json:"head"`
+	Base   string   `json:"base"`
+	Draft  bool     `json:"draft,omitempty"`
+	Labels []string `json:"labels,omitempty"`
+}
+
+// EditPullRequestOptions: Draft is *bool because false != "no change"
+// (PRs flip both ways and we need to express each).
+type EditPullRequestOptions struct {
+	Title        string   `json:"title,omitempty"`
+	Body         string   `json:"body,omitempty"`
+	State        string   `json:"state,omitempty"`
+	AddLabels    []string `json:"add_labels,omitempty"`
+	RemoveLabels []string `json:"remove_labels,omitempty"`
+	Draft        *bool    `json:"draft,omitempty"`
+}
+
+// MergePullRequestOptions configures MergePullRequest. Method is
+// "merge" (default), "rebase", or "squash". Forgejo names the merge
+// method field "do" — the json tag pins that.
+type MergePullRequestOptions struct {
+	Method       string `json:"do,omitempty"`
+	Title        string `json:"MergeTitleField,omitempty"`
+	Message      string `json:"MergeMessageField,omitempty"`
+	DeleteBranch bool   `json:"delete_branch_after_merge,omitempty"`
+}
+
+// CreateLabelOptions: Name + Color required; Color is a hex string
+// without the leading "#". Description optional.
+type CreateLabelOptions struct {
+	Name        string `json:"name"`
+	Color       string `json:"color"`
+	Description string `json:"description,omitempty"`
+}
+
+// EditLabelOptions configures EditLabel. NewName allows renames;
+// empty means keep the current name.
+type EditLabelOptions struct {
+	NewName     string `json:"name,omitempty"`
+	Color       string `json:"color,omitempty"`
+	Description string `json:"description,omitempty"`
+}

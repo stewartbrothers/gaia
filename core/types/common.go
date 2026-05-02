@@ -20,8 +20,13 @@ type User struct {
 	Login string `json:"login"`
 }
 
-// Label is just the label name. Colors and IDs live on the forge; agents
-// don't need them.
+// Label is the trimmed view of a forge label. For read paths the Name
+// alone is what agents branch on, but Color/Description are useful
+// for label CRUD (#g4) where the agent is creating or editing labels
+// rather than just listing them. Both are omitempty so the read path
+// stays compact when those fields aren't populated.
 type Label struct {
-	Name string `json:"name"`
+	Name        string `json:"name"`
+	Color       string `json:"color,omitempty"`
+	Description string `json:"description,omitempty"`
 }

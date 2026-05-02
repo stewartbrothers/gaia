@@ -92,12 +92,57 @@ We compete with `tea` only when an agent could reasonably accept
 text. For everything that needs structured output, gaia's JSON is
 smaller and easier to consume.
 
+## Write operations (issue/PR/label CRUD)
+
+Write commands (`gaia issue create/edit/comment`, `gaia pr create/
+edit/merge`, `gaia label create/edit/delete`) compare differently
+than reads — the request body is whatever the user typed, so
+"bytes saved on input" is not a meaningful axis. The savings show
+up in two other places:
+
+1. **Response-shape trim**, same as reads: gaia parses the upstream
+   response into `types.Issue` / `types.PullRequest` / `types.Label`
+   and emits them inside the standard envelope. A raw `curl POST`
+   response is the full Forgejo record with all the fields gaia
+   drops. For the issue-create dogfood (issue #86 created live to
+   validate the path), gaia's response was ~600 bytes; the raw
+   Forgejo response was ~5KB. Same ~8× ratio as the read paths.
+
+2. **Ergonomics**: the equivalent raw flow is
+
+   ```bash
+   curl -sS -H "Authorization: token $TOKEN" \
+        -H "Content-Type: application/json" \
+        -X POST "$API/repos/$REPO/issues" \
+        -d '{"title":"...","body":"...","labels":["bug"]}'
+   ```
+
+   vs.
+
+   ```bash
+   gaia issue create --title "..." --body "..." --label bug
+   ```
+
+   The byte count of the input is similar; the difference is that
+   gaia's `--dry-run` prints the wire body for inspection (using the
+   option-struct json tags so what you see is what you'd send), and
+   `--body -` reads stdin so multiline bodies don't fight your shell
+   quoting.
+
+`gaia label create` is the one place where the JSON request body
+being structured matters: hex colors must be literal hex without `#`,
+and gaia's flag validation (`--color` required, sanity-checked) is
+clearer than scripting a curl POST.
+
 ## How to update this doc
 
 When a new gaia command lands, add a row here showing gaia bytes vs.
 the closest curl/tea equivalent. Re-run the harness against a stable
 PR/issue with realistic content; the byte counts will shift as the
 forge state changes but the *ratio* should hold.
+
+For write commands, add a paragraph noting the response-shape
+savings and call out any UX wins (--dry-run, --body -, validation).
 
 If a gaia command's bytes ratio gets *worse* (relative to raw) at
 default settings, that's a regression worth a github-style issue —
