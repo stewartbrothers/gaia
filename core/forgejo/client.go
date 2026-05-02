@@ -87,7 +87,7 @@ func New(opts Options) *Client {
 // responses are returned as exitcode.Error values carrying the
 // mapped exit code.
 func (c *Client) Get(ctx context.Context, path string, out any) error {
-	resp, err := c.do(ctx, http.MethodGet, path, nil)
+	resp, err := c.do(ctx, http.MethodGet, path, "application/json", nil)
 	if err != nil {
 		return err
 	}
@@ -106,13 +106,33 @@ func (c *Client) Get(ctx context.Context, path string, out any) error {
 	return nil
 }
 
-func (c *Client) do(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
+// GetRaw issues a GET and returns the response body as bytes. Used
+// for endpoints that return non-JSON payloads (notably `.diff`). The
+// Accept header is set to `*/*`.
+func (c *Client) GetRaw(ctx context.Context, path string) ([]byte, error) {
+	resp, err := c.do(ctx, http.MethodGet, path, "*/*", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, c.statusError(resp, http.MethodGet, path)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, exitcode.Wrap(err, exitcode.Network, fmt.Sprintf("read %s %s", http.MethodGet, path))
+	}
+	return body, nil
+}
+
+func (c *Client) do(ctx context.Context, method, path, accept string, body io.Reader) (*http.Response, error) {
 	urlStr := c.buildURL(path)
 	req, err := http.NewRequestWithContext(ctx, method, urlStr, body)
 	if err != nil {
 		return nil, exitcode.Wrap(err, exitcode.Generic, fmt.Sprintf("build %s %s", method, path))
 	}
-	c.setHeaders(req, body != nil)
+	c.setHeaders(req, accept, body != nil)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -137,7 +157,7 @@ func (c *Client) do(ctx context.Context, method, path string, body io.Reader) (*
 	if err != nil {
 		return nil, exitcode.Wrap(err, exitcode.Generic, fmt.Sprintf("rebuild %s %s for retry", method, path))
 	}
-	c.setHeaders(req2, false)
+	c.setHeaders(req2, accept, false)
 	resp, err = c.httpClient.Do(req2)
 	if err != nil {
 		return nil, exitcode.Wrap(scrubError(err, c.token), exitcode.Network, fmt.Sprintf("%s %s (retry)", method, path))
@@ -145,11 +165,11 @@ func (c *Client) do(ctx context.Context, method, path string, body io.Reader) (*
 	return resp, nil
 }
 
-func (c *Client) setHeaders(req *http.Request, hasBody bool) {
+func (c *Client) setHeaders(req *http.Request, accept string, hasBody bool) {
 	if c.token != "" {
 		req.Header.Set("Authorization", "token "+c.token)
 	}
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", accept)
 	req.Header.Set("User-Agent", c.userAgent)
 	if hasBody {
 		req.Header.Set("Content-Type", "application/json")
