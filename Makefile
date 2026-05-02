@@ -9,7 +9,7 @@ LDFLAGS := -X 'github.com/stewartbrothers/gaia/internal/version.Version=$(VERSIO
 COVER_PROFILE := coverage.out
 COVER_HTML    := coverage.html
 
-.PHONY: all build build-gaia build-mcp test test-race cover cover-html vet fmt lint tidy clean
+.PHONY: all build build-gaia build-mcp test test-race cover cover-html vet fmt lint tidy clean release-snapshot release-check
 
 all: build
 
@@ -51,3 +51,26 @@ tidy:
 
 clean:
 	rm -rf bin/ dist/ coverage.out coverage.html
+
+# goreleaser lives at $(go env GOPATH)/bin/goreleaser when installed
+# via `go install` (the recommended path on this project — third-party
+# brew packages have lagged behind v2). Targets prepend GOPATH/bin to
+# PATH so they work whether or not the user has it on PATH already.
+GOBIN := $(shell $(GO) env GOPATH)/bin
+
+# Validate .goreleaser.yml without running a build. Cheap; useful in
+# pre-commit hooks if a contributor edits the config.
+release-check:
+	@PATH="$(GOBIN):$$PATH" command -v goreleaser >/dev/null 2>&1 || { \
+	  echo "goreleaser not found — install with: go install github.com/goreleaser/goreleaser/v2@v2.4.5"; exit 1; }
+	@PATH="$(GOBIN):$$PATH" goreleaser check
+
+# Local snapshot build — same goreleaser invocation the release
+# workflow uses on tag push, but with `--snapshot` so the version
+# string includes the commit SHA and `--skip=publish` so nothing is
+# uploaded. Output lands in dist/. Run before tagging to confirm
+# the archives look right.
+release-snapshot:
+	@PATH="$(GOBIN):$$PATH" command -v goreleaser >/dev/null 2>&1 || { \
+	  echo "goreleaser not found — install with: go install github.com/goreleaser/goreleaser/v2@v2.4.5"; exit 1; }
+	@PATH="$(GOBIN):$$PATH" goreleaser release --snapshot --clean --skip=publish

@@ -1,0 +1,123 @@
+# goreleaser config for tagged releases.
+#
+# Builds both binaries (gaia + gaia-mcp) for the platforms an
+# operator is most likely to deploy to: Linux/macOS/Windows on
+# amd64 + arm64. Output is one tar.gz per platform plus a
+# checksums file; uploaded to the Forgejo release as attachments by
+# the release workflow.
+#
+# Local dry-run:
+#
+#   goreleaser release --snapshot --clean --skip=publish
+#
+# (or `make release-snapshot` for the same).
+
+version: 2
+
+project_name: gaia
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: gaia
+    binary: gaia
+    main: ./cmd/gaia
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # Pin the version metadata that `gaia version` reports. Same
+    # ldflags shape the Dockerfile uses, so on-disk binaries from a
+    # release and from the container report identical strings.
+    ldflags:
+      - -s -w
+      - -X 'github.com/stewartbrothers/gaia/internal/version.Version={{.Version}}'
+      - -X 'github.com/stewartbrothers/gaia/internal/version.Commit={{.ShortCommit}}'
+
+  - id: gaia-mcp
+    binary: gaia-mcp
+    main: ./cmd/gaia-mcp
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X 'github.com/stewartbrothers/gaia/internal/version.Version={{.Version}}'
+      - -X 'github.com/stewartbrothers/gaia/internal/version.Commit={{.ShortCommit}}'
+
+archives:
+  - id: default
+    # Both binaries land in the same archive per platform, so an
+    # operator unpacking gaia_v0.1.0_linux_amd64.tar.gz gets both
+    # gaia and gaia-mcp. Saves a download for the common case.
+    ids:
+      - gaia
+      - gaia-mcp
+    name_template: >-
+      {{ .ProjectName }}_v{{ .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else }}{{ .Arch }}{{ end }}
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      # Globs allow LICENSE / docs to be optional — goreleaser doesn't
+      # error if a glob matches nothing, but does error on a literal
+      # path that's missing. Add CHANGELOG* once a hand-written
+      # changelog lands; today the auto-generated one is in the
+      # release body, not the archive.
+      - LICENSE*
+      - README*
+      - docs/*.md
+
+checksum:
+  name_template: '{{ .ProjectName }}_v{{ .Version }}_checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-snapshot+{{ .ShortCommit }}'
+
+# changelog: built-in commit-based changelog. Skips merge commits
+# and dependabot. Categories surface the most useful changes
+# first.
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^Merge pull request'
+  groups:
+    - title: Features
+      regexp: '^.*?(feat|core|github|forgejo|gaia-mcp|cli|mcp|deploy|docker)(\(.*\))??:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?(fix|revert)(\(.*\))??:.+$'
+      order: 1
+    - title: Other
+      order: 999
+
+# release: keep the GitHub block out (we publish to Forgejo). The
+# release workflow at .forgejo/workflows/release.yml handles
+# attaching the dist artifacts to the tag's Forgejo release using
+# the `gitea` API.
+release:
+  disable: true
