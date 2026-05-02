@@ -9,18 +9,15 @@ name: Release
 #      to code.forgejo.org; install via go install pinned to a
 #      specific version that matches local dev)
 #   3. runs goreleaser with --skip=publish (we publish ourselves)
-#   4. attaches dist/* to the tag's Forgejo release via the gitea
-#      API
+#   4. builds gaia (so we can dogfood it for the upload step)
+#   5. runs `gaia release publish` to attach artifacts to the
+#      Forgejo release (creates the release record if absent)
 #
 # A failure at any step leaves the tag pushed but with an empty
-# release; re-running the workflow (or running goreleaser locally
-# and uploading via the gitea API) re-attaches the artifacts.
-#
-# IMPORTANT: Forgejo does NOT auto-create a release record on tag
-# push (unlike GitHub, which does). The upload step below creates
-# the release if it doesn't exist, then attaches assets to it.
-# Idempotent — re-runs against an existing release just attach the
-# assets without recreating.
+# (or partial) release; re-running the workflow re-attaches
+# missing artifacts since `gaia release publish` is idempotent
+# on the create step (uploads of existing assets currently 409 —
+# tracked as a future improvement on #111).
 
 on:
   push:
@@ -43,9 +40,8 @@ jobs:
           go-version: '1.23'
           cache: true
 
-      # Pinned to a specific version so reproducible builds: bump
-      # both this and the local-dev `go install` command at the
-      # same time.
+      # Pinned to a specific version for reproducible builds. Bump
+      # both this and the local-dev `go install` command together.
       - name: Install goreleaser
         run: go install github.com/goreleaser/goreleaser/v2@v2.4.5
 
@@ -54,76 +50,21 @@ jobs:
           export PATH="$(go env GOPATH)/bin:$PATH"
           goreleaser release --clean --skip=publish
 
-      - name: Upload artifacts to Forgejo release
+      # Build gaia from this tag's source so the upload step uses
+      # the same gaia behavior the release ships.
+      - name: Build gaia
+        run: make build
+
+      - name: Publish release via gaia
         env:
-          # FORGEJO_RELEASE_TOKEN is a repo-scoped token with the
-          # `write:repository` scope. Add it via the Forgejo UI:
-          # Repository Settings → Secrets → Add Secret. The CI runner
-          # exports it automatically as $FORGEJO_RELEASE_TOKEN.
-          FORGEJO_RELEASE_TOKEN: ${{ secrets.FORGEJO_RELEASE_TOKEN }}
-          # The forge passes the tag name through GITHUB_REF on tag
-          # pushes (Forgejo Actions mirrors the GitHub variable
-          # naming for compatibility).
-          TAG: ${{ github.ref_name }}
-          REPO: ${{ github.repository }}
-          API_BASE: ${{ github.server_url }}/api/v1
+          # FORGEJO_RELEASE_TOKEN is a repo-scoped token with
+          # `write:repository`. Add it via Repository Settings →
+          # Secrets. gaia honors GITEA_TOKEN as the env-var
+          # convention for Forgejo (FORGEJO_TOKEN also works).
+          GITEA_TOKEN: ${{ secrets.FORGEJO_RELEASE_TOKEN }}
         run: |
-          set -euo pipefail
-
-          # Resolve or create the release record. Forgejo doesn't
-          # auto-create on tag push, so the GET-then-POST dance is
-          # required for every fresh tag.
-          release_id=$(curl -sS \
-            -H "Authorization: token ${FORGEJO_RELEASE_TOKEN}" \
-            "${API_BASE}/repos/${REPO}/releases/tags/${TAG}" \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("id",""))')
-
-          if [ -z "${release_id}" ]; then
-            echo "No release for ${TAG} yet; creating one."
-            # Body: pull the matching CHANGELOG section
-            # (## [TAG_NUMERIC] up to but not including the next ## [).
-            tag_numeric="${TAG#v}"
-            release_body=$(awk -v t="${tag_numeric}" '
-              $0 ~ "^## \\[" t "\\]" { p=1 }
-              p && /^## \[/ && $0 !~ "^## \\[" t "\\]" { exit }
-              p { print }
-            ' CHANGELOG.md || true)
-
-            release_id=$(python3 -c "
-          import json, os, urllib.request
-          payload = json.dumps({
-            'tag_name': os.environ['TAG'],
-            'name': os.environ['TAG'],
-            'body': os.environ.get('RELEASE_BODY', ''),
-            'draft': False,
-            'prerelease': False,
-          }).encode()
-          req = urllib.request.Request(
-            f\"{os.environ['API_BASE']}/repos/{os.environ['REPO']}/releases\",
-            data=payload,
-            headers={
-              'Authorization': f\"token {os.environ['FORGEJO_RELEASE_TOKEN']}\",
-              'Content-Type': 'application/json',
-            },
-            method='POST',
-          )
-          with urllib.request.urlopen(req) as r:
-            print(json.loads(r.read())['id'])
-          " RELEASE_BODY="${release_body}")
-            echo "Created release id=${release_id}"
-          else
-            echo "Release id=${release_id} already exists for ${TAG}; uploading to it."
-          fi
-
-          for f in dist/*.tar.gz dist/*.zip dist/*checksums.txt; do
-            [ -f "$f" ] || continue
-            echo "Uploading $(basename "$f")"
-            curl -fsSL \
-              -H "Authorization: token ${FORGEJO_RELEASE_TOKEN}" \
-              -X POST \
-              -F "attachment=@${f}" \
-              "${API_BASE}/repos/${REPO}/releases/${release_id}/assets?name=$(basename "$f")"
-            echo
-          done
-
-          echo "✓ Upload complete"
+          ./bin/gaia release publish "${{ github.ref_name }}" \
+            --asset 'dist/*.tar.gz' \
+            --asset 'dist/*.zip' \
+            --asset 'dist/*checksums.txt' \
+            --notes-from CHANGELOG.md
