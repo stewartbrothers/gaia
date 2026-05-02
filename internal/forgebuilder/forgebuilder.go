@@ -1,0 +1,189 @@
+// Package forgebuilder builds a configured *forgejo.Provider from
+// the same layered config + credentials store the CLI uses, so
+// `cmd/gaia-mcp` and `cmd/gaia` stay in lock-step on auth resolution
+// without duplicating the resolve logic.
+//
+// Resolution order (same as internal/cli/provider.go):
+//
+//  1. Explicit overrides (Profile, Provider, APIURL).
+//  2. core/config.Resolve (env > YAML).
+//  3. core/auth single-credential fallback.
+//  4. Token: env (FORGEJO_TOKEN/GITHUB_TOKEN) → credentials store.
+package forgebuilder
+
+import (
+	"net/url"
+	"sort"
+
+	"github.com/stewartbrothers/gaia/core/auth"
+	"github.com/stewartbrothers/gaia/core/config"
+	"github.com/stewartbrothers/gaia/core/exitcode"
+	"github.com/stewartbrothers/gaia/core/forgejo"
+)
+
+// Override mirrors the CLI's globalFlags subset that affects
+// provider construction.
+type Override struct {
+	Profile  string
+	Provider string
+	APIURL   string
+}
+
+// Info carries the metadata callers display alongside provider
+// results (host name in `whoami`, etc.).
+type Info struct {
+	Provider string
+	Host     string
+	APIURL   string
+}
+
+// Build returns a ready-to-use *forgejo.Provider plus its Info
+// metadata, or an error if config + credentials don't yield enough
+// to construct one. Phase 1 supports forgejo only; github surfaces
+// a not-implemented error here so callers don't have to special-case.
+func Build(ov Override) (*forgejo.Provider, *Info, error) {
+	cfgPath, err := config.DefaultPath()
+	if err != nil {
+		return nil, nil, exitcode.Wrap(err, exitcode.Generic, "locate config")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return nil, nil, exitcode.Wrap(err, exitcode.Generic, "load config")
+	}
+	resolved, err := config.Resolve(cfg, config.Override{
+		Profile:  ov.Profile,
+		Provider: ov.Provider,
+		APIURL:   ov.APIURL,
+	})
+	if err != nil {
+		return nil, nil, exitcode.Wrap(err, exitcode.Usage, "resolve config")
+	}
+
+	creds, err := loadLayeredCredentials()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if resolved.Provider == "" && resolved.APIURL == "" {
+		if soleProvider, _, soleCred, ok := singleCredential(creds); ok {
+			resolved.Provider = soleProvider
+			resolved.APIURL = soleCred.APIURL
+			if resolved.Token == "" {
+				resolved.Token = soleCred.Token
+			}
+		}
+	}
+
+	if resolved.Provider == "" {
+		return nil, nil, exitcode.Errorf(exitcode.Usage,
+			"no provider configured — run `gaia auth forgejo <url>` or set --provider/GAIA_PROVIDER")
+	}
+	if resolved.Provider != "forgejo" {
+		return nil, nil, exitcode.Errorf(exitcode.Generic,
+			"%s provider not yet implemented (Phase 2 — see #2)", resolved.Provider)
+	}
+	if resolved.APIURL == "" {
+		return nil, nil, exitcode.Errorf(exitcode.Usage,
+			"no API URL configured — run `gaia auth forgejo <url>` or set --api-url/FORGEJO_API_URL")
+	}
+
+	host := ""
+	if u, perr := url.Parse(resolved.APIURL); perr == nil {
+		host = u.Host
+	}
+
+	if resolved.Token == "" {
+		if c, _, ok := creds.Get(resolved.Provider, host); ok {
+			resolved.Token = c.Token
+		}
+	}
+
+	p := forgejo.NewProvider(forgejo.Options{
+		BaseURL: resolved.APIURL,
+		Token:   resolved.Token,
+	})
+	return p, &Info{
+		Provider: resolved.Provider,
+		Host:     host,
+		APIURL:   resolved.APIURL,
+	}, nil
+}
+
+// LoadLayeredCredentials reads the global + project credential
+// stores. Exported so internal/cli's `gaia auth status` and
+// `gaia auth logout` can reuse the same loader the build path uses.
+func LoadLayeredCredentials() (*auth.Layered, error) {
+	return loadLayeredCredentials()
+}
+
+// SplitProviderHost is a tiny utility exposed for the same callers
+// (auth status / logout walk credential keys formatted as
+// "provider:host").
+func SplitProviderHost(key string) []string {
+	return splitProviderHost(key)
+}
+
+func loadLayeredCredentials() (*auth.Layered, error) {
+	globalPath, err := auth.DefaultGlobalPath()
+	if err != nil {
+		return nil, exitcode.Wrap(err, exitcode.Generic, "locate global credentials")
+	}
+	g, err := auth.Load(globalPath)
+	if err != nil {
+		return nil, exitcode.Wrap(err, exitcode.Generic, "load global credentials")
+	}
+	var p *auth.Store
+	if root := auth.ProjectRoot("."); root != "" {
+		p, err = auth.Load(auth.ProjectPath(root))
+		if err != nil {
+			return nil, exitcode.Wrap(err, exitcode.Generic, "load project credentials")
+		}
+	}
+	return &auth.Layered{Global: g, Project: p}, nil
+}
+
+func singleCredential(l *auth.Layered) (provider, host string, cred auth.Credential, ok bool) {
+	type item struct {
+		provider, host string
+		cred           auth.Credential
+	}
+	seen := map[string]struct{}{}
+	var items []item
+	collect := func(s *auth.Store, source string) {
+		if s == nil {
+			return
+		}
+		for _, key := range s.Hosts() {
+			parts := splitProviderHost(key)
+			if parts == nil {
+				continue
+			}
+			pkey := parts[0] + ":" + parts[1]
+			if _, dup := seen[pkey]; dup && source == "global" {
+				continue
+			}
+			seen[pkey] = struct{}{}
+			c, _ := s.Get(parts[0], parts[1])
+			items = append(items, item{parts[0], parts[1], c})
+		}
+	}
+	collect(l.Project, "project")
+	collect(l.Global, "global")
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].provider+":"+items[i].host < items[j].provider+":"+items[j].host
+	})
+
+	if len(items) != 1 {
+		return "", "", auth.Credential{}, false
+	}
+	return items[0].provider, items[0].host, items[0].cred, true
+}
+
+func splitProviderHost(key string) []string {
+	for i := 0; i < len(key); i++ {
+		if key[i] == ':' {
+			return []string{key[:i], key[i+1:]}
+		}
+	}
+	return nil
+}
