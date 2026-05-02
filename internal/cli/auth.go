@@ -25,6 +25,7 @@ FORGEJO_TOKEN/GITHUB_TOKEN env vars (the credential is recorded in
 .gaia/credentials.yaml inside the current repo).`,
 	}
 	cmd.AddCommand(newAuthForgejoCmd())
+	cmd.AddCommand(newAuthGHCmd())
 	return cmd
 }
 
