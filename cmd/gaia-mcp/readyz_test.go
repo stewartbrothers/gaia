@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,13 +16,13 @@ import (
 // fakeBuilderError builds a provider builder that always fails — the
 // "no provider configured" path readyz hits when the operator hasn't
 // run `gaia auth forgejo` yet.
-func fakeBuilderError(err error) func() (provider.Provider, error) {
-	return func() (provider.Provider, error) { return nil, err }
+func fakeBuilderError(err error) func(context.Context) (provider.Provider, error) {
+	return func(_ context.Context) (provider.Provider, error) { return nil, err }
 }
 
 // fakeForgeProviderForReadyz returns a *forgejo.Provider hitting the
 // supplied test server, packaged in a builder closure for readyzHandler.
-func fakeForgeProviderForReadyz(t *testing.T, h http.HandlerFunc) func() (provider.Provider, error) {
+func fakeForgeProviderForReadyz(t *testing.T, h http.HandlerFunc) func(context.Context) (provider.Provider, error) {
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -32,11 +31,7 @@ func fakeForgeProviderForReadyz(t *testing.T, h http.HandlerFunc) func() (provid
 		Token:     "TEST",
 		RetryWait: 1 * time.Millisecond,
 	})
-	return func() (provider.Provider, error) { return p, nil }
-}
-
-func discardLogger() *slog.Logger {
-	return slog.New(slog.NewJSONHandler(io.Discard, nil))
+	return func(_ context.Context) (provider.Provider, error) { return p, nil }
 }
 
 func TestReadyzReady(t *testing.T) {

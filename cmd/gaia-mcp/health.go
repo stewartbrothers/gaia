@@ -41,7 +41,7 @@ func healthzHandler() http.Handler {
 //
 // Detail goes to stderr (operator-visible); wire body is opaque
 // ("ready"/"unready") so the endpoint isn't a reconnaissance vector.
-func readyzHandler(buildProvider func() (provider.Provider, error), logger *slog.Logger, timeout time.Duration) http.Handler {
+func readyzHandler(buildProvider func(context.Context) (provider.Provider, error), logger *slog.Logger, timeout time.Duration) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -51,7 +51,11 @@ func readyzHandler(buildProvider func() (provider.Provider, error), logger *slog
 		ctx, cancel := context.WithTimeout(r.Context(), timeout)
 		defer cancel()
 
-		p, err := buildProvider()
+		// readyz uses the operator's host-side credentials (no
+		// per-request bearer attached to ctx, since orchestrator
+		// probes don't carry one). The forgebuilder fall-through
+		// resolves the layered credential store.
+		p, err := buildProvider(ctx)
 		if err != nil {
 			logger.Warn("readyz_unready", "reason", "build_provider", "err", err.Error())
 			w.WriteHeader(http.StatusServiceUnavailable)

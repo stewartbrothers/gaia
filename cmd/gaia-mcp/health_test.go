@@ -27,9 +27,9 @@ func TestHealthzReturns200Ok(t *testing.T) {
 
 // TestHealthzMountedAndUnauthenticated runs the production runHTTP
 // path end-to-end and confirms /healthz responds 200 *without* a
-// bearer token, even when token-file auth is configured for the MCP
-// path. This is the contract orchestrators rely on: the health probe
-// has no credentials.
+// bearer token, while /mcp without one still 401s. This is the
+// contract orchestrators rely on: the health probe has no
+// credentials.
 func TestHealthzMountedAndUnauthenticated(t *testing.T) {
 	addr := "127.0.0.1:" + freePort(t)
 	cfg := httpConfig{
@@ -39,10 +39,9 @@ func TestHealthzMountedAndUnauthenticated(t *testing.T) {
 		IdleTimeout:       30 * time.Second,
 		ShutdownTimeout:   500 * time.Millisecond,
 	}
-	tokens := tokenStore{"tok_x": "alice"}
 
 	done := make(chan error, 1)
-	go func() { done <- runHTTP(cfg, buildServer(), tokens) }()
+	go func() { done <- runHTTP(cfg, buildServer()) }()
 	t.Cleanup(func() {
 		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 		<-done
@@ -65,7 +64,8 @@ func TestHealthzMountedAndUnauthenticated(t *testing.T) {
 		t.Errorf("/healthz body: %q", body)
 	}
 
-	// MCP path: no auth → 401 (token-file is configured)
+	// MCP path: no auth → 401 (pass-through middleware refuses requests
+	// without a Bearer; the bearer would have been the user's forge PAT).
 	resp2, err := http.Get("http://" + addr + "/mcp")
 	if err != nil {
 		t.Fatalf("GET /mcp: %v", err)
