@@ -23,6 +23,15 @@
 .env
 .env.*
 
+# Project credentials store — gaia auth --project writes to
+# .gaia/credentials.yaml (mode 0600, holds the forge PAT).
+# Structural protection so the credential never depends on the
+# runtime auth flow being used in a specific way. The trailing
+# glob catches rotation conventions: credentials.bak, credentials_old,
+# credentials.json, credentialsBACKUP, etc. auth.EnsureGitignored
+# stays as belt-and-braces for repos that don't already have it.
+.gaia/credentials*
+
 # Per-clone usage log: telemetry of which gaia commands the
 # operator runs vs falls back to curl/etc. Local-only; stays out
 # of git so it doesn't pollute history with workstation noise.

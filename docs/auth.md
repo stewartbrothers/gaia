@@ -58,7 +58,7 @@ gaia auth forgejo https://git.example.com --project --no-gitignore
 | Global config (non-secret) | `~/.config/gaia/config.yaml` |
 | Global credentials | `~/.config/gaia/credentials.yaml` |
 | Project config (non-secret) | `.gaia/config.yaml` (in repo root, **committable**) |
-| Project credentials | `.gaia/credentials.yaml` (in repo root, gitignored) |
+| Project credentials | `.gaia/credentials.yaml` (in repo root, gitignored — see below) |
 
 Both `XDG_CONFIG_HOME` and `HOME` are honored for the global paths.
 
@@ -98,6 +98,28 @@ GitHub").
 or `.config/gaia/` directories are created `0700`. `gaia auth` writes
 atomically (tempfile + rename) so an interrupted run never leaves a
 partial file.
+
+## Gitignore protection
+
+The repo's `.gitignore` ships a structural rule covering project
+credentials:
+
+```
+.gaia/credentials*
+```
+
+The trailing `*` catches the canonical `credentials.yaml` plus
+any rotation convention (`credentials.bak`, `credentials_old`,
+`credentialsBACKUP`, etc). This means **the credential file is
+gitignored by structural rule** — not dependent on the runtime
+auth flow having been invoked in a specific way.
+
+`auth.EnsureGitignored` (which fires when `gaia auth forgejo
+--project` is run) stays as belt-and-braces for repos cloned
+before this rule landed. Both gates are belt-and-braces; either
+alone is enough.
+
+Filed history: see #105.
 
 ## File format
 
