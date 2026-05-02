@@ -19,7 +19,6 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/stewartbrothers/gaia/core/exitcode"
-	"github.com/stewartbrothers/gaia/internal/forgebuilder"
 	"github.com/stewartbrothers/gaia/internal/version"
 )
 
@@ -66,7 +65,7 @@ func handleVersion(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResul
 }
 
 func handleWhoami(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	p, info, err := forgebuilder.Build(forgebuilder.Override{})
+	p, err := build()
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -74,7 +73,6 @@ func handleWhoami(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResu
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	out := fmt.Sprintf(`{"login":%q,"provider":%q,"host":%q}`,
-		login, info.Provider, info.Host)
+	out := fmt.Sprintf(`{"login":%q}`, login)
 	return mcp.NewToolResultText(out), nil
 }
