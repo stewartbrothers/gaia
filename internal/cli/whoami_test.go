@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -17,7 +18,10 @@ func clearGaiaEnv(t *testing.T) {
 	for _, k := range []string{
 		"GAIA_PROFILE", "GAIA_PROVIDER",
 		"FORGEJO_TOKEN", "FORGEJO_API_URL",
-		"GITHUB_TOKEN", "GIT_FORGE_GITEA_TOKEN",
+		"GITEA_TOKEN", // upstream tea-CLI fallback
+		"GITHUB_TOKEN",
+		"GH_TOKEN", // upstream gh-CLI fallback
+		"GIT_FORGE_GITEA_TOKEN",
 		"XDG_CONFIG_HOME",
 	} {
 		t.Setenv(k, "")
@@ -25,6 +29,27 @@ func clearGaiaEnv(t *testing.T) {
 	// Pin HOME to a directory with no gaia config so config.Load is a
 	// no-op rather than reading the dev's actual ~/.config/gaia.
 	t.Setenv("HOME", t.TempDir())
+	// Chdir to a directory that's NOT inside a git repo, so
+	// auth.ProjectRoot(".") returns "" and we don't pick up THIS
+	// repo's .gaia/config.yaml. (The test's expectation is "no config
+	// at all"; the project-layer config defeats that.)
+	chdirToOrphan(t)
+}
+
+// chdirToOrphan changes cwd to a fresh tempdir that isn't inside any
+// git repo, then restores cwd on test cleanup. Lets tests that
+// expected "no config at all" keep working after project-layer
+// config (#40) joined the layered resolve.
+func chdirToOrphan(t *testing.T) {
+	t.Helper()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
 }
 
 func TestWhoamiJSON(t *testing.T) {
@@ -166,5 +191,55 @@ func TestWhoamiGitHubProviderNotImplemented(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "github") {
 		t.Errorf("error should mention github; got %q", err.Error())
+	}
+}
+
+// TestWhoamiUsesProjectConfig pins the .gaia/config.yaml feature:
+// inside a configured checkout, `gaia whoami` resolves provider +
+// api_url from the project-local file. Catches the regression where
+// the project layer stops merging into the resolve path.
+func TestWhoamiUsesProjectConfig(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"login": "Gerwood"})
+	}))
+	defer srv.Close()
+
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "PROJECT_CONFIG_TEST_TOKEN")
+
+	// Build a fake repo with .git/ + .gaia/config.yaml, chdir into it.
+	repo := t.TempDir()
+	if err := os.MkdirAll(repo+"/.git", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(repo+"/.gaia", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yaml := "default_profile: testforge\n" +
+		"profiles:\n" +
+		"  testforge:\n" +
+		"    provider: forgejo\n" +
+		"    api_url: " + srv.URL + "\n"
+	if err := os.WriteFile(repo+"/.gaia/config.yaml", []byte(yaml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cwd, _ := os.Getwd()
+	if err := os.Chdir(repo); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+
+	// No --provider, no --api-url. Project config supplies both.
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"--format", "pretty", "whoami"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "Gerwood" {
+		t.Errorf("pretty output: got %q, want Gerwood", got)
 	}
 }

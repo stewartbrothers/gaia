@@ -22,13 +22,17 @@ type Resolved struct {
 	Provider string
 	APIURL   string
 	Token    string
+	// DefaultRepo is the project-config-supplied owner/name shortcut
+	// for repo-scoped commands. Flag --repo wins; this only fills in
+	// when neither --repo nor git-remote autodetect has supplied one.
+	DefaultRepo string
 }
 
 // String returns a redacted, log-safe representation. Token presence is
 // reported as a boolean; the token value itself never appears.
 func (r *Resolved) String() string {
-	return fmt.Sprintf("Resolved{Profile:%q, Provider:%q, APIURL:%q, TokenSet:%v}",
-		r.Profile, r.Provider, r.APIURL, r.Token != "")
+	return fmt.Sprintf("Resolved{Profile:%q, Provider:%q, APIURL:%q, DefaultRepo:%q, TokenSet:%v}",
+		r.Profile, r.Provider, r.APIURL, r.DefaultRepo, r.Token != "")
 }
 
 // Resolve combines a parsed Config with environment variables and
@@ -59,11 +63,17 @@ func Resolve(cfg *Config, ov Override) (*Resolved, error) {
 	apiURL := firstNonEmpty(ov.APIURL, os.Getenv("FORGEJO_API_URL"), profile.APIURL)
 	token := resolveToken(profile, provider)
 
+	defaultRepo := ""
+	if cfg != nil {
+		defaultRepo = cfg.DefaultRepo
+	}
+
 	return &Resolved{
-		Profile:  profileName,
-		Provider: provider,
-		APIURL:   apiURL,
-		Token:    token,
+		Profile:     profileName,
+		Provider:    provider,
+		APIURL:      apiURL,
+		Token:       token,
+		DefaultRepo: defaultRepo,
 	}, nil
 }
 

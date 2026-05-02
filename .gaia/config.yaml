@@ -1,0 +1,17 @@
+# Project-local gaia config for this checkout.
+#
+# Committed (no secrets — the credential lives in either the env
+# var or ~/.config/gaia/credentials.yaml). Lets `gaia issue list`
+# work bare in this checkout: no --provider, no --api-url, no
+# --repo on every call.
+#
+# Token still comes from FORGEJO_TOKEN / GITEA_TOKEN env, or from
+# `gaia auth forgejo` writing ~/.config/gaia/credentials.yaml.
+
+default_profile: stewartbrothers
+default_repo: Gerwood/gaia
+
+profiles:
+  stewartbrothers:
+    provider: forgejo
+    api_url: https://your-forge.example.com/api/v1

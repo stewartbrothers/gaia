@@ -1,10 +1,13 @@
 # Authentication
 
-`gaia` reads credentials from a layered store with three sources, in
+`gaia` reads credentials from a layered store with four sources, in
 descending precedence:
 
 1. `--token` flag (explicit one-off; not recommended for routine use).
-2. Environment variables: `FORGEJO_TOKEN`, `GITHUB_TOKEN`.
+2. Environment variables, in fallback order:
+   - Forgejo: `FORGEJO_TOKEN` → `GITEA_TOKEN` (the tea-CLI convention)
+   - GitHub: `GITHUB_TOKEN` → `GH_TOKEN` (the gh-CLI convention)
+   - Or a profile-pinned `token_env` name (see `.gaia/config.yaml`).
 3. Project credentials: `.gaia/credentials.yaml` inside the repo root.
 4. Global credentials: `~/.config/gaia/credentials.yaml` (or
    `$XDG_CONFIG_HOME/gaia/credentials.yaml`).
@@ -54,15 +57,40 @@ gaia auth forgejo https://git.example.com --project --no-gitignore
 |---------|------|
 | Global config (non-secret) | `~/.config/gaia/config.yaml` |
 | Global credentials | `~/.config/gaia/credentials.yaml` |
-| Project config (non-secret) | `.gaia/config.yaml` (in repo root) |
+| Project config (non-secret) | `.gaia/config.yaml` (in repo root, **committable**) |
 | Project credentials | `.gaia/credentials.yaml` (in repo root, gitignored) |
 
 Both `XDG_CONFIG_HOME` and `HOME` are honored for the global paths.
 
 `config.yaml` carries non-secret host metadata (provider, api_url,
-default_profile). `credentials.yaml` carries the token + login. They
-are deliberately separate: a config file may be committable in some
-flows; credentials should never be.
+default_profile, default_repo). `credentials.yaml` carries the token
++ login. They are deliberately separate: a config file may be
+committable in some flows; credentials should never be.
+
+### Project config example
+
+A repo's `.gaia/config.yaml` typically looks like:
+
+```yaml
+default_profile: stewartbrothers
+default_repo: Gerwood/gaia       # short-circuits --repo when set
+
+profiles:
+  stewartbrothers:
+    provider: forgejo
+    api_url: https://your-forge.example.com/api/v1
+```
+
+With this committed, every contributor working in the checkout gets
+`gaia issue list`, `gaia pr create ...`, etc. without needing
+`--provider`, `--api-url`, or `--repo` flags. They still need a
+token (from env or `gaia auth ...`), but everything else is
+inferred.
+
+The layering order is **project > global > env > flags**; project
+config can shadow a contributor's global default for one repo (e.g.,
+"in this checkout, use the corporate Forgejo, not my personal
+GitHub").
 
 ## Permissions
 

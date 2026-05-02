@@ -58,10 +58,23 @@ func Build(ov Override) (provider.Provider, *Info, error) {
 	if err != nil {
 		return nil, nil, exitcode.Wrap(err, exitcode.Generic, "locate config")
 	}
-	cfg, err := config.Load(cfgPath)
+	globalCfg, err := config.Load(cfgPath)
 	if err != nil {
 		return nil, nil, exitcode.Wrap(err, exitcode.Generic, "load config")
 	}
+
+	// Project layer: .gaia/config.yaml inside the repo root, when
+	// we're inside one. Lets `gaia issue list` work bare in a
+	// configured checkout — no --provider, no --api-url, no --repo.
+	var projectCfg *config.Config
+	if root := auth.ProjectRoot("."); root != "" {
+		projectCfg, err = config.Load(config.ProjectPath(root))
+		if err != nil {
+			return nil, nil, exitcode.Wrap(err, exitcode.Generic, "load project config")
+		}
+	}
+	cfg := config.Merge(globalCfg, projectCfg)
+
 	resolved, err := config.Resolve(cfg, config.Override{
 		Profile:  ov.Profile,
 		Provider: ov.Provider,

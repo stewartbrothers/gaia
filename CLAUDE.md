@@ -126,16 +126,42 @@ they are the same instance:
 - **HTTPS API base:** `https://your-forge.example.com/api/v1`
 - **SSH (push/pull):** `git@github.com:stewartbrothers/gaia.git`
 - **Repo slug:** `Gerwood/gaia`
-- **Auth (raw curl):** token in env `GIT_FORGE_GITEA_TOKEN`, sent as
-  `Authorization: token <token>`. Forgejo's API is Gitea-compatible.
-- **Auth (gaia CLI):** gaia honors `FORGEJO_TOKEN` (canonical) or
-  `GITEA_TOKEN` (tea-CLI convention) for the Forgejo provider, and
-  `GITHUB_TOKEN` or `GH_TOKEN` for GitHub. The project's
-  `GIT_FORGE_GITEA_TOKEN` is **not** picked up by default — set
-  `export GITEA_TOKEN=$GIT_FORGE_GITEA_TOKEN` once in your shell, or
-  run `gaia auth forgejo https://your-forge.example.com/api/v1`
-  to store the credential in `~/.config/gaia/credentials.yaml` (no
-  env vars needed after that). See #102 for the bug history.
+- **Auth env var:** `GITEA_TOKEN` (the community-standard name used
+  by `tea` and every Gitea/Forgejo guide). gaia also honors
+  `FORGEJO_TOKEN` (canonical) and a profile-pinned `token_env`. The
+  project previously used `GIT_FORGE_GITEA_TOKEN` as a unique-prefix
+  workaround — that name is **no longer the project convention**;
+  set `export GITEA_TOKEN=...` once instead. Sent as
+  `Authorization: token <token>` for raw curl. (For GitHub: `GH_TOKEN`
+  or `GITHUB_TOKEN`.)
+- **Best path:** run `gaia auth forgejo https://your-forge.example.com/api/v1`
+  once. The credential lands in `~/.config/gaia/credentials.yaml`
+  and no env vars are needed thereafter.
+
+### Project-local config: `.gaia/config.yaml`
+
+This repo ships a `.gaia/config.yaml` that pins the provider, API
+URL, and default repo for every `gaia` invocation inside this
+checkout. Effect: `gaia issue list`, `gaia pr create ...`,
+`gaia whoami` all work **bare** — no `--provider`, no `--api-url`,
+no `--repo`, no env-var prefix beyond the token.
+
+  $ cat .gaia/config.yaml
+  default_profile: stewartbrothers
+  default_repo: Gerwood/gaia
+  profiles:
+    stewartbrothers:
+      provider: forgejo
+      api_url: https://your-forge.example.com/api/v1
+
+  $ gaia whoami           # works
+  $ gaia issue list       # works
+  $ gaia pr create ...    # works
+
+The file is committable — no secrets, just non-secret defaults.
+Layering order: project (.gaia/config.yaml) > global
+(~/.config/gaia/config.yaml) > env > flags. See `core/config/`
+for the merge logic.
 
 ### Dogfood: use `gaia` for forge ops gaia supports
 
@@ -186,14 +212,15 @@ Classify by frequency:
 
 - **Common-path bug** (hits on every PR open, every tool call,
   every commit): **priority fix.** Interrupt current work to fix
-  it. Example: #102 — gaia not honoring the project's standard
-  Forgejo env var name. Hit on every gaia call until fixed.
+  it. Example: #102 — gaia not honoring `GITEA_TOKEN` as a fallback
+  for the Forgejo provider. Hit on every gaia call until fixed.
 - **Edge-case bug** (rare paths, recovery scenarios): file it,
   prioritize normally.
 
-The rule exists because we discovered #102 had been silently noted
-in the usage log twice and worked-around inline ~99 times before
-anyone realized it should be an issue. Don't do that.
+Common-path bugs are the ones that erode dogfood confidence
+fastest — every workaround compounds. Filing + fixing immediately
+is cheaper than the cumulative cost of "I'll just add the env-var
+prefix one more time."
 
 When a new gaia command lands, **update `docs/dogfood-comparison.md`**
 with a row showing gaia bytes vs. the closest curl/tea equivalent. The
@@ -210,9 +237,10 @@ The endpoints used by the curl-still-needed paths:
 - `POST /repos/{owner}/{repo}/labels` — create label
 - `PATCH /repos/{owner}/{repo}/issues/comments/{id}` — edit a comment
 
-**Never echo or log `$GIT_FORGE_GITEA_TOKEN`.** Pipe it directly into curl as
-a header; don't store it in shell history-visible variables, don't write it
-to disk, don't include it in commit messages or PR bodies.
+**Never echo or log `$GITEA_TOKEN`** (or `$FORGEJO_TOKEN`, or any
+PAT). Pipe it directly into curl as a header; don't store it in
+shell history-visible variables, don't write it to disk, don't
+include it in commit messages or PR bodies.
 
 ## Roadmap (tracking epics)
 

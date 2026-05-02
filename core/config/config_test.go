@@ -90,3 +90,70 @@ func TestDefaultPathFallsBackToDotConfig(t *testing.T) {
 		t.Errorf("DefaultPath without XDG: got %q, want %q", got, want)
 	}
 }
+
+func TestProjectPathEmptyRoot(t *testing.T) {
+	if got := config.ProjectPath(""); got != "" {
+		t.Errorf("empty root must return empty path; got %q", got)
+	}
+}
+
+func TestProjectPath(t *testing.T) {
+	got := config.ProjectPath("/some/repo")
+	want := "/some/repo/.gaia/config.yaml"
+	if got != want {
+		t.Errorf("ProjectPath: got %q, want %q", got, want)
+	}
+}
+
+// TestMergeProjectShadowsGlobal pins the layering rule: project
+// non-empty fields beat global, empty project fields fall through to
+// global, and profile maps merge by key.
+func TestMergeProjectShadowsGlobal(t *testing.T) {
+	global := &config.Config{
+		DefaultProfile: "global-default",
+		DefaultRepo:    "globalowner/globalrepo",
+		Profiles: map[string]config.Profile{
+			"sb":   {Provider: "forgejo", APIURL: "https://global.example/api/v1"},
+			"only": {Provider: "github", APIURL: "https://api.github.com"},
+		},
+	}
+	project := &config.Config{
+		DefaultRepo: "Gerwood/gaia", // project-only override
+		Profiles: map[string]config.Profile{
+			"sb": {Provider: "forgejo", APIURL: "https://project.example/api/v1"}, // shadows global
+		},
+	}
+
+	merged := config.Merge(global, project)
+
+	// DefaultProfile not set on project → falls through.
+	if merged.DefaultProfile != "global-default" {
+		t.Errorf("DefaultProfile: got %q, want global-default", merged.DefaultProfile)
+	}
+	// DefaultRepo set on project → wins.
+	if merged.DefaultRepo != "Gerwood/gaia" {
+		t.Errorf("DefaultRepo: got %q, want Gerwood/gaia", merged.DefaultRepo)
+	}
+	// Project profile shadows global.
+	if merged.Profiles["sb"].APIURL != "https://project.example/api/v1" {
+		t.Errorf("sb profile: project should win; got %+v", merged.Profiles["sb"])
+	}
+	// Global-only profile survives.
+	if merged.Profiles["only"].Provider != "github" {
+		t.Errorf("global-only profile: %+v", merged.Profiles["only"])
+	}
+}
+
+func TestMergeNilSafe(t *testing.T) {
+	if got := config.Merge(nil, nil); got == nil || len(got.Profiles) != 0 {
+		t.Errorf("nil/nil should return empty; got %+v", got)
+	}
+	g := &config.Config{DefaultProfile: "x"}
+	if got := config.Merge(g, nil); got.DefaultProfile != "x" {
+		t.Errorf("global only: got %+v", got)
+	}
+	p := &config.Config{DefaultProfile: "y"}
+	if got := config.Merge(nil, p); got.DefaultProfile != "y" {
+		t.Errorf("project only: got %+v", got)
+	}
+}
