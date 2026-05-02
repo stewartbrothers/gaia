@@ -17,8 +17,8 @@ import (
 // support is needed, GitHub also accepts a `line` + `side` pair on
 // newer API versions — that's a follow-up.
 type apiReviewRequest struct {
-	Event    string                  `json:"event"`
-	Body     string                  `json:"body,omitempty"`
+	Event    string                   `json:"event"`
+	Body     string                   `json:"body,omitempty"`
 	Comments []apiReviewInlineRequest `json:"comments,omitempty"`
 }
 
