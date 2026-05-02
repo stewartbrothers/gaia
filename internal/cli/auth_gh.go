@@ -29,10 +29,6 @@ func newAuthGHCmd() *cobra.Command {
 GET /user against api.github.com, and records the credential. After
 this, gaia commands targeting github.com work without env vars.
 
-Phase 1 shipped paste-a-PAT only; Phase 2 will add OAuth Device Flow
-(` + "`gaia auth gh --device`" + `) once a public OAuth app is registered;
-this command's flags are forward-compatible with that.
-
 Visit https://github.com/settings/tokens?type=beta to create a
 fine-grained Personal Access Token. Recommended permissions:
 Contents: read; Issues: read+write; Pull requests: read+write.`,

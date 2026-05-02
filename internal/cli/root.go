@@ -40,11 +40,11 @@ func NewRootCmd() *cobra.Command {
 
 	root := &cobra.Command{
 		Use:   "gaia",
-		Short: "Token-trimmed CLI for Forgejo (and GitHub in Phase 2)",
+		Short: "Token-trimmed CLI for Forgejo and GitHub",
 		Long: `gaia is a Git AI Access tool: a CLI and MCP server providing
-agent-shaped, token-trimmed responses against Forgejo (and GitHub in
-Phase 2). Output goes to stdout in JSON by default; use --format=pretty
-for a human-readable rendering.
+agent-shaped, token-trimmed responses against Forgejo and GitHub.
+Output goes to stdout in JSON by default; use --format=pretty for a
+human-readable rendering.
 
 See docs/output-format.md for the response envelope, docs/exit-codes.md
 for the exit-code convention, and docs/configuration.md for config and
