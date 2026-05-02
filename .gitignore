@@ -1,6 +1,7 @@
 # Build artifacts
 /bin/
-/dist/   # goreleaser writes here
+# goreleaser writes here
+/dist/
 
 # Coverage
 /coverage.out
@@ -21,6 +22,11 @@
 *.local.yaml
 .env
 .env.*
+
+# Per-clone usage log: telemetry of which gaia commands the
+# operator runs vs falls back to curl/etc. Local-only; stays out
+# of git so it doesn't pollute history with workstation noise.
+.gaia-usage.jsonl
 
 # Top-level binaries: produced by `go build ./cmd/gaia` or
 # `go build ./cmd/gaia-mcp` without -o (which writes to cwd, not bin/).
