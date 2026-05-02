@@ -156,6 +156,42 @@ func (c *Client) writeRequest(ctx context.Context, method, path string, body, ou
 	return nil
 }
 
+// PostMultipart issues a POST with a multipart/form-data body. Used
+// for the release-asset upload endpoint, which Forgejo's API requires
+// be a multipart form with field name "attachment". The caller passes
+// a populated bytes.Buffer + the matching Content-Type from
+// multipart.Writer.FormDataContentType().
+func (c *Client) PostMultipart(ctx context.Context, path, contentType string, body io.Reader, out any) error {
+	urlStr := c.buildURL(path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, urlStr, body)
+	if err != nil {
+		return exitcode.Wrap(err, exitcode.Generic, fmt.Sprintf("build POST %s", path))
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "token "+c.token)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("User-Agent", c.userAgent)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return exitcode.Wrap(scrubError(err, c.token), exitcode.Network, fmt.Sprintf("POST %s", path))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return c.statusError(resp, http.MethodPost, path)
+	}
+	if out == nil {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return exitcode.Wrap(err, exitcode.Generic, fmt.Sprintf("decode POST %s", path))
+	}
+	return nil
+}
+
 // GetRaw issues a GET and returns the response body as bytes. Used
 // for endpoints that return non-JSON payloads (notably `.diff`). The
 // Accept header is set to `*/*`.

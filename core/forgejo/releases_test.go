@@ -3,6 +3,7 @@ package forgejo_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -155,5 +156,86 @@ func TestGetReleaseNotFound(t *testing.T) {
 	_, err := p.GetRelease(context.Background(), "o", "r", "missing")
 	if got := exitcode.Of(err); got != exitcode.NotFound {
 		t.Errorf("got %d, want NotFound", got)
+	}
+}
+
+func TestUploadReleaseAsset(t *testing.T) {
+	var capturedPath string
+	var capturedContentType string
+	var capturedBody []byte
+	var capturedQueryName string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method: %q", r.Method)
+		}
+		capturedPath = r.URL.Path
+		capturedQueryName = r.URL.Query().Get("name")
+		capturedContentType = r.Header.Get("Content-Type")
+
+		// Parse the multipart form so we can inspect the file part.
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			t.Fatalf("ParseMultipartForm: %v", err)
+		}
+		f, hdr, err := r.FormFile("attachment")
+		if err != nil {
+			t.Fatalf("FormFile attachment: %v", err)
+		}
+		defer func() { _ = f.Close() }()
+		if hdr.Filename != "release-v0.1.0.tar.gz" {
+			t.Errorf("filename: got %q", hdr.Filename)
+		}
+		if got := hdr.Header.Get("Content-Type"); got != "application/gzip" {
+			t.Errorf("part Content-Type: got %q", got)
+		}
+		capturedBody, _ = io.ReadAll(f)
+		w.WriteHeader(201)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	body := strings.NewReader("fake-archive-bytes")
+	if err := p.UploadReleaseAsset(context.Background(), "o", "r", 7, "release-v0.1.0.tar.gz", "application/gzip", body); err != nil {
+		t.Fatalf("UploadReleaseAsset: %v", err)
+	}
+
+	if capturedPath != "/repos/o/r/releases/7/assets" {
+		t.Errorf("path: %q", capturedPath)
+	}
+	if capturedQueryName != "release-v0.1.0.tar.gz" {
+		t.Errorf("query name: %q", capturedQueryName)
+	}
+	if !strings.HasPrefix(capturedContentType, "multipart/form-data") {
+		t.Errorf("Content-Type should be multipart; got %q", capturedContentType)
+	}
+	if string(capturedBody) != "fake-archive-bytes" {
+		t.Errorf("body: %q", capturedBody)
+	}
+}
+
+func TestUploadReleaseAssetDefaultsContentType(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseMultipartForm(1 << 20)
+		_, hdr, _ := r.FormFile("attachment")
+		if got := hdr.Header.Get("Content-Type"); got != "application/octet-stream" {
+			t.Errorf("default Content-Type: got %q, want application/octet-stream", got)
+		}
+		w.WriteHeader(201)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	_ = p.UploadReleaseAsset(context.Background(), "o", "r", 1, "x", "", strings.NewReader("data"))
+}
+
+func TestUploadReleaseAssetBadStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(404)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	err := p.UploadReleaseAsset(context.Background(), "o", "r", 999, "x", "", strings.NewReader("data"))
+	if got := exitcode.Of(err); got != exitcode.NotFound {
+		t.Errorf("exit code: got %d, want NotFound(3)", got)
 	}
 }

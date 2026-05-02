@@ -10,6 +10,7 @@ package provider
 
 import (
 	"context"
+	"io"
 
 	"github.com/stewartbrothers/gaia/core/types"
 )
@@ -122,4 +123,16 @@ type Provider interface {
 
 	// DeleteRelease removes a release by tag.
 	DeleteRelease(ctx context.Context, owner, repo, tag string) error
+
+	// UploadReleaseAsset attaches a file to an existing release. Both
+	// forges expose this differently (Forgejo: multipart on the same
+	// API host; GitHub: raw body to uploads.github.com), but the
+	// caller-facing contract is the same: stream `body` into the
+	// release identified by `releaseID` under `name`.
+	//
+	// `contentType` is optional — pass "" to let the implementation
+	// default to "application/octet-stream". `body` should be a
+	// reusable Reader (the underlying file handle, not a one-shot
+	// buffer) so retries don't fail.
+	UploadReleaseAsset(ctx context.Context, owner, repo string, releaseID int64, name, contentType string, body io.Reader) error
 }
