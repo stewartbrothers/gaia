@@ -20,6 +20,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -41,19 +42,35 @@ func main() {
 	}
 }
 
+// httpConfig groups the HTTP transport's tunable knobs. Defaults
+// match container-deployment best practices: short header timeout
+// (slow-loris guard), generous idle timeout (keep-alives across
+// multiple JSON-RPC calls), 10s shutdown drain.
+type httpConfig struct {
+	Addr              string
+	BasePath          string
+	ReadHeaderTimeout time.Duration
+	IdleTimeout       time.Duration
+	ShutdownTimeout   time.Duration
+}
+
 func run(args []string) error {
 	fs := flag.NewFlagSet("gaia-mcp", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	httpAddr := fs.String("http", "", "if set, serve HTTP streamable-MCP on the given address (e.g. :8080); default is stdio")
-	basePath := fs.String("base-path", "/mcp", "URL path prefix for the HTTP transport")
+	cfg := httpConfig{}
+	fs.StringVar(&cfg.Addr, "http", "", "if set, serve HTTP streamable-MCP on the given address (e.g. :8080); default is stdio")
+	fs.StringVar(&cfg.BasePath, "base-path", "/mcp", "URL path prefix for the HTTP transport")
+	fs.DurationVar(&cfg.ReadHeaderTimeout, "read-header-timeout", 10*time.Second, "max time to read request headers (slow-loris guard)")
+	fs.DurationVar(&cfg.IdleTimeout, "idle-timeout", 120*time.Second, "max idle time between requests on a keep-alive connection")
+	fs.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", 10*time.Second, "max drain window on SIGTERM/SIGINT before in-flight requests are cut")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	s := buildServer()
 
-	if *httpAddr != "" {
-		return runHTTP(*httpAddr, *basePath, s)
+	if cfg.Addr != "" {
+		return runHTTP(cfg, s)
 	}
 	return server.ServeStdio(s)
 }
@@ -70,18 +87,37 @@ func buildServer() *server.MCPServer {
 	return s
 }
 
-// runHTTP serves the streamable-HTTP transport. Listens for
-// SIGTERM/SIGINT and shuts down gracefully; the deadline mirrors the
-// container-deploy convention of "10s to drain in-flight, then kill."
-func runHTTP(addr, basePath string, s *server.MCPServer) error {
-	httpServer := server.NewStreamableHTTPServer(s,
-		server.WithEndpointPath(basePath),
-	)
+// runHTTP serves the streamable-HTTP transport with the configured
+// timeouts. Listens for SIGTERM/SIGINT and shuts down gracefully —
+// orchestrators (Coolify, Kubernetes, ECS) all send SIGTERM first
+// then SIGKILL after a grace period, so honoring SIGTERM cleanly is
+// what makes rolling deploys lossless.
+func runHTTP(cfg httpConfig, s *server.MCPServer) error {
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	// Use the mcp-go streamable-HTTP server as a plain http.Handler
+	// and host it ourselves so we own the timeouts. mcp-go's
+	// internal http.Server has no timeouts set — fine for tests, bad
+	// for a public daemon (slow-loris exposure, dangling connections).
+	streamable := server.NewStreamableHTTPServer(s)
+	mux := http.NewServeMux()
+	mux.Handle(cfg.BasePath, streamable)
+
+	httpSrv := &http.Server{
+		Addr:              cfg.Addr,
+		Handler:           mux,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
-		fmt.Fprintf(os.Stderr, "gaia-mcp: listening on %s%s\n", addr, basePath)
-		errCh <- httpServer.Start(addr)
+		logger.Info("listening",
+			"addr", cfg.Addr, "path", cfg.BasePath,
+			"read_header_timeout", cfg.ReadHeaderTimeout.String(),
+			"idle_timeout", cfg.IdleTimeout.String(),
+		)
+		errCh <- httpSrv.ListenAndServe()
 	}()
 
 	sigCh := make(chan os.Signal, 1)
@@ -89,10 +125,10 @@ func runHTTP(addr, basePath string, s *server.MCPServer) error {
 
 	select {
 	case sig := <-sigCh:
-		fmt.Fprintf(os.Stderr, "gaia-mcp: received %s, shutting down\n", sig)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		logger.Info("shutdown", "signal", sig.String(), "drain_timeout", cfg.ShutdownTimeout.String())
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
-		return httpServer.Shutdown(ctx)
+		return httpSrv.Shutdown(ctx)
 	case err := <-errCh:
 		if err != nil && err != http.ErrServerClosed {
 			return exitcode.Wrap(err, exitcode.Network, "http server")
