@@ -1,12 +1,21 @@
+// Command gaia is the user-facing CLI for the gaia toolkit. It is
+// intentionally a thin shim: every command's behavior lives in
+// internal/cli, and core/* holds the shared library. Errors propagate
+// from internal/cli as exitcode.Error values; this main translates
+// them into the process exit code.
 package main
 
 import (
 	"fmt"
+	"os"
 
-	"github.com/stewartbrothers/gaia/internal/version"
+	"github.com/stewartbrothers/gaia/core/exitcode"
+	"github.com/stewartbrothers/gaia/internal/cli"
 )
 
 func main() {
-	fmt.Printf("gaia %s (commit %s)\n", version.Version, version.Commit)
-	fmt.Println("Phase 1 scaffold — see https://github.com/stewartbrothers/gaia/issues/6")
+	if err := cli.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, "gaia: "+err.Error())
+		os.Exit(exitcode.Of(err))
+	}
 }
