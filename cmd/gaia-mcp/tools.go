@@ -11,7 +11,6 @@ import (
 
 	"github.com/stewartbrothers/gaia/core/envelope"
 	"github.com/stewartbrothers/gaia/core/exitcode"
-	"github.com/stewartbrothers/gaia/core/forgejo"
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/internal/forgebuilder"
 )
@@ -50,12 +49,15 @@ func repoFromArgs(args map[string]any) (owner, repo string, err error) {
 	return parts[0], parts[1], nil
 }
 
-// build resolves config + credentials into a Forgejo provider. Each
-// tool calls this; failures map to an MCP tool error.
+// build resolves config + credentials into a Provider. Each tool
+// calls this; failures map to an MCP tool error. Returns the
+// provider.Provider interface so the underlying value can be either
+// *forgejo.Provider or *github.Provider depending on what
+// forgebuilder dispatches to.
 //
 // Indirection via builderFn lets tests swap in a fake provider; the
 // production path goes through forgebuilder.
-func build() (*forgejo.Provider, error) {
+func build() (provider.Provider, error) {
 	return builderFn()
 }
 
@@ -64,7 +66,7 @@ func build() (*forgejo.Provider, error) {
 // defaultBuilder.
 var builderFn = defaultBuilder
 
-func defaultBuilder() (*forgejo.Provider, error) {
+func defaultBuilder() (provider.Provider, error) {
 	p, _, err := forgebuilder.Build(forgebuilder.Override{})
 	return p, err
 }

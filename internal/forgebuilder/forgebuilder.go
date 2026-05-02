@@ -1,7 +1,8 @@
-// Package forgebuilder builds a configured *forgejo.Provider from
+// Package forgebuilder builds a configured provider.Provider from
 // the same layered config + credentials store the CLI uses, so
 // `cmd/gaia-mcp` and `cmd/gaia` stay in lock-step on auth resolution
-// without duplicating the resolve logic.
+// without duplicating the resolve logic. Dispatches to either
+// core/forgejo or core/github based on the resolved provider name.
 //
 // Resolution order (same as internal/cli/provider.go):
 //
@@ -19,6 +20,8 @@ import (
 	"github.com/stewartbrothers/gaia/core/config"
 	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/forgejo"
+	"github.com/stewartbrothers/gaia/core/github"
+	"github.com/stewartbrothers/gaia/core/provider"
 )
 
 // Override mirrors the CLI's globalFlags subset that affects
@@ -37,11 +40,15 @@ type Info struct {
 	APIURL   string
 }
 
-// Build returns a ready-to-use *forgejo.Provider plus its Info
+// Build returns a ready-to-use provider.Provider plus its Info
 // metadata, or an error if config + credentials don't yield enough
-// to construct one. Phase 1 supports forgejo only; github surfaces
-// a not-implemented error here so callers don't have to special-case.
-func Build(ov Override) (*forgejo.Provider, *Info, error) {
+// to construct one. Dispatches by resolved.Provider:
+//
+//	"forgejo" → core/forgejo.Provider
+//	"github"  → core/github.Provider  (BaseURL defaults to api.github.com)
+//
+// Any other provider name is rejected with a usage error.
+func Build(ov Override) (provider.Provider, *Info, error) {
 	cfgPath, err := config.DefaultPath()
 	if err != nil {
 		return nil, nil, exitcode.Wrap(err, exitcode.Generic, "locate config")
@@ -76,15 +83,7 @@ func Build(ov Override) (*forgejo.Provider, *Info, error) {
 
 	if resolved.Provider == "" {
 		return nil, nil, exitcode.Errorf(exitcode.Usage,
-			"no provider configured — run `gaia auth forgejo <url>` or set --provider/GAIA_PROVIDER")
-	}
-	if resolved.Provider != "forgejo" {
-		return nil, nil, exitcode.Errorf(exitcode.Generic,
-			"%s provider not yet implemented (Phase 2 — see #2)", resolved.Provider)
-	}
-	if resolved.APIURL == "" {
-		return nil, nil, exitcode.Errorf(exitcode.Usage,
-			"no API URL configured — run `gaia auth forgejo <url>` or set --api-url/FORGEJO_API_URL")
+			"no provider configured — run `gaia auth forgejo <url>` or `gaia auth gh`, or set --provider/GAIA_PROVIDER")
 	}
 
 	host := ""
@@ -98,15 +97,37 @@ func Build(ov Override) (*forgejo.Provider, *Info, error) {
 		}
 	}
 
-	p := forgejo.NewProvider(forgejo.Options{
-		BaseURL: resolved.APIURL,
-		Token:   resolved.Token,
-	})
-	return p, &Info{
+	info := &Info{
 		Provider: resolved.Provider,
 		Host:     host,
 		APIURL:   resolved.APIURL,
-	}, nil
+	}
+
+	switch resolved.Provider {
+	case "forgejo":
+		if resolved.APIURL == "" {
+			return nil, nil, exitcode.Errorf(exitcode.Usage,
+				"no API URL configured — run `gaia auth forgejo <url>` or set --api-url/FORGEJO_API_URL")
+		}
+		return forgejo.NewProvider(forgejo.Options{
+			BaseURL: resolved.APIURL,
+			Token:   resolved.Token,
+		}), info, nil
+	case "github":
+		// Empty BaseURL means "use api.github.com"; github.New
+		// substitutes the production default. Host defaults to
+		// api.github.com when APIURL is empty so Info reads cleanly.
+		if info.Host == "" {
+			info.Host = "api.github.com"
+		}
+		return github.NewProvider(github.Options{
+			BaseURL: resolved.APIURL,
+			Token:   resolved.Token,
+		}), info, nil
+	default:
+		return nil, nil, exitcode.Errorf(exitcode.Usage,
+			"unknown provider %q (supported: forgejo, github)", resolved.Provider)
+	}
 }
 
 // LoadLayeredCredentials reads the global + project credential

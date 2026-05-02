@@ -12,6 +12,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/stewartbrothers/gaia/core/forgejo"
+	"github.com/stewartbrothers/gaia/core/provider"
 )
 
 // fakeForgeProvider builds a *forgejo.Provider against an httptest
@@ -32,7 +33,7 @@ func fakeForgeProvider(t *testing.T, h http.HandlerFunc) (*forgejo.Provider, *ht
 // cleanup.
 func pinBuilder(t *testing.T, p *forgejo.Provider) {
 	t.Helper()
-	SetBuilderForTest(func() (*forgejo.Provider, error) { return p, nil })
+	SetBuilderForTest(func() (provider.Provider, error) { return p, nil })
 	t.Cleanup(func() { SetBuilderForTest(nil) })
 }
 
