@@ -113,6 +113,21 @@ func (*noopProvider) DeleteLabel(_ context.Context, _, _ string, _ string) error
 func (*noopProvider) SubmitReview(_ context.Context, _, _ string, _ int, _ provider.SubmitReviewOptions) error {
 	return errNotImplemented
 }
+func (*noopProvider) ListReleases(_ context.Context, _, _ string, _ provider.ListReleasesOptions) ([]types.Release, *provider.Page, error) {
+	return nil, nil, errNotImplemented
+}
+func (*noopProvider) GetRelease(_ context.Context, _, _, _ string) (*types.Release, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) CreateRelease(_ context.Context, _, _ string, _ provider.CreateReleaseOptions) (*types.Release, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) EditRelease(_ context.Context, _, _, _ string, _ provider.EditReleaseOptions) (*types.Release, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) DeleteRelease(_ context.Context, _, _, _ string) error {
+	return errNotImplemented
+}
 
 // Reference time.Time so an unused-import check never fires while tests
 // scaffold up. Removed once a real test uses it.

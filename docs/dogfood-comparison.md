@@ -53,11 +53,28 @@ Gerwood/gaia, PR #75 with no comments)
 | `gaia search MVP` (1 result)                       | 204     | 51      | **0.04×**    |
 | `gaia --fields kind,number,title,repo search MVP`  | 204     | 51      | **0.04×**    |
 | `curl /issues?q=MVP&limit=30`                      | 4 954   | 1 238   | 1×           |
+| | | | |
+| `gaia release list` (5, vs api.github.com cli/cli) | 21 616  | 5 404   | **0.08×**    |
+| `gaia --fields tag_name,name,prerelease release list` | 606  | 151     | **0.002×**   |
+| `curl /releases?per_page=5` (cli/cli)              | 258 218 | 64 554  | 1×           |
+| | | | |
+| `gaia release view v2.79.0` (cli/cli)              | 2 958   | 739     | **0.06×**    |
+| `curl /releases/tags/v2.79.0` (cli/cli)            | 48 555  | 12 138  | 1×           |
 
 ## Takeaways
 
 ### Big wins
 
+- **release list**: 12× smaller than raw curl on a high-asset repo
+  like cli/cli. GitHub releases carry the full `assets` array (every
+  binary, every download URL, byte counts, content type, uploader,
+  state, both URLs per asset) — gaia drops it entirely since agents
+  rarely need to enumerate downloadable binaries. With `--fields`
+  projection on tag/name/prerelease, the ratio collapses to **400×
+  smaller** (250KB → 600 bytes).
+- **release view**: 16× smaller than raw curl. Same dynamic — a
+  single release record on cli/cli is 48KB raw because of `assets`
+  and a verbose `body`; gaia ships 3KB.
 - **search**: 24× smaller than raw curl. The trim is dramatic because
   search results in raw form carry full repo objects and PR
   reconciliation fields per result; gaia returns just `{kind, number,

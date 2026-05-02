@@ -105,4 +105,21 @@ type Provider interface {
 	// comments. Returns nil on success; the caller can re-fetch
 	// comments via ListComments to see the new review.
 	SubmitReview(ctx context.Context, owner, repo string, n int, opts SubmitReviewOptions) error
+
+	// --- Releases (Phase 3) -----------------------------------------
+
+	// ListReleases returns releases on the repo, newest first.
+	ListReleases(ctx context.Context, owner, repo string, opts ListReleasesOptions) ([]types.Release, *Page, error)
+
+	// GetRelease fetches one release by tag name.
+	GetRelease(ctx context.Context, owner, repo, tag string) (*types.Release, error)
+
+	// CreateRelease creates a new release.
+	CreateRelease(ctx context.Context, owner, repo string, opts CreateReleaseOptions) (*types.Release, error)
+
+	// EditRelease patches an existing release identified by tag.
+	EditRelease(ctx context.Context, owner, repo, tag string, opts EditReleaseOptions) (*types.Release, error)
+
+	// DeleteRelease removes a release by tag.
+	DeleteRelease(ctx context.Context, owner, repo, tag string) error
 }

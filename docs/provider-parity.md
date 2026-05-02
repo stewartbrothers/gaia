@@ -42,6 +42,11 @@ provider source to know what to expect.
 | `EditLabel` | ✓ | ✓ | Forgejo: list-then-PATCH-by-ID (the upstream takes ID). GitHub: PATCH-by-name directly. Same callable contract; one hop on GitHub, two on Forgejo. |
 | `DeleteLabel` | ✓ | ✓ | Same contract as Edit. |
 | `SubmitReview` | ✓ | △ | Body/state map identically. Inline-comment shape differs: Forgejo uses `new_position` (line in new file); GitHub uses `position` (position in the diff). `provider.ReviewInlineComment.Line` maps to whichever the active forge expects. GitHub's newer `line` + `side` API for left-side commenting is a follow-up. |
+| `ListReleases` | ✓ | ✓ | `GET /repos/{o}/{r}/releases` on both. Pagination via the forge-specific param (`limit` vs `per_page`); same `[]Release` shape on the way out. |
+| `GetRelease` | ✓ | ✓ | `GET /repos/{o}/{r}/releases/tags/{tag}` on both. 404 maps to `exitcode.NotFound` on both. |
+| `CreateRelease` | ✓ | ✓ | `POST /repos/{o}/{r}/releases`. Both accept `{tag_name, name, body, target_commitish, draft, prerelease}`. |
+| `EditRelease` | ✓ | ✓ | Same two-hop pattern as `EditLabel` — GET tag→ID, then PATCH `/releases/{id}`. Forge endpoints PATCH-by-id only on both forges. `Draft`/`Prerelease` are `*bool` so explicit `false` flips work. |
+| `DeleteRelease` | ✓ | ✓ | Two-hop: GET tag→ID, then DELETE `/releases/{id}`. 204 on success. |
 
 ## Cross-cutting differences
 
