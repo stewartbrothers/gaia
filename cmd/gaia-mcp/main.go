@@ -58,6 +58,10 @@ type httpConfig struct {
 	// startup refuses with a usage error to prevent accidental
 	// public exposure.
 	AllowPublicNoAuth bool
+	// TokenFile points at a one-token-per-line file. When non-empty,
+	// every HTTP request must carry a matching `Authorization: Bearer
+	// <token>`; the bind policy then permits non-loopback exposure.
+	TokenFile string
 }
 
 func run(args []string) error {
@@ -70,6 +74,7 @@ func run(args []string) error {
 	fs.DurationVar(&cfg.IdleTimeout, "idle-timeout", 120*time.Second, "max idle time between requests on a keep-alive connection")
 	fs.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", 10*time.Second, "max drain window on SIGTERM/SIGINT before in-flight requests are cut")
 	fs.BoolVar(&cfg.AllowPublicNoAuth, "allow-public-no-auth", false, "permit binding to a non-loopback interface without bearer auth (only safe behind a reverse proxy that authenticates requests itself)")
+	fs.StringVar(&cfg.TokenFile, "token-file", "", "path to a file with one bearer token per line (mode must be 0600); enables Authorization: Bearer auth on the HTTP transport")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -77,15 +82,19 @@ func run(args []string) error {
 	s := buildServer()
 
 	if cfg.Addr != "" {
+		tokens, err := loadTokensFromFile(cfg.TokenFile)
+		if err != nil {
+			return err
+		}
 		policy := bindPolicy{
 			Addr:              cfg.Addr,
-			HasAuth:           false, // tokens land in commit 2 of this stack
+			HasAuth:           len(tokens) > 0,
 			AllowPublicNoAuth: cfg.AllowPublicNoAuth,
 		}
 		if err := policy.validate(); err != nil {
 			return err
 		}
-		return runHTTP(cfg, s)
+		return runHTTP(cfg, s, tokens)
 	}
 	return server.ServeStdio(s)
 }
@@ -107,7 +116,7 @@ func buildServer() *server.MCPServer {
 // orchestrators (Coolify, Kubernetes, ECS) all send SIGTERM first
 // then SIGKILL after a grace period, so honoring SIGTERM cleanly is
 // what makes rolling deploys lossless.
-func runHTTP(cfg httpConfig, s *server.MCPServer) error {
+func runHTTP(cfg httpConfig, s *server.MCPServer, _ tokenStore) error {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	// Use the mcp-go streamable-HTTP server as a plain http.Handler
