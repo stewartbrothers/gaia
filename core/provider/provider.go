@@ -54,4 +54,49 @@ type Provider interface {
 	// Search returns hits across the kinds named in opts.Kinds (issues
 	// and PRs in Phase 1; code added in Phase 4).
 	Search(ctx context.Context, query string, opts SearchOptions) ([]types.SearchResult, *Page, error)
+
+	// --- Write methods (Phase 1.5) ----------------------------------
+
+	// CreateIssue opens a new issue and returns the trimmed view.
+	CreateIssue(ctx context.Context, owner, repo string, opts CreateIssueOptions) (*types.Issue, error)
+
+	// EditIssue patches an existing issue. Empty option fields are
+	// "no change"; AddLabels/RemoveLabels apply incrementally.
+	EditIssue(ctx context.Context, owner, repo string, n int, opts EditIssueOptions) (*types.Issue, error)
+
+	// CreateIssueComment posts a top-level thread comment on issue or
+	// PR n. Returns the resulting Comment with Source="issue".
+	CreateIssueComment(ctx context.Context, owner, repo string, n int, body string) (*types.Comment, error)
+
+	// EditIssueComment patches an existing comment by its ID (not the
+	// issue number; comment IDs are forge-global within a repo).
+	EditIssueComment(ctx context.Context, owner, repo string, commentID int64, body string) (*types.Comment, error)
+
+	// DeleteIssueComment removes a comment by ID. 204 is success.
+	DeleteIssueComment(ctx context.Context, owner, repo string, commentID int64) error
+
+	// CreatePullRequest opens a new PR.
+	CreatePullRequest(ctx context.Context, owner, repo string, opts CreatePullRequestOptions) (*types.PullRequest, error)
+
+	// EditPullRequest patches a PR. Same semantics as EditIssue plus
+	// Draft (*bool because false is meaningful).
+	EditPullRequest(ctx context.Context, owner, repo string, n int, opts EditPullRequestOptions) (*types.PullRequest, error)
+
+	// MergePullRequest performs the merge with the requested method.
+	// Returns nil on 200/204; the caller can re-fetch via
+	// GetPullRequest if it needs the updated state.
+	MergePullRequest(ctx context.Context, owner, repo string, n int, opts MergePullRequestOptions) error
+
+	// ListLabels returns every label on the repo (not paginated;
+	// repos rarely exceed the default page size for labels).
+	ListLabels(ctx context.Context, owner, repo string) ([]types.Label, error)
+
+	// CreateLabel makes a new label.
+	CreateLabel(ctx context.Context, owner, repo string, opts CreateLabelOptions) (*types.Label, error)
+
+	// EditLabel patches a label by current name.
+	EditLabel(ctx context.Context, owner, repo string, name string, opts EditLabelOptions) (*types.Label, error)
+
+	// DeleteLabel removes a label by name. 204 is success.
+	DeleteLabel(ctx context.Context, owner, repo string, name string) error
 }

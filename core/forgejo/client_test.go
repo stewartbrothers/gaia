@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -255,6 +256,99 @@ func TestGetWithEmptyTokenSkipsAuthHeader(t *testing.T) {
 	})
 	if err := c.Get(context.Background(), "/x", nil); err != nil {
 		t.Fatalf("Get with empty token: %v", err)
+	}
+}
+
+func TestPostSendsJSONBodyAndDecodesResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method: got %q, want POST", r.Method)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Errorf("Content-Type: got %q", got)
+		}
+		body, _ := io.ReadAll(r.Body)
+		var got map[string]any
+		_ = json.Unmarshal(body, &got)
+		if got["title"] != "hello" {
+			t.Errorf("body.title: got %v", got["title"])
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"number": 42})
+	}))
+	defer srv.Close()
+
+	c := fastClient(t, srv.URL, "TEST")
+	var out struct {
+		Number int `json:"number"`
+	}
+	if err := c.Post(context.Background(), "/issues", map[string]string{"title": "hello"}, &out); err != nil {
+		t.Fatalf("Post: %v", err)
+	}
+	if out.Number != 42 {
+		t.Errorf("decoded: got %d, want 42", out.Number)
+	}
+}
+
+func TestPostNon2xxIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(422)
+		_, _ = w.Write([]byte(`{"message":"validation failed"}`))
+	}))
+	defer srv.Close()
+
+	c := fastClient(t, srv.URL, "TEST")
+	err := c.Post(context.Background(), "/issues", map[string]string{}, nil)
+	if got := exitcode.Of(err); got != exitcode.Usage {
+		t.Errorf("exit code: got %d, want Usage(2)", got)
+	}
+}
+
+func TestPatchSendsJSONBody(t *testing.T) {
+	var captured string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Errorf("method: got %q, want PATCH", r.Method)
+		}
+		body, _ := io.ReadAll(r.Body)
+		captured = string(body)
+		_ = json.NewEncoder(w).Encode(map[string]any{"number": 7})
+	}))
+	defer srv.Close()
+
+	c := fastClient(t, srv.URL, "TEST")
+	if err := c.Patch(context.Background(), "/issues/7", map[string]string{"state": "closed"}, nil); err != nil {
+		t.Fatalf("Patch: %v", err)
+	}
+	if !strings.Contains(captured, `"state":"closed"`) {
+		t.Errorf("body: got %q", captured)
+	}
+}
+
+func TestDelete204IsSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("method: got %q, want DELETE", r.Method)
+		}
+		w.WriteHeader(204)
+	}))
+	defer srv.Close()
+
+	c := fastClient(t, srv.URL, "TEST")
+	if err := c.Delete(context.Background(), "/labels/bug"); err != nil {
+		t.Errorf("Delete 204: got %v, want nil", err)
+	}
+}
+
+func TestDeleteNotFoundIsExitCodeNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(404)
+	}))
+	defer srv.Close()
+
+	c := fastClient(t, srv.URL, "TEST")
+	err := c.Delete(context.Background(), "/labels/missing")
+	if got := exitcode.Of(err); got != exitcode.NotFound {
+		t.Errorf("exit code: got %d, want NotFound(3)", got)
 	}
 }
 

@@ -78,3 +78,73 @@ type SearchOptions struct {
 	Limit  int
 	Cursor string
 }
+
+// CreateIssueOptions configures CreateIssue. Title is required; Body
+// may be empty. Labels/Assignees use logins/names (not IDs).
+type CreateIssueOptions struct {
+	Title     string
+	Body      string
+	Labels    []string
+	Assignees []string
+}
+
+// EditIssueOptions configures EditIssue. Empty string fields mean
+// "don't change"; this matches Forgejo's PATCH semantics where omitted
+// fields stay unchanged. AddLabels/RemoveLabels apply only the named
+// changes (vs. replacing the whole label set).
+type EditIssueOptions struct {
+	Title        string
+	Body         string
+	State        string // "open" | "closed" | "" (no change)
+	AddLabels    []string
+	RemoveLabels []string
+	Assignees    []string // when non-nil, REPLACES the assignee list
+}
+
+// CreatePullRequestOptions configures CreatePullRequest. Head/Base
+// take refs (e.g. "feature/x"); cross-fork heads use "owner:ref".
+type CreatePullRequestOptions struct {
+	Title  string
+	Body   string
+	Head   string
+	Base   string
+	Draft  bool
+	Labels []string
+}
+
+// EditPullRequestOptions: same semantics as EditIssueOptions; Draft
+// is a *bool because false != "no change" (PRs flip both ways).
+type EditPullRequestOptions struct {
+	Title        string
+	Body         string
+	State        string
+	AddLabels    []string
+	RemoveLabels []string
+	Draft        *bool
+}
+
+// MergePullRequestOptions configures MergePullRequest. Method is
+// "merge" (default), "rebase", or "squash". DeleteBranch removes the
+// head ref after a successful merge.
+type MergePullRequestOptions struct {
+	Method       string
+	Title        string
+	Message      string
+	DeleteBranch bool
+}
+
+// CreateLabelOptions: Name + Color required; Color is a hex string
+// without the leading "#". Description optional.
+type CreateLabelOptions struct {
+	Name        string
+	Color       string
+	Description string
+}
+
+// EditLabelOptions configures EditLabel. NewName allows renames;
+// empty means keep the current name.
+type EditLabelOptions struct {
+	NewName     string
+	Color       string
+	Description string
+}

@@ -11,6 +11,7 @@
 package forgejo
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -102,6 +103,55 @@ func (c *Client) Get(ctx context.Context, path string, out any) error {
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return exitcode.Wrap(err, exitcode.Generic, fmt.Sprintf("decode %s %s", http.MethodGet, path))
+	}
+	return nil
+}
+
+// Post issues a POST with a JSON-encoded body and decodes the JSON
+// response into out. Body may be nil; out may be nil. Errors map the
+// same way Get's do — non-2xx → exitcode.FromHTTP wrapped error.
+func (c *Client) Post(ctx context.Context, path string, body, out any) error {
+	return c.writeRequest(ctx, http.MethodPost, path, body, out)
+}
+
+// Patch issues a PATCH with a JSON-encoded body and decodes JSON into out.
+func (c *Client) Patch(ctx context.Context, path string, body, out any) error {
+	return c.writeRequest(ctx, http.MethodPatch, path, body, out)
+}
+
+// Delete issues a DELETE. The response body is discarded; only the
+// status drives success/error. 204 and 200 are both treated as success.
+func (c *Client) Delete(ctx context.Context, path string) error {
+	return c.writeRequest(ctx, http.MethodDelete, path, nil, nil)
+}
+
+// writeRequest is the shared implementation for Post/Patch/Delete.
+// Marshals body to JSON when non-nil; sends Accept and Content-Type
+// JSON; decodes into out when non-nil.
+func (c *Client) writeRequest(ctx context.Context, method, path string, body, out any) error {
+	var reader io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return exitcode.Wrap(err, exitcode.Generic, fmt.Sprintf("marshal %s %s body", method, path))
+		}
+		reader = bytes.NewReader(raw)
+	}
+	resp, err := c.do(ctx, method, path, "application/json", reader)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return c.statusError(resp, method, path)
+	}
+	if out == nil {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return exitcode.Wrap(err, exitcode.Generic, fmt.Sprintf("decode %s %s", method, path))
 	}
 	return nil
 }

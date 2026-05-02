@@ -74,6 +74,42 @@ func (*noopProvider) ListComments(_ context.Context, _, _ string, _ int, _ provi
 func (*noopProvider) Search(_ context.Context, _ string, _ provider.SearchOptions) ([]types.SearchResult, *provider.Page, error) {
 	return nil, nil, errNotImplemented
 }
+func (*noopProvider) CreateIssue(_ context.Context, _, _ string, _ provider.CreateIssueOptions) (*types.Issue, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) EditIssue(_ context.Context, _, _ string, _ int, _ provider.EditIssueOptions) (*types.Issue, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) CreateIssueComment(_ context.Context, _, _ string, _ int, _ string) (*types.Comment, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) EditIssueComment(_ context.Context, _, _ string, _ int64, _ string) (*types.Comment, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) DeleteIssueComment(_ context.Context, _, _ string, _ int64) error {
+	return errNotImplemented
+}
+func (*noopProvider) CreatePullRequest(_ context.Context, _, _ string, _ provider.CreatePullRequestOptions) (*types.PullRequest, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) EditPullRequest(_ context.Context, _, _ string, _ int, _ provider.EditPullRequestOptions) (*types.PullRequest, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) MergePullRequest(_ context.Context, _, _ string, _ int, _ provider.MergePullRequestOptions) error {
+	return errNotImplemented
+}
+func (*noopProvider) ListLabels(_ context.Context, _, _ string) ([]types.Label, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) CreateLabel(_ context.Context, _, _ string, _ provider.CreateLabelOptions) (*types.Label, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) EditLabel(_ context.Context, _, _ string, _ string, _ provider.EditLabelOptions) (*types.Label, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) DeleteLabel(_ context.Context, _, _ string, _ string) error {
+	return errNotImplemented
+}
 
 // Reference time.Time so an unused-import check never fires while tests
 // scaffold up. Removed once a real test uses it.
