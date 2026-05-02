@@ -170,3 +170,33 @@ type ReviewInlineComment struct {
 	Line int    `json:"new_position"`
 	Body string `json:"body"`
 }
+
+// ListReleasesOptions paginates ListReleases.
+type ListReleasesOptions struct {
+	Limit  int    `json:"limit,omitempty"`
+	Cursor string `json:"cursor,omitempty"`
+}
+
+// CreateReleaseOptions configures CreateRelease. TagName is required;
+// when Name is empty, the forge typically defaults it to TagName.
+// TargetCommitish accepts a branch name or commit SHA; empty means
+// the repo's default branch.
+type CreateReleaseOptions struct {
+	TagName         string `json:"tag_name"`
+	Name            string `json:"name,omitempty"`
+	Body            string `json:"body,omitempty"`
+	TargetCommitish string `json:"target_commitish,omitempty"`
+	Draft           bool   `json:"draft,omitempty"`
+	Prerelease      bool   `json:"prerelease,omitempty"`
+}
+
+// EditReleaseOptions configures EditRelease. Empty/nil fields mean
+// "no change". Draft and Prerelease are *bool so explicitly setting
+// false works (flip a draft to published, demote a prerelease).
+type EditReleaseOptions struct {
+	TagName    string `json:"tag_name,omitempty"`
+	Name       string `json:"name,omitempty"`
+	Body       string `json:"body,omitempty"`
+	Draft      *bool  `json:"draft,omitempty"`
+	Prerelease *bool  `json:"prerelease,omitempty"`
+}
