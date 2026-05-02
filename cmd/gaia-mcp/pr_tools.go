@@ -102,7 +102,7 @@ func handlePRList(ctx context.Context, args map[string]any) (*mcp.CallToolResult
 	if err != nil {
 		return toolError(err), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -129,7 +129,7 @@ func handlePRView(ctx context.Context, args map[string]any) (*mcp.CallToolResult
 	if n <= 0 {
 		return toolError(exitcode.Errorf(exitcode.Usage, "number is required")), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -152,7 +152,7 @@ func handlePRDiff(ctx context.Context, args map[string]any) (*mcp.CallToolResult
 	if n <= 0 {
 		return toolError(exitcode.Errorf(exitcode.Usage, "number is required")), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -174,7 +174,7 @@ func handlePRComments(ctx context.Context, args map[string]any) (*mcp.CallToolRe
 	if n <= 0 {
 		return toolError(exitcode.Errorf(exitcode.Usage, "number is required")), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -199,7 +199,7 @@ func handlePRCreate(ctx context.Context, args map[string]any) (*mcp.CallToolResu
 	if title == "" || head == "" || base == "" {
 		return toolError(exitcode.Errorf(exitcode.Usage, "title, head, and base are required")), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -236,7 +236,7 @@ func handlePREdit(ctx context.Context, args map[string]any) (*mcp.CallToolResult
 			opts.Draft = &b
 		}
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -256,7 +256,7 @@ func handlePRMerge(ctx context.Context, args map[string]any) (*mcp.CallToolResul
 	if n <= 0 {
 		return toolError(exitcode.Errorf(exitcode.Usage, "number is required")), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -288,7 +288,7 @@ func handlePRReview(ctx context.Context, args map[string]any) (*mcp.CallToolResu
 	if err != nil {
 		return toolError(err), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}

@@ -31,7 +31,7 @@ func TestRunHTTPGracefulShutdownReturnsOnSignal(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- runHTTP(cfg, buildServer(), nil)
+		done <- runHTTP(cfg, buildServer())
 	}()
 
 	// Wait for the server to be reachable. If runHTTP fails to
@@ -75,7 +75,7 @@ func TestRunHTTPRejects404ForUnknownPath(t *testing.T) {
 	}
 
 	done := make(chan error, 1)
-	go func() { done <- runHTTP(cfg, buildServer(), nil) }()
+	go func() { done <- runHTTP(cfg, buildServer()) }()
 	t.Cleanup(func() {
 		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 		select {

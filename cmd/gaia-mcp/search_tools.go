@@ -26,7 +26,7 @@ func handleSearch(ctx context.Context, args map[string]any) (*mcp.CallToolResult
 	if query == "" {
 		return toolError(exitcode.Errorf(exitcode.Usage, "query is required")), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}

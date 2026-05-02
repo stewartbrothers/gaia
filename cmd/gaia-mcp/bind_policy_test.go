@@ -50,39 +50,34 @@ func TestBindPolicyValidate(t *testing.T) {
 		wantInMsg string
 	}{
 		{
-			name:   "loopback no auth → ok",
+			name:   "loopback → ok",
 			policy: bindPolicy{Addr: "127.0.0.1:8080"},
 			wantOK: true,
 		},
 		{
-			name:   "loopback with auth → ok",
-			policy: bindPolicy{Addr: "127.0.0.1:8080", HasAuth: true},
+			name:   "loopback IPv6 → ok",
+			policy: bindPolicy{Addr: "[::1]:8080"},
 			wantOK: true,
 		},
 		{
-			name:   "public with auth → ok",
-			policy: bindPolicy{Addr: ":8080", HasAuth: true},
+			name:   "public + tls-acked → ok",
+			policy: bindPolicy{Addr: ":8080", AllowPublicNoTLS: true},
 			wantOK: true,
 		},
 		{
-			name:   "public no auth + opt-out → ok",
-			policy: bindPolicy{Addr: ":8080", AllowPublicNoAuth: true},
-			wantOK: true,
-		},
-		{
-			name:      "public no auth → refused",
+			name:      "public default → refused",
 			policy:    bindPolicy{Addr: ":8080"},
 			wantOK:    false,
 			wantInMsg: "non-loopback",
 		},
 		{
-			name:      "0.0.0.0 no auth → refused",
+			name:      "0.0.0.0 default → refused",
 			policy:    bindPolicy{Addr: "0.0.0.0:8080"},
 			wantOK:    false,
 			wantInMsg: "non-loopback",
 		},
 		{
-			name:      "public IP no auth → refused",
+			name:      "public IP default → refused",
 			policy:    bindPolicy{Addr: "10.0.0.1:8080"},
 			wantOK:    false,
 			wantInMsg: "non-loopback",
@@ -110,13 +105,27 @@ func TestBindPolicyValidate(t *testing.T) {
 	}
 }
 
-func TestRunRefusesPublicNoAuth(t *testing.T) {
-	// Driving via run() proves the wiring (flag parse → policy.validate)
-	// is correct end-to-end. Uses a port we never actually bind because
-	// validate() refuses before ListenAndServe.
+// TestPolicyMessageMentionsTLS pins that the refusal text actually
+// names TLS as the missing piece — operators reading the error need
+// to know what the fix is. If a future refactor changes the wording
+// to drop "TLS", this catches it.
+func TestPolicyMessageMentionsTLS(t *testing.T) {
+	err := bindPolicy{Addr: ":8080"}.validate()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "TLS") {
+		t.Errorf("error must reference TLS as the missing piece; got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "--allow-public-no-tls") {
+		t.Errorf("error must reference the opt-out flag; got %q", err.Error())
+	}
+}
+
+func TestRunRefusesPublicNoTLS(t *testing.T) {
 	err := run([]string{"--http", "0.0.0.0:0"})
 	if err == nil {
-		t.Fatal("expected refusal for non-loopback no-auth")
+		t.Fatal("expected refusal for non-loopback no-TLS")
 	}
 	if !strings.Contains(err.Error(), "non-loopback") {
 		t.Errorf("expected 'non-loopback' in error; got %q", err.Error())

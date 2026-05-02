@@ -61,7 +61,7 @@ func handleIssueList(ctx context.Context, args map[string]any) (*mcp.CallToolRes
 	if err != nil {
 		return toolError(err), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -87,7 +87,7 @@ func handleIssueView(ctx context.Context, args map[string]any) (*mcp.CallToolRes
 	if n <= 0 {
 		return toolError(exitcode.Errorf(exitcode.Usage, "number is required")), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -109,7 +109,7 @@ func handleIssueCreate(ctx context.Context, args map[string]any) (*mcp.CallToolR
 	if title == "" {
 		return toolError(exitcode.Errorf(exitcode.Usage, "title is required")), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -134,7 +134,7 @@ func handleIssueEdit(ctx context.Context, args map[string]any) (*mcp.CallToolRes
 	if n <= 0 {
 		return toolError(exitcode.Errorf(exitcode.Usage, "number is required")), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -160,7 +160,7 @@ func handleIssueComment(ctx context.Context, args map[string]any) (*mcp.CallTool
 	if n <= 0 || body == "" {
 		return toolError(exitcode.Errorf(exitcode.Usage, "number and body are required")), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}

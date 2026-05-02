@@ -25,11 +25,16 @@ import (
 )
 
 // Override mirrors the CLI's globalFlags subset that affects
-// provider construction.
+// provider construction. Token wins over the local credential
+// store when set — used by gaia-mcp's HTTP transport to plumb a
+// per-request bearer (the client's own forge PAT) all the way
+// through to the upstream call without ever staging it in a local
+// credential file.
 type Override struct {
 	Profile  string
 	Provider string
 	APIURL   string
+	Token    string
 }
 
 // Info carries the metadata callers display alongside provider
@@ -64,6 +69,13 @@ func Build(ov Override) (provider.Provider, *Info, error) {
 	})
 	if err != nil {
 		return nil, nil, exitcode.Wrap(err, exitcode.Usage, "resolve config")
+	}
+
+	// Per-request token override wins. The HTTP transport sets this
+	// from the client's `Authorization: Bearer …` so each request
+	// acts as the caller's identity, not the host's.
+	if ov.Token != "" {
+		resolved.Token = ov.Token
 	}
 
 	creds, err := loadLayeredCredentials()

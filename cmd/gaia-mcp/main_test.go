@@ -33,7 +33,7 @@ func fakeForgeProvider(t *testing.T, h http.HandlerFunc) (*forgejo.Provider, *ht
 // cleanup.
 func pinBuilder(t *testing.T, p *forgejo.Provider) {
 	t.Helper()
-	SetBuilderForTest(func() (provider.Provider, error) { return p, nil })
+	SetBuilderForTest(func(_ context.Context) (provider.Provider, error) { return p, nil })
 	t.Cleanup(func() { SetBuilderForTest(nil) })
 }
 

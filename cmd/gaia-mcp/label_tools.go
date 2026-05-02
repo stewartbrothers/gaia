@@ -46,7 +46,7 @@ func handleLabelList(ctx context.Context, args map[string]any) (*mcp.CallToolRes
 	if err != nil {
 		return toolError(err), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -67,7 +67,7 @@ func handleLabelCreate(ctx context.Context, args map[string]any) (*mcp.CallToolR
 	if name == "" || color == "" {
 		return toolError(exitcode.Errorf(exitcode.Usage, "name and color are required")), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -91,7 +91,7 @@ func handleLabelEdit(ctx context.Context, args map[string]any) (*mcp.CallToolRes
 	if name == "" {
 		return toolError(exitcode.Errorf(exitcode.Usage, "name is required")), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -118,7 +118,7 @@ func handleLabelDelete(ctx context.Context, args map[string]any) (*mcp.CallToolR
 	if !optBool(args, "confirm") {
 		return toolResult(map[string]any{"would_delete": name, "confirmed": false}, nil), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
