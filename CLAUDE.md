@@ -129,15 +129,41 @@ they are the same instance:
 - **Auth:** token in env `GIT_FORGE_GITEA_TOKEN`, sent as
   `Authorization: token <token>`. Forgejo's API is Gitea-compatible.
 
-API surface used routinely:
+### Dogfood: use `gaia` for forge ops gaia supports
 
-- `GET  /repos/{owner}/{repo}/issues?state=all&type=issues` — list issues
+When writing a script, agent prompt, or one-off shell snippet that needs to
+read forge state, **call `gaia` instead of raw `curl` (or `tea`/`gh`)**.
+The current command surface (post-#76):
+
+- `gaia version`, `gaia whoami`
+- `gaia auth forgejo|gh|status|logout`
+- `gaia issue list|view`
+- `gaia pr list|view|diff|comments`
+- `gaia search`
+
+For these, gaia is consistently smaller (often 5–25×) than the raw API
+response — see `docs/dogfood-comparison.md` for the per-command numbers.
+Pass `--format json --fields a,b,c` to keep output tight when scripting.
+
+**Falling back to curl is acceptable only for operations gaia cannot do
+yet** (currently: issue/PR creation, comment posting, label management,
+webhook config, releases). Those gaps are tracked in the issue tracker;
+extending gaia to cover them is a Phase 1 follow-up / Phase 2 scope.
+
+When a new gaia command lands, **update `docs/dogfood-comparison.md`**
+with a row showing gaia bytes vs. the closest curl/tea equivalent. The
+script at `scripts/dogfood-compare.sh` produces the numbers; the point is
+to keep evidence that gaia is shrinking output, not just claiming it.
+
+### Raw API for gaps
+
+The endpoints used by the curl-still-needed paths:
+
 - `POST /repos/{owner}/{repo}/issues` — create
 - `PATCH /repos/{owner}/{repo}/issues/{n}` — update body/labels/state
 - `POST /repos/{owner}/{repo}/pulls` — open PR
-- `GET  /repos/{owner}/{repo}/pulls/{n}.diff` — raw diff
-- `GET  /repos/{owner}/{repo}/labels` — list labels
 - `POST /repos/{owner}/{repo}/labels` — create label
+- `PATCH /repos/{owner}/{repo}/issues/comments/{id}` — edit a comment
 
 **Never echo or log `$GIT_FORGE_GITEA_TOKEN`.** Pipe it directly into curl as
 a header; don't store it in shell history-visible variables, don't write it
