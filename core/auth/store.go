@@ -21,16 +21,20 @@ import (
 )
 
 // Credential is a single host's authentication state. Stored on
-// disk; never logged.
+// disk; never logged. APIURL is the full API base for the host
+// (e.g., "https://git.example.com/api/v1") so a stored credential
+// is self-sufficient — gaia commands can run with no other config
+// once the credential is written.
 type Credential struct {
-	Token string `yaml:"token"`
-	User  string `yaml:"user,omitempty"`
+	APIURL string `yaml:"api_url,omitempty"`
+	Token  string `yaml:"token"`
+	User   string `yaml:"user,omitempty"`
 }
 
 // String returns a redacted, log-safe representation. The token's
 // presence is reported as a boolean; the value never appears.
 func (c Credential) String() string {
-	return fmt.Sprintf("Credential{User:%q, TokenSet:%v}", c.User, c.Token != "")
+	return fmt.Sprintf("Credential{APIURL:%q, User:%q, TokenSet:%v}", c.APIURL, c.User, c.Token != "")
 }
 
 // GoString satisfies fmt.GoStringer so `%#v` (used by some debugging
