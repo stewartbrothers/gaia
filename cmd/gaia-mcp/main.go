@@ -119,6 +119,13 @@ func runHTTP(cfg httpConfig, s *server.MCPServer) error {
 	mux := http.NewServeMux()
 	mux.Handle(cfg.BasePath, authed)
 
+	// /healthz is mounted on the same listener so a single port is
+	// the deploy contract. The handler is intentionally outside the
+	// auth middleware — orchestrators don't carry bearer tokens, and
+	// the response is opaque ("ok") so no credential surface is
+	// exposed.
+	mux.Handle("/healthz", healthzHandler())
+
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           mux,
