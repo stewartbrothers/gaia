@@ -20,6 +20,12 @@ func newPRCmd(flags *globalFlags) *cobra.Command {
 	cmd.AddCommand(newPRViewCmd(flags))
 	cmd.AddCommand(newPRDiffCmd(flags))
 	cmd.AddCommand(newPRCommentsCmd(flags))
+	cmd.AddCommand(newPRCreateCmd(flags))
+	cmd.AddCommand(newPREditCmd(flags))
+	cmd.AddCommand(newPRCloseCmd(flags))
+	cmd.AddCommand(newPRReopenCmd(flags))
+	cmd.AddCommand(newPRCommentCmd(flags))
+	cmd.AddCommand(newPRMergeCmd(flags))
 	return cmd
 }
 
