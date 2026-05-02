@@ -86,13 +86,30 @@ func resolveToken(profile Profile, provider string) string {
 			return v
 		}
 	}
-	switch provider {
-	case "forgejo":
-		return os.Getenv("FORGEJO_TOKEN")
-	case "github":
-		return os.Getenv("GITHUB_TOKEN")
+	// Fallback chain per provider. The first env name is gaia's
+	// canonical, the second is the upstream-CLI convention so users
+	// who already export GITEA_TOKEN (for `tea`) or GH_TOKEN (for
+	// `gh`) don't need to set a second variable. Common-path bug fix
+	// from #102: prior code only checked the first name, so an agent
+	// with GITEA_TOKEN set in their shell got 401s on every call.
+	for _, name := range envNamesFor(provider) {
+		if v := os.Getenv(name); v != "" {
+			return v
+		}
 	}
 	return ""
+}
+
+// envNamesFor returns the env var names checked, in order, for a
+// given provider. Exported via export_test.go for table-driven tests.
+func envNamesFor(provider string) []string {
+	switch provider {
+	case "forgejo":
+		return []string{"FORGEJO_TOKEN", "GITEA_TOKEN"}
+	case "github":
+		return []string{"GITHUB_TOKEN", "GH_TOKEN"}
+	}
+	return nil
 }
 
 func firstNonEmpty(values ...string) string {

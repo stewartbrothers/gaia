@@ -126,8 +126,16 @@ they are the same instance:
 - **HTTPS API base:** `https://your-forge.example.com/api/v1`
 - **SSH (push/pull):** `git@github.com:stewartbrothers/gaia.git`
 - **Repo slug:** `Gerwood/gaia`
-- **Auth:** token in env `GIT_FORGE_GITEA_TOKEN`, sent as
+- **Auth (raw curl):** token in env `GIT_FORGE_GITEA_TOKEN`, sent as
   `Authorization: token <token>`. Forgejo's API is Gitea-compatible.
+- **Auth (gaia CLI):** gaia honors `FORGEJO_TOKEN` (canonical) or
+  `GITEA_TOKEN` (tea-CLI convention) for the Forgejo provider, and
+  `GITHUB_TOKEN` or `GH_TOKEN` for GitHub. The project's
+  `GIT_FORGE_GITEA_TOKEN` is **not** picked up by default — set
+  `export GITEA_TOKEN=$GIT_FORGE_GITEA_TOKEN` once in your shell, or
+  run `gaia auth forgejo https://your-forge.example.com/api/v1`
+  to store the credential in `~/.config/gaia/credentials.yaml` (no
+  env vars needed after that). See #102 for the bug history.
 
 ### Dogfood: use `gaia` for forge ops gaia supports
 
@@ -161,10 +169,31 @@ management, and release management all have first-class gaia commands
 now — using curl for those is a regression to be flagged in review.
 
 When you DO need curl for a real gap, append a line to the usage log
-at `~/.claude/projects/-Users-gerwood-projects-forgejo-ai-adaption/gaia-usage.jsonl`
-with `kind: forge_op`, `tool: curl`, and a `curl_reason` field naming
-the gaia gap. We mine the log periodically to prioritize what to add
-next.
+at `.gaia-usage.jsonl` (repo-adjacent, gitignored) with
+`kind: forge_op`, `tool: curl`, and a `curl_reason` field naming the
+gaia gap. The log is for **analysis** (which commands matter, where
+the gaps hurt) — it is **not** an action tracker.
+
+### Bugs become issues, common-path bugs get priority fixes
+
+When you encounter a bug in gaia or anywhere in the project, **file
+it as an issue immediately** via `gaia issue create`. Don't queue it
+in the usage log, don't note it in conversation, don't promise to
+"address it later" — the issue is the action tracker, the log is
+just evidence of how often the bug bites.
+
+Classify by frequency:
+
+- **Common-path bug** (hits on every PR open, every tool call,
+  every commit): **priority fix.** Interrupt current work to fix
+  it. Example: #102 — gaia not honoring the project's standard
+  Forgejo env var name. Hit on every gaia call until fixed.
+- **Edge-case bug** (rare paths, recovery scenarios): file it,
+  prioritize normally.
+
+The rule exists because we discovered #102 had been silently noted
+in the usage log twice and worked-around inline ~99 times before
+anyone realized it should be an issue. Don't do that.
 
 When a new gaia command lands, **update `docs/dogfood-comparison.md`**
 with a row showing gaia bytes vs. the closest curl/tea equivalent. The
