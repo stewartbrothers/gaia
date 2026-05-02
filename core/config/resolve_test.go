@@ -12,7 +12,9 @@ func clearGaiaEnv(t *testing.T) {
 	for _, k := range []string{
 		"GAIA_PROFILE", "GAIA_PROVIDER",
 		"FORGEJO_TOKEN", "FORGEJO_API_URL",
+		"GITEA_TOKEN", // upstream tea-CLI fallback
 		"GITHUB_TOKEN",
+		"GH_TOKEN", // upstream gh-CLI fallback
 		"GIT_FORGE_GITEA_TOKEN",
 	} {
 		t.Setenv(k, "")
@@ -154,6 +156,59 @@ func TestResolveTokenFromTokenEnv(t *testing.T) {
 	got, _ := config.Resolve(cfg, config.Override{})
 	if got.Token != "the-real-token" {
 		t.Errorf("token_env should be honored; got %q", got.Token)
+	}
+}
+
+// TestResolveTokenForgejoFallsBackToGiteaToken pins the #102 fix: a
+// user who has only GITEA_TOKEN set (the tea CLI's convention) gets
+// it picked up for the forgejo provider without any config file.
+// Pre-fix this returned "" → 401 on every call.
+func TestResolveTokenForgejoFallsBackToGiteaToken(t *testing.T) {
+	clearGaiaEnv(t)
+	t.Setenv("GAIA_PROVIDER", "forgejo")
+	t.Setenv("FORGEJO_API_URL", "https://forge.example/api/v1")
+	// FORGEJO_TOKEN intentionally unset.
+	t.Setenv("GITEA_TOKEN", "tea-cli-token")
+
+	got, err := config.Resolve(nil, config.Override{})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got.Token != "tea-cli-token" {
+		t.Errorf("expected GITEA_TOKEN fallback; got %q", got.Token)
+	}
+}
+
+// TestResolveTokenGithubFallsBackToGHToken — same fix on the github
+// side. GH_TOKEN is the gh CLI's convention; a user who has gh
+// configured shouldn't have to set GITHUB_TOKEN twice.
+func TestResolveTokenGithubFallsBackToGHToken(t *testing.T) {
+	clearGaiaEnv(t)
+	t.Setenv("GAIA_PROVIDER", "github")
+	t.Setenv("GH_TOKEN", "gh-cli-token")
+
+	got, err := config.Resolve(nil, config.Override{})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got.Token != "gh-cli-token" {
+		t.Errorf("expected GH_TOKEN fallback; got %q", got.Token)
+	}
+}
+
+// TestResolveTokenForgejoCanonicalWinsOverFallback ensures the order
+// is FORGEJO_TOKEN first, GITEA_TOKEN only when canonical is empty.
+// Catches a regression where the loop order flipped silently.
+func TestResolveTokenForgejoCanonicalWinsOverFallback(t *testing.T) {
+	clearGaiaEnv(t)
+	t.Setenv("GAIA_PROVIDER", "forgejo")
+	t.Setenv("FORGEJO_API_URL", "https://forge.example/api/v1")
+	t.Setenv("FORGEJO_TOKEN", "canonical")
+	t.Setenv("GITEA_TOKEN", "fallback")
+
+	got, _ := config.Resolve(nil, config.Override{})
+	if got.Token != "canonical" {
+		t.Errorf("FORGEJO_TOKEN should win; got %q", got.Token)
 	}
 }
 
