@@ -1,9 +1,18 @@
 # Using gaia over MCP
 
-`gaia-mcp` is a Model Context Protocol stdio server that exposes
-every gaia operation as an MCP tool. AI agents that speak MCP can
-talk to a forge through it without shelling out to `gaia` (saves
+`gaia-mcp` is a Model Context Protocol server that exposes every
+gaia operation as an MCP tool. AI agents that speak MCP can talk
+to a forge through it without shelling out to `gaia` (saves
 process spawn cost) and with native MCP error reporting.
+
+Two transports:
+
+- **stdio** (default): for subprocess hosts (Claude Desktop,
+  Cursor, custom in-process agents). Single-tenant, uses the
+  current user's layered config + credentials.
+- **HTTP** (`--http :addr`): streamable-HTTP transport per the
+  2025-03-26 MCP spec, for long-running daemons that remote
+  agents pin one URL at. Same tool surface; different transport.
 
 ## Configuring an MCP-aware client
 
@@ -91,6 +100,10 @@ the same way the CLI does.
 Transport errors (server died, etc.) come back as MCP RPC errors via
 the protocol's standard channel.
 
+Tools added since this section was written: `gaia_release_list`,
+`gaia_release_view`, `gaia_release_create`, `gaia_release_edit`,
+`gaia_release_delete` — same envelope contract.
+
 ## Pagination
 
 List tools accept `cursor` and return `_next_cursor` in the envelope
@@ -105,9 +118,92 @@ when truncated. Pass the cursor back unchanged on the next call.
 {"name": "gaia_issue_list", "arguments": {"repo": "o/r", "limit": 30, "cursor": "2"}}
 ```
 
-## Phase 3 transport
+## HTTP transport
 
-`gaia-mcp` currently speaks stdio only. Phase 3 (#39) will add an
-HTTP/SSE transport so a single `gaia-mcp` process can serve multiple
-remote agents. Configuration shape will mirror the stdio path —
-existing tool definitions don't change.
+`gaia-mcp --http :8080` runs the streamable-HTTP transport. One
+URL serves both direct JSON-RPC responses and SSE streams; an
+MCP-aware client picks per-request. The protocol-level handshake
+is identical to stdio (`initialize` → `notifications/initialized`
+→ `tools/list` / `tools/call`), so any client that works against
+stdio works against HTTP with a transport-config switch.
+
+```bash
+gaia-mcp --http :8080
+gaia-mcp --http :8080 --base-path /v1   # custom URL prefix
+gaia-mcp --http :8080 \
+  --read-header-timeout 10s \
+  --idle-timeout 120s \
+  --shutdown-timeout 10s
+```
+
+### Smoke test from the shell
+
+```bash
+# initialize
+SID=$(curl -sS -i -X POST http://localhost:8080/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+       "protocolVersion":"2025-03-26","capabilities":{},
+       "clientInfo":{"name":"smoke","version":"0"}}}' \
+  | grep -i '^mcp-session-id:' | awk '{print $2}' | tr -d '\r')
+
+# notifications/initialized (required after initialize)
+curl -sS -X POST http://localhost:8080/mcp \
+  -H "Mcp-Session-Id: $SID" -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+
+# call gaia_version
+curl -sS -X POST http://localhost:8080/mcp \
+  -H "Mcp-Session-Id: $SID" -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{
+       "name":"gaia_version","arguments":{}}}'
+```
+
+### Timeouts
+
+Defaults are conservative for a small forge proxy. Tune via flags
+or env on the deploy unit:
+
+| flag | default | purpose |
+|---|---|---|
+| `--read-header-timeout` | 10s | slow-loris guard |
+| `--idle-timeout` | 120s | keep-alive max idle window |
+| `--shutdown-timeout` | 10s | drain on SIGTERM/SIGINT |
+
+The `--shutdown-timeout` matches the orchestrator convention —
+Coolify, Kubernetes, ECS all send SIGTERM first then SIGKILL after
+a grace period (typically 30s). 10s covers in-flight tool calls
+without dragging a deploy.
+
+### Logging
+
+Structured JSON to stderr (slog). One line on listen + one on
+shutdown. Production deployments should aggregate stderr — these
+are the events a SIEM / Grafana Loki / CloudWatch Logs pipeline
+needs to track listener lifecycle.
+
+```json
+{"time":"...","level":"INFO","msg":"listening","addr":":8080","path":"/mcp",
+ "read_header_timeout":"10s","idle_timeout":"2m0s"}
+{"time":"...","level":"INFO","msg":"shutdown","signal":"terminated",
+ "drain_timeout":"10s"}
+```
+
+### What's deferred
+
+This commit lands the unauthenticated single-tenant transport.
+The follow-ups (each with its own issue):
+
+- **#40** — per-request bearer-token auth + multi-tenant config
+  (one `gaia-mcp` serves multiple users, each with their own
+  forge credentials).
+- **#41** — `/healthz` endpoint suitable for orchestrator
+  health checks + container-deployment doc with Dockerfile,
+  compose example, reverse-proxy guidance.
+
+Until #40 lands, the HTTP transport should only be exposed inside
+a trusted network (same docker network as Forgejo, or behind a
+reverse proxy that handles auth itself).
