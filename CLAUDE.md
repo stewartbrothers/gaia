@@ -132,23 +132,39 @@ they are the same instance:
 ### Dogfood: use `gaia` for forge ops gaia supports
 
 When writing a script, agent prompt, or one-off shell snippet that needs to
-read forge state, **call `gaia` instead of raw `curl` (or `tea`/`gh`)**.
-The current command surface (post-#76):
+hit the forge, **call `gaia` instead of raw `curl` (or `tea`/`gh`)**. This
+applies to *both* read and write paths — gaia covers nearly the full
+useful surface today.
 
-- `gaia version`, `gaia whoami`
-- `gaia auth forgejo|gh|status|logout`
-- `gaia issue list|view`
-- `gaia pr list|view|diff|comments`
-- `gaia search`
+Current coverage (pass `--format json --fields a,b,c` to keep output
+tight when scripting):
 
-For these, gaia is consistently smaller (often 5–25×) than the raw API
-response — see `docs/dogfood-comparison.md` for the per-command numbers.
-Pass `--format json --fields a,b,c` to keep output tight when scripting.
+- Identity: `gaia version`, `gaia whoami`, `gaia auth forgejo|gh|status|logout`
+- Issues: `list | view | create | edit | close | reopen | comment | comment-edit | comment-delete`
+- PRs: `list | view | diff | comments | create | edit | close | reopen | comment-create | merge | review | checkout`
+- Labels: `list | create | edit | delete`
+- Releases: `list | view | create | edit | delete`
+- Search: `gaia search <query>`
+
+For read paths, gaia is consistently smaller (often 5–25×, sometimes
+~400× with `--fields`) than the raw API response — see
+`docs/dogfood-comparison.md` for the per-command numbers.
 
 **Falling back to curl is acceptable only for operations gaia cannot do
-yet** (currently: issue/PR creation, comment posting, label management,
-webhook config, releases). Those gaps are tracked in the issue tracker;
-extending gaia to cover them is a Phase 1 follow-up / Phase 2 scope.
+yet** — currently:
+
+- **Webhook config** (#85, #44): create/list/edit/delete repo webhooks,
+  fetch delivery history, redeliver. Filed as Phase 4 work.
+
+That's it. PR creation, issue creation, comment posting, label
+management, and release management all have first-class gaia commands
+now — using curl for those is a regression to be flagged in review.
+
+When you DO need curl for a real gap, append a line to the usage log
+at `~/.claude/projects/-Users-gerwood-projects-forgejo-ai-adaption/gaia-usage.jsonl`
+with `kind: forge_op`, `tool: curl`, and a `curl_reason` field naming
+the gaia gap. We mine the log periodically to prioritize what to add
+next.
 
 When a new gaia command lands, **update `docs/dogfood-comparison.md`**
 with a row showing gaia bytes vs. the closest curl/tea equivalent. The
