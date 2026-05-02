@@ -151,3 +151,22 @@ type EditLabelOptions struct {
 	Color       string `json:"color,omitempty"`
 	Description string `json:"description,omitempty"`
 }
+
+// SubmitReviewOptions configures SubmitReview. Event takes one of
+// "APPROVED", "REQUEST_CHANGES", "COMMENT". Body is the top-level
+// review remark; Comments are inline file:line remarks attached to
+// the same review.
+type SubmitReviewOptions struct {
+	Event    string                `json:"event"`
+	Body     string                `json:"body,omitempty"`
+	Comments []ReviewInlineComment `json:"comments,omitempty"`
+}
+
+// ReviewInlineComment is one inline review remark. Line is the line
+// number in the new (post-change) file; Forgejo also exposes
+// old_position for left-side comments which we don't yet plumb.
+type ReviewInlineComment struct {
+	Path string `json:"path"`
+	Line int    `json:"new_position"`
+	Body string `json:"body"`
+}

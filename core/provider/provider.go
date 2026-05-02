@@ -99,4 +99,10 @@ type Provider interface {
 
 	// DeleteLabel removes a label by name. 204 is success.
 	DeleteLabel(ctx context.Context, owner, repo string, name string) error
+
+	// SubmitReview submits a PR review with state (APPROVED /
+	// REQUEST_CHANGES / COMMENT) and optional inline file:line
+	// comments. Returns nil on success; the caller can re-fetch
+	// comments via ListComments to see the new review.
+	SubmitReview(ctx context.Context, owner, repo string, n int, opts SubmitReviewOptions) error
 }

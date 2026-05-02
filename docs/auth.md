@@ -1,0 +1,137 @@
+# Authentication
+
+`gaia` reads credentials from a layered store with three sources, in
+descending precedence:
+
+1. `--token` flag (explicit one-off; not recommended for routine use).
+2. Environment variables: `FORGEJO_TOKEN`, `GITHUB_TOKEN`.
+3. Project credentials: `.gaia/credentials.yaml` inside the repo root.
+4. Global credentials: `~/.config/gaia/credentials.yaml` (or
+   `$XDG_CONFIG_HOME/gaia/credentials.yaml`).
+
+For 90% of flows you never set any of these by hand — `gaia auth ...`
+writes them.
+
+## Quickstart
+
+```bash
+# Forgejo / Gitea
+gaia auth forgejo https://git.example.com
+# → prompts for a Personal Access Token, validates via /user, stores
+
+# GitHub
+gaia auth gh
+# → prompts for a fine-grained PAT, validates via api.github.com
+
+# Verify
+gaia whoami       # uses the just-stored credential — no env vars needed
+gaia auth status  # list everything (token values redacted)
+```
+
+## Per-project credentials
+
+```bash
+# Inside a checkout where you want a separate identity:
+gaia auth forgejo https://git.example.com --project
+# → writes to .gaia/credentials.yaml AND adds it to .gitignore
+```
+
+Project credentials shadow global credentials on a per-host basis. So
+a repo-local `--project` auth for `git.example.com` overrides the
+global one only inside that checkout; everywhere else, the global
+credential still applies.
+
+To skip the auto-gitignore (rare; only useful if you manage
+.gitignore via a generator):
+
+```bash
+gaia auth forgejo https://git.example.com --project --no-gitignore
+```
+
+## Where the files live
+
+| Purpose | Path |
+|---------|------|
+| Global config (non-secret) | `~/.config/gaia/config.yaml` |
+| Global credentials | `~/.config/gaia/credentials.yaml` |
+| Project config (non-secret) | `.gaia/config.yaml` (in repo root) |
+| Project credentials | `.gaia/credentials.yaml` (in repo root, gitignored) |
+
+Both `XDG_CONFIG_HOME` and `HOME` are honored for the global paths.
+
+`config.yaml` carries non-secret host metadata (provider, api_url,
+default_profile). `credentials.yaml` carries the token + login. They
+are deliberately separate: a config file may be committable in some
+flows; credentials should never be.
+
+## Permissions
+
+`credentials.yaml` files are written `0600` and the parent `.gaia/`
+or `.config/gaia/` directories are created `0700`. `gaia auth` writes
+atomically (tempfile + rename) so an interrupted run never leaves a
+partial file.
+
+## File format
+
+```yaml
+forgejo:
+  your-forge.example.com:
+    api_url: https://your-forge.example.com/api/v1
+    token: <opaque>
+    user: Gerwood
+github:
+  github.com:
+    api_url: https://api.github.com
+    token: <opaque>
+    user: gerwood
+```
+
+Top-level keys are provider names; second-level are hostnames. The
+token + user fields are always present; `api_url` is included so
+`gaia` can run with no other config (`gaia whoami` resolves the URL
+from the credential).
+
+## Removing credentials
+
+```bash
+gaia auth logout                       # interactive picker if multiple are stored
+gaia auth logout forgejo               # exact match (single forgejo credential)
+gaia auth logout forgejo:git.example   # exact match (provider:host)
+```
+
+## Token redaction
+
+Token values **never** appear in any gaia output — not in
+`gaia auth status` (prints `TokenSet: true|false`), not in error
+messages (the HTTP client's `scrubError` defensively strips), not in
+log lines. The internal `core/auth.Credential.String()` and
+`.GoString()` methods are tested across `%s`, `%v`, `%+v`, and `%#v`
+verbs to guarantee this.
+
+## Token scopes
+
+For a self-hosted Forgejo, recommended PAT scopes:
+
+- `read:repository`, `write:repository` — for issue/PR/label CRUD
+- `write:issue` — for comments + labels
+- `read:user` — for `whoami` validation
+
+For GitHub fine-grained PATs:
+
+- Contents: read
+- Issues: read + write
+- Pull requests: read + write
+
+## Troubleshooting
+
+**`exit code 4 (Auth)` from any command** → token missing or rejected.
+Run `gaia auth status` to see what's configured; `gaia auth forgejo
+<url>` to re-record.
+
+**`no provider configured`** → no credentials stored AND no
+`--provider`/`GAIA_PROVIDER` set. Run `gaia auth forgejo <url>` first.
+
+**Wrong forge picked when multiple credentials are configured** → the
+one-credential auto-pick only works when there's exactly one stored.
+Use `--provider forgejo --api-url <url>` or set `GAIA_PROFILE` /
+`default_profile` in `~/.config/gaia/config.yaml` to disambiguate.

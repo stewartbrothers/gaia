@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/stewartbrothers/gaia/core/auth"
+	"github.com/stewartbrothers/gaia/internal/forgebuilder"
 )
 
 // credEntry is the per-credential row for `gaia auth status` output.
@@ -69,7 +70,7 @@ func prettyAuthStatus(w io.Writer, data any) error {
 // (provider, host) pair, project entries shadowing same-host global
 // entries (the same precedence Layered.Get uses for lookups).
 func collectCredentialEntries() ([]credEntry, error) {
-	creds, err := loadLayeredCredentials()
+	creds, err := forgebuilder.LoadLayeredCredentials()
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +83,7 @@ func collectCredentialEntries() ([]credEntry, error) {
 			return
 		}
 		for _, key := range s.Hosts() {
-			parts := splitProviderHost(key)
+			parts := forgebuilder.SplitProviderHost(key)
 			if parts == nil {
 				continue
 			}
