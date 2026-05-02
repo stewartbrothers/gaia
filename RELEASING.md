@@ -120,13 +120,30 @@ push triggers the `.forgejo/workflows/release.yml` workflow.
 3. Shell-installs `goreleaser/v2@v2.4.5` (third-party actions
    don't mirror to code.forgejo.org, so we install via `go install`).
 4. Runs `goreleaser release --clean --skip=publish`.
-5. Curl-uploads `dist/*.tar.gz`, `dist/*.zip`, and
-   `dist/*checksums.txt` to the Forgejo release for the tag.
+5. Builds `bin/gaia` from this tag's source.
+6. Runs `gaia release publish "${TAG}" --asset 'dist/*' --notes-from CHANGELOG.md`,
+   which creates the release record (Forgejo doesn't auto-create
+   on tag push) and uploads each asset.
 
 If the workflow fails after the tag is pushed, the tag stays — the
-release just has no attachments. Re-running the workflow (Forgejo
-UI → Actions → re-run) re-attaches them. Or run goreleaser locally
-and curl the assets up manually.
+release may be empty or partial. Re-running the workflow (Forgejo
+UI → Actions → re-run) re-attaches missing assets since
+`gaia release publish` is idempotent on the create step. Local
+recovery:
+
+```bash
+git checkout vX.Y.Z
+make release-snapshot              # NB: this writes -snapshot+SHA tags
+# — for a real release, run goreleaser without --snapshot:
+goreleaser release --clean --skip=publish
+gaia release publish vX.Y.Z \
+  --asset 'dist/*.tar.gz' \
+  --asset 'dist/*.zip' \
+  --asset 'dist/*checksums.txt' \
+  --notes-from CHANGELOG.md
+```
+
+Equivalent to what the workflow runs, just from your laptop.
 
 ### 5. Verify
 
