@@ -9,32 +9,34 @@ import (
 )
 
 // bindPolicy holds the security-relevant subset of httpConfig: the
-// listen address, whether auth tokens are configured, and whether the
-// operator explicitly accepted public-no-auth (e.g., behind a reverse
-// proxy that handles auth itself).
+// listen address and whether the operator has acknowledged that TLS
+// terminates upstream of gaia-mcp.
 //
-// Lives in its own file because the policy is narrow and tested in
-// isolation — a security check should never be hidden behind several
-// layers of plumbing.
+// Under pass-through auth, every HTTP request must carry the
+// caller's forge PAT in `Authorization: Bearer …`. If the listener
+// is on a non-loopback interface without TLS in front of it, those
+// PATs cross the wire in cleartext — at which point a passive
+// observer on the network owns every caller's forge identity. The
+// policy refuses that combination unless the operator explicitly
+// confirms that TLS termination is upstream (reverse proxy, k8s
+// ingress, mesh sidecar, etc.).
+//
+// gaia-mcp itself is HTTP, not HTTPS — terminating TLS in-process
+// would mean shipping a cert handler plus rotation logic for
+// dubious value when every realistic deploy already has nginx /
+// Caddy / Traefik / Cloudflare in front.
 type bindPolicy struct {
-	Addr              string
-	HasAuth           bool
-	AllowPublicNoAuth bool
+	Addr             string
+	AllowPublicNoTLS bool
 }
 
-// validate refuses to start the listener if the operator has bound to
-// a non-loopback interface without auth and without the explicit
-// opt-out. This is the central rule: anyone who can reach the socket
-// can act as the configured forge token holder, so unauthenticated
-// public exposure is a deploy-time foot-gun, not a feature.
+// validate refuses to start the listener on a non-loopback address
+// without the explicit TLS-in-front acknowledgment. The allowed
+// combinations:
 //
-// The allowed combinations:
-//
-//	loopback (127.0.0.1, [::1], localhost) + no auth   → ok
-//	loopback                                + auth     → ok (over-cautious is fine)
-//	non-loopback                            + auth     → ok
-//	non-loopback + no auth + AllowPublicNoAuth=true    → ok (proxy in front)
-//	non-loopback + no auth + AllowPublicNoAuth=false   → REFUSED
+//	loopback (127.0.0.1, [::1], localhost)              → ok
+//	non-loopback + AllowPublicNoTLS=true (proxy in front) → ok
+//	non-loopback + AllowPublicNoTLS=false (default)     → REFUSED
 func (p bindPolicy) validate() error {
 	loopback, err := isLoopbackBind(p.Addr)
 	if err != nil {
@@ -43,17 +45,15 @@ func (p bindPolicy) validate() error {
 	if loopback {
 		return nil
 	}
-	if p.HasAuth {
-		return nil
-	}
-	if p.AllowPublicNoAuth {
+	if p.AllowPublicNoTLS {
 		return nil
 	}
 	return exitcode.Errorf(exitcode.Usage,
-		"--http %q binds to a non-loopback interface without auth; "+
-			"add --token-file <path> to enforce bearer auth, or pass "+
-			"--allow-public-no-auth if a reverse proxy already authenticates "+
-			"requests in front of gaia-mcp", p.Addr)
+		"--http %q binds to a non-loopback interface; under pass-through auth "+
+			"every request carries the caller's forge PAT in Authorization: Bearer, "+
+			"so TLS must terminate upstream. Pass --allow-public-no-tls only if a "+
+			"reverse proxy (nginx, Caddy, k8s ingress) handles TLS in front of "+
+			"gaia-mcp", p.Addr)
 }
 
 // isLoopbackBind returns true if addr resolves to a loopback-only

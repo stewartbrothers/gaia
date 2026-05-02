@@ -59,7 +59,7 @@ func handleReleaseList(ctx context.Context, args map[string]any) (*mcp.CallToolR
 	if err != nil {
 		return toolError(err), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -82,7 +82,7 @@ func handleReleaseView(ctx context.Context, args map[string]any) (*mcp.CallToolR
 	if tag == "" {
 		return toolError(exitcode.Errorf(exitcode.Usage, "tag is required")), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -102,7 +102,7 @@ func handleReleaseCreate(ctx context.Context, args map[string]any) (*mcp.CallToo
 	if tag == "" {
 		return toolError(exitcode.Errorf(exitcode.Usage, "tag is required")), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -145,7 +145,7 @@ func handleReleaseEdit(ctx context.Context, args map[string]any) (*mcp.CallToolR
 		}
 	}
 
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
@@ -168,7 +168,7 @@ func handleReleaseDelete(ctx context.Context, args map[string]any) (*mcp.CallToo
 	if !optBool(args, "confirm") {
 		return toolResult(map[string]any{"would_delete": tag, "confirmed": false}, nil), nil
 	}
-	p, err := build()
+	p, err := build(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}

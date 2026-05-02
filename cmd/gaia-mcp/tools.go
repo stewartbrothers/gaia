@@ -55,10 +55,16 @@ func repoFromArgs(args map[string]any) (owner, repo string, err error) {
 // *forgejo.Provider or *github.Provider depending on what
 // forgebuilder dispatches to.
 //
+// Takes ctx so the HTTP transport can plumb a per-request bearer
+// (the client's own forge PAT) through forgeTokenFromContext into
+// forgebuilder.Override.Token. In stdio mode the context never
+// carries a token and forgebuilder falls back to the layered
+// credential store.
+//
 // Indirection via builderFn lets tests swap in a fake provider; the
 // production path goes through forgebuilder.
-func build() (provider.Provider, error) {
-	return builderFn()
+func build(ctx context.Context) (provider.Provider, error) {
+	return builderFn(ctx)
 }
 
 // builderFn is the swappable provider builder. Tests change this via
@@ -66,8 +72,10 @@ func build() (provider.Provider, error) {
 // defaultBuilder.
 var builderFn = defaultBuilder
 
-func defaultBuilder() (provider.Provider, error) {
-	p, _, err := forgebuilder.Build(forgebuilder.Override{})
+func defaultBuilder(ctx context.Context) (provider.Provider, error) {
+	p, _, err := forgebuilder.Build(forgebuilder.Override{
+		Token: forgeTokenFromContext(ctx),
+	})
 	return p, err
 }
 

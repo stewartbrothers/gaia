@@ -2,42 +2,43 @@ package main
 
 import (
 	"context"
-	"crypto/subtle"
 	"log/slog"
 	"net/http"
 	"strings"
 )
 
-// ctxKeyTokenLabel keys a request's resolved token label on its
-// context. Audit-log middleware reads it; never the raw token.
+// ctxKeyForgeToken keys a request's forge token on its context. The
+// HTTP transport extracts the bearer from `Authorization: Bearer ...`
+// and stores it here; tool handlers' build(ctx) reads it and
+// constructs a per-request provider with that token.
+//
+// gaia-mcp itself never stores forge credentials. The bearer the
+// client sends *is* the forge PAT — pass-through, no local validation,
+// no central store. Anyone who steals a token from gaia-mcp gets
+// nothing because there's nothing at rest to steal.
 type ctxKey string
 
-const ctxKeyTokenLabel ctxKey = "gaia.token.label"
+const ctxKeyForgeToken ctxKey = "gaia.forge.token"
 
-// bearerAuthMiddleware enforces `Authorization: Bearer <token>` on
-// the wrapped handler. With no tokens configured, it's a no-op (the
-// bind policy already gated this case in main.go — the only paths
-// that reach here unauthenticated are loopback or
-// --allow-public-no-auth).
+// passThroughAuthMiddleware extracts the bearer from the
+// Authorization header, stores it on the request context, and lets
+// the request through. It is the *only* auth gate gaia-mcp owns: a
+// missing or malformed bearer fails the request because there's no
+// credential to use upstream.
 //
-// On a valid bearer, the resolved label is stored on the request
-// context so downstream code can attribute the call without ever
-// touching the token. Audit logs reference the label.
+// On the wire, gaia-mcp NEVER validates the bearer — that's the
+// upstream forge's job. We just transport it. If the token is
+// invalid, the upstream forge will return 401 and the tool handler
+// surfaces that to the MCP client.
 //
-// On any failure, the response is 401 with WWW-Authenticate, and
-// the response body is the static string "Unauthorized" — no detail
-// about *why* the token was rejected (existing token vs. invalid
-// vs. missing). Detail goes to stderr for the operator; the wire is
-// opaque to attackers probing for token shape.
-func bearerAuthMiddleware(tokens tokenStore, logger *slog.Logger, next http.Handler) http.Handler {
-	if len(tokens) == 0 {
-		return next
-	}
+// 401 here means "the request lacks a usable bearer." Detail-free
+// body so the endpoint doesn't become a probing oracle.
+func passThroughAuthMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		label, reason, ok := authenticate(r, tokens)
+		token, reason, ok := extractBearer(r)
 		if !ok {
 			logger.Warn("auth_failure",
 				"reason", reason,
@@ -48,14 +49,37 @@ func bearerAuthMiddleware(tokens tokenStore, logger *slog.Logger, next http.Hand
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-		logger.Info("auth_success",
-			"label", label,
-			"remote", clientAddr(r),
-			"path", r.URL.Path,
-		)
-		ctx := context.WithValue(r.Context(), ctxKeyTokenLabel, label)
+		ctx := context.WithValue(r.Context(), ctxKeyForgeToken, token)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// extractBearer returns the bearer value, a stable reason string for
+// audit logs (never the token itself), and ok=false on any failure.
+func extractBearer(r *http.Request) (token, reason string, ok bool) {
+	authz := r.Header.Get("Authorization")
+	if authz == "" {
+		return "", "no_authorization_header", false
+	}
+	if !strings.HasPrefix(authz, "Bearer ") {
+		return "", "non_bearer_scheme", false
+	}
+	supplied := strings.TrimPrefix(authz, "Bearer ")
+	if supplied == "" {
+		return "", "empty_bearer", false
+	}
+	return supplied, "", true
+}
+
+// forgeTokenFromContext returns the per-request forge token attached
+// by passThroughAuthMiddleware, or "" if the request didn't carry
+// one. Stdio mode never attaches; the empty return tells build() to
+// fall back to layered credentials.
+func forgeTokenFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(ctxKeyForgeToken).(string); ok {
+		return v
+	}
+	return ""
 }
 
 // clientAddr returns the request's source address for the audit log.
@@ -75,46 +99,4 @@ func clientAddr(r *http.Request) string {
 		return strings.TrimSpace(xff)
 	}
 	return r.RemoteAddr
-}
-
-// authenticate extracts the bearer token from the request, looks it
-// up in the store with constant-time equality, and returns the
-// resolved label. Returns label, a stable reason string for audit
-// logs (never the token itself), and ok=false on any failure —
-// caller produces the 401 response.
-//
-// Constant-time comparison prevents timing oracles that could leak
-// token prefixes. This matters because bearer tokens are
-// long-lived; a single guess is cheap, but timing-based prefix
-// recovery would let an attacker iterate efficiently.
-func authenticate(r *http.Request, tokens tokenStore) (label, reason string, ok bool) {
-	authz := r.Header.Get("Authorization")
-	if authz == "" {
-		return "", "no_authorization_header", false
-	}
-	if !strings.HasPrefix(authz, "Bearer ") {
-		return "", "non_bearer_scheme", false
-	}
-	supplied := strings.TrimPrefix(authz, "Bearer ")
-	if supplied == "" {
-		return "", "empty_bearer", false
-	}
-	suppliedB := []byte(supplied)
-	for token, lbl := range tokens {
-		if subtle.ConstantTimeCompare(suppliedB, []byte(token)) == 1 {
-			return lbl, "", true
-		}
-	}
-	return "", "unknown_token", false
-}
-
-// labelFromContext returns the token label attached by
-// bearerAuthMiddleware on a successful auth, or "" if the request
-// wasn't authenticated (loopback no-auth path or
-// --allow-public-no-auth bypass).
-func labelFromContext(ctx context.Context) string {
-	if v, ok := ctx.Value(ctxKeyTokenLabel).(string); ok {
-		return v
-	}
-	return ""
 }
