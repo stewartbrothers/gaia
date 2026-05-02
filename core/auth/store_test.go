@@ -28,8 +28,16 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	path := filepath.Join(dir, "credentials.yaml")
 
 	s := &auth.Store{}
-	s.Set("forgejo", "git.example.com", auth.Credential{Token: "fjt", User: "alice"})
-	s.Set("github", "github.com", auth.Credential{Token: "ght", User: "bob"})
+	s.Set("forgejo", "git.example.com", auth.Credential{
+		APIURL: "https://git.example.com/api/v1",
+		Token:  "fjt",
+		User:   "alice",
+	})
+	s.Set("github", "github.com", auth.Credential{
+		APIURL: "https://api.github.com",
+		Token:  "ght",
+		User:   "bob",
+	})
 
 	if err := auth.Save(path, s); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -40,11 +48,11 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	c, ok := loaded.Get("forgejo", "git.example.com")
-	if !ok || c.Token != "fjt" || c.User != "alice" {
+	if !ok || c.Token != "fjt" || c.User != "alice" || c.APIURL != "https://git.example.com/api/v1" {
 		t.Errorf("forgejo entry: got %+v ok=%v", c, ok)
 	}
 	c, ok = loaded.Get("github", "github.com")
-	if !ok || c.Token != "ght" || c.User != "bob" {
+	if !ok || c.Token != "ght" || c.User != "bob" || c.APIURL != "https://api.github.com" {
 		t.Errorf("github entry: got %+v ok=%v", c, ok)
 	}
 }
