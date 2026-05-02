@@ -15,6 +15,12 @@ name: Release
 # A failure at any step leaves the tag pushed but with an empty
 # release; re-running the workflow (or running goreleaser locally
 # and uploading via the gitea API) re-attaches the artifacts.
+#
+# IMPORTANT: Forgejo does NOT auto-create a release record on tag
+# push (unlike GitHub, which does). The upload step below creates
+# the release if it doesn't exist, then attaches assets to it.
+# Idempotent — re-runs against an existing release just attach the
+# assets without recreating.
 
 on:
   push:
@@ -64,15 +70,50 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Resolve the release ID. Tag pushes auto-create an empty
-          # release on Forgejo; we fetch its ID then upload assets
-          # to that ID's /assets endpoint.
-          release_id=$(curl -fsSL \
+          # Resolve or create the release record. Forgejo doesn't
+          # auto-create on tag push, so the GET-then-POST dance is
+          # required for every fresh tag.
+          release_id=$(curl -sS \
             -H "Authorization: token ${FORGEJO_RELEASE_TOKEN}" \
             "${API_BASE}/repos/${REPO}/releases/tags/${TAG}" \
-            | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("id",""))')
 
-          echo "Release ID for tag ${TAG}: ${release_id}"
+          if [ -z "${release_id}" ]; then
+            echo "No release for ${TAG} yet; creating one."
+            # Body: pull the matching CHANGELOG section
+            # (## [TAG_NUMERIC] up to but not including the next ## [).
+            tag_numeric="${TAG#v}"
+            release_body=$(awk -v t="${tag_numeric}" '
+              $0 ~ "^## \\[" t "\\]" { p=1 }
+              p && /^## \[/ && $0 !~ "^## \\[" t "\\]" { exit }
+              p { print }
+            ' CHANGELOG.md || true)
+
+            release_id=$(python3 -c "
+          import json, os, urllib.request
+          payload = json.dumps({
+            'tag_name': os.environ['TAG'],
+            'name': os.environ['TAG'],
+            'body': os.environ.get('RELEASE_BODY', ''),
+            'draft': False,
+            'prerelease': False,
+          }).encode()
+          req = urllib.request.Request(
+            f\"{os.environ['API_BASE']}/repos/{os.environ['REPO']}/releases\",
+            data=payload,
+            headers={
+              'Authorization': f\"token {os.environ['FORGEJO_RELEASE_TOKEN']}\",
+              'Content-Type': 'application/json',
+            },
+            method='POST',
+          )
+          with urllib.request.urlopen(req) as r:
+            print(json.loads(r.read())['id'])
+          " RELEASE_BODY="${release_body}")
+            echo "Created release id=${release_id}"
+          else
+            echo "Release id=${release_id} already exists for ${TAG}; uploading to it."
+          fi
 
           for f in dist/*.tar.gz dist/*.zip dist/*checksums.txt; do
             [ -f "$f" ] || continue
