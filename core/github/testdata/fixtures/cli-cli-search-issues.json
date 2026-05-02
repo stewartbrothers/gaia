@@ -1,0 +1,304 @@
+{
+  "total_count": 2204,
+  "incomplete_results": false,
+  "items": [
+    {
+      "url": "https://api.github.com/repos/cli/cli/issues/13319",
+      "repository_url": "https://api.github.com/repos/cli/cli",
+      "labels_url": "https://api.github.com/repos/cli/cli/issues/13319/labels{/name}",
+      "comments_url": "https://api.github.com/repos/cli/cli/issues/13319/comments",
+      "events_url": "https://api.github.com/repos/cli/cli/issues/13319/events",
+      "html_url": "https://github.com/cli/cli/issues/13319",
+      "id": 4354955465,
+      "node_id": "I_kwDODKw3uc8AAAABA5NYyQ",
+      "number": 13319,
+      "title": "gh pr view --json number returns exit 0 for Issue numbers due to numberFieldOnly optimization skipping API validation",
+      "user": {
+        "login": "apokamo",
+        "id": 92258699,
+        "node_id": "U_kgDOBX_Biw",
+        "avatar_url": "https://avatars.githubusercontent.com/u/92258699?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/apokamo",
+        "html_url": "https://github.com/apokamo",
+        "followers_url": "https://api.github.com/users/apokamo/followers",
+        "following_url": "https://api.github.com/users/apokamo/following{/other_user}",
+        "gists_url": "https://api.github.com/users/apokamo/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/apokamo/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/apokamo/subscriptions",
+        "organizations_url": "https://api.github.com/users/apokamo/orgs",
+        "repos_url": "https://api.github.com/users/apokamo/repos",
+        "events_url": "https://api.github.com/users/apokamo/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/apokamo/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "labels": [
+        {
+          "id": 1593484620,
+          "node_id": "MDU6TGFiZWwxNTkzNDg0NjIw",
+          "url": "https://api.github.com/repos/cli/cli/labels/bug",
+          "name": "bug",
+          "color": "d73a4a",
+          "default": true,
+          "description": "Something isn't working"
+        },
+        {
+          "id": 1825076873,
+          "node_id": "MDU6TGFiZWwxODI1MDc2ODcz",
+          "url": "https://api.github.com/repos/cli/cli/labels/priority-3",
+          "name": "priority-3",
+          "color": "eded04",
+          "default": false,
+          "description": "Affects a small number of users or is largely cosmetic"
+        },
+        {
+          "id": 5976529142,
+          "node_id": "LA_kwDODKw3uc8AAAABZDqY9g",
+          "url": "https://api.github.com/repos/cli/cli/labels/gh-pr",
+          "name": "gh-pr",
+          "color": "DD04FD",
+          "default": false,
+          "description": "relating to the gh pr command"
+        }
+      ],
+      "state": "open",
+      "locked": false,
+      "assignees": [
+
+      ],
+      "milestone": null,
+      "comments": 0,
+      "created_at": "2026-04-30T02:44:05Z",
+      "updated_at": "2026-05-01T15:07:21Z",
+      "closed_at": null,
+      "assignee": null,
+      "author_association": "NONE",
+      "issue_field_values": [
+
+      ],
+      "type": null,
+      "active_lock_reason": null,
+      "sub_issues_summary": {
+        "total": 0,
+        "completed": 0,
+        "percent_completed": 0
+      },
+      "issue_dependencies_summary": {
+        "blocked_by": 0,
+        "total_blocked_by": 0,
+        "blocking": 0,
+        "total_blocking": 0
+      },
+      "body": "## Description\n\n`gh pr view <N> --json number` returns `{\"number\": N}` with exit 0 even when `N` is an Issue number (not a PR). This makes it unreliable for scripts that use it to distinguish PRs from Issues.\n\n## Steps to Reproduce\n\n```bash\n# Replace 1099 with any Issue number in your repo (not a PR)\ngh pr view 1099 --json number; echo \"exit: $?\"\n# Output:\n# {\"number\":1099}\n# exit: 0   ← wrong: this is an Issue, not a PR\n```\n\n```bash\n# Adding any PR-specific field correctly fails\ngh pr view 1099 --json number,headRefName; echo \"exit: $?\"\n# Output:\n# exit: 1   ← correct\n```\n\n## Expected Behavior\n\n`gh pr view <N> --json number` should return a non-zero exit code when `N` is not a PR.\n\n## Actual Behavior\n\nReturns `{\"number\": N}` and exit 0 without hitting the API, regardless of whether `N` corresponds to a PR.\n\n## Root Cause\n\nIn `pkg/cmd/pr/shared/finder.go`, the `numberFieldOnly` optimization skips the API call entirely when only the `number` field is requested:\n\n```go\nnumberFieldOnly := fields.Len() == 1 && fields.Contains(\"number\")\n\nif f.prNumber > 0 {\n    if numberFieldOnly {\n        // avoid hitting the API if we already have all the information\n        return &api.PullRequest{Number: f.prNumber}, f.baseRefRepo, nil\n    }\n    pr, err = findByNumber(httpClient, f.baseRefRepo, f.prNumber, fields.ToSlice())\n```\n\nThe issue is that `f.prNumber` is set simply by parsing the selector string as an integer — it does **not** confirm the number corresponds to an existing PR. The optimization conflates \"we know the number\" with \"we know it's a PR with that number.\"\n\n## Impact\n\nAny script using `gh pr view <N> --json number` to detect whether `N` is a PR will produce false positives for Issue numbers.\n\n## Workaround\n\nAdd any PR-specific field to the `--json` flag:\n\n```bash\ngh pr view <N> --json number,headRefName 2>/dev/null\n```\n\nThis forces an actual API call, which correctly fails for Issue numbers.\n\n## Environment\n\n- gh version: 2.86.0 (2026-01-21)\n- OS: Linux (WSL2)",
+      "reactions": {
+        "url": "https://api.github.com/repos/cli/cli/issues/13319/reactions",
+        "total_count": 0,
+        "+1": 0,
+        "-1": 0,
+        "laugh": 0,
+        "hooray": 0,
+        "confused": 0,
+        "heart": 0,
+        "rocket": 0,
+        "eyes": 0
+      },
+      "timeline_url": "https://api.github.com/repos/cli/cli/issues/13319/timeline",
+      "performed_via_github_app": null,
+      "state_reason": null,
+      "pinned_comment": null,
+      "score": 1.0
+    },
+    {
+      "url": "https://api.github.com/repos/cli/cli/issues/13317",
+      "repository_url": "https://api.github.com/repos/cli/cli",
+      "labels_url": "https://api.github.com/repos/cli/cli/issues/13317/labels{/name}",
+      "comments_url": "https://api.github.com/repos/cli/cli/issues/13317/comments",
+      "events_url": "https://api.github.com/repos/cli/cli/issues/13317/events",
+      "html_url": "https://github.com/cli/cli/issues/13317",
+      "id": 4353810631,
+      "node_id": "I_kwDODKw3uc8AAAABA4Hgxw",
+      "number": 13317,
+      "title": "`gh api` silently sends unauthenticated requests when keychain access fails",
+      "user": {
+        "login": "Iron-Ham",
+        "id": 3388381,
+        "node_id": "MDQ6VXNlcjMzODgzODE=",
+        "avatar_url": "https://avatars.githubusercontent.com/u/3388381?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/Iron-Ham",
+        "html_url": "https://github.com/Iron-Ham",
+        "followers_url": "https://api.github.com/users/Iron-Ham/followers",
+        "following_url": "https://api.github.com/users/Iron-Ham/following{/other_user}",
+        "gists_url": "https://api.github.com/users/Iron-Ham/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/Iron-Ham/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/Iron-Ham/subscriptions",
+        "organizations_url": "https://api.github.com/users/Iron-Ham/orgs",
+        "repos_url": "https://api.github.com/users/Iron-Ham/repos",
+        "events_url": "https://api.github.com/users/Iron-Ham/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/Iron-Ham/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "labels": [
+        {
+          "id": 1593484620,
+          "node_id": "MDU6TGFiZWwxNTkzNDg0NjIw",
+          "url": "https://api.github.com/repos/cli/cli/labels/bug",
+          "name": "bug",
+          "color": "d73a4a",
+          "default": true,
+          "description": "Something isn't working"
+        },
+        {
+          "id": 3490675323,
+          "node_id": "LA_kwDODKw3uc7QD3p7",
+          "url": "https://api.github.com/repos/cli/cli/labels/needs-triage",
+          "name": "needs-triage",
+          "color": "D6393F",
+          "default": false,
+          "description": "needs to be reviewed"
+        }
+      ],
+      "state": "open",
+      "locked": false,
+      "assignees": [
+
+      ],
+      "milestone": null,
+      "comments": 1,
+      "created_at": "2026-04-29T21:34:36Z",
+      "updated_at": "2026-04-30T16:05:39Z",
+      "closed_at": null,
+      "assignee": null,
+      "author_association": "NONE",
+      "issue_field_values": [
+
+      ],
+      "type": null,
+      "active_lock_reason": null,
+      "sub_issues_summary": {
+        "total": 0,
+        "completed": 0,
+        "percent_completed": 0
+      },
+      "issue_dependencies_summary": {
+        "blocked_by": 0,
+        "total_blocked_by": 0,
+        "blocking": 0,
+        "total_blocking": 0
+      },
+      "body": "## Summary\n\nWhen `gh`'s macOS Keychain lookup fails (most commonly via the keyring's 3-second timeout), `gh api` and `gh api graphql` silently send requests **without an `Authorization` header**, hitting the unauthenticated IP rate-limit instead of erroring out. Meanwhile `gh auth status` and `gh auth token` may still work because they exercise the keyring at different times when access is uncontended. There is no log line, warning, or surfaced error indicating that authentication resolution failed — users see only a downstream `HTTP 401` (REST) or `HTTP 403 \"API rate limit exceeded for <IP>\"` (GraphQL), with no signal that this is a local auth-resolution problem rather than a server-side or token problem.\n\nThis is reproducible on `gh` `2.92.0` (latest, released 2026-04-28) on macOS.\n\n## Root cause\n\nThe bug is **silent error discard**, in two places:\n\n### 1. `(*AuthConfig).ActiveToken` swallows keyring errors\n\nIn [`internal/config/config.go:237-260`](https://github.com/cli/cli/blob/trunk/internal/config/config.go#L237):\n\n```go\nfunc (c *AuthConfig) ActiveToken(hostname string) (string, string) {\n    ...\n    if user, err = c.ActiveUser(hostname); err == nil {\n        token, err = c.TokenFromKeyringForUser(hostname, user)\n    }\n    if err != nil {\n        token, err = c.TokenFromKeyring(hostname)\n    }\n    if err == nil {\n        source = \"keyring\"\n    }\n    return token, source           // <— err is dropped on the floor\n}\n```\n\nWhen `TokenFromKeyringForUser` and the unkeyed-fallback `TokenFromKeyring` both fail (e.g., both return `*keyring.TimeoutError` from [`internal/keyring/keyring.go:56`](https://github.com/cli/cli/blob/trunk/internal/keyring/keyring.go#L56)), `ActiveToken` returns `(\"\", source)` with no way for the caller to distinguish \"this host has no token configured\" from \"the keyring read failed.\"\n\n### 2. `AddAuthTokenHeader.RoundTrip` discards the (already-empty) error path\n\nIn [`api/http_client.go:120`](https://github.com/cli/cli/blob/trunk/api/http_client.go#L120):\n\n```go\nif token, _ := cfg.ActiveToken(hostname); token != \"\" {\n    req.Header.Set(authorization, fmt.Sprintf(\"token %s\", token))\n}\n```\n\nThe empty-token case is treated as \"no auth needed, send anonymously\" — appropriate for genuinely anonymous endpoints but indistinguishable from \"the keyring lookup just timed out.\" The `RoundTripper` proceeds with no `Authorization` header, the request hits the unauth IP bucket, and the user sees only the downstream 401/403.\n\nThese two compose into the user-visible failure: a request that looks like a server-side rate-limit or authorization issue but is actually a local-keychain-access problem with no surfaced signal.\n\n### Why does the macOS keychain timeout fire?\n\nOn systems with a long-lived `gh:github.com` keychain entry written by an older gh version, the macOS Keychain Services ACL can be set to \"ask before access\" rather than \"always allow this binary,\" and an interactive approval dialog can fail to render in non-TTY contexts (e.g., when `gh` is invoked from a child process without a foreground terminal). The 3-second timeout in `internal/keyring/keyring.go` then fires. This is a normal failure mode on macOS — what's wrong is the silent-discard response to it.\n\n## Steps to reproduce\n\n```bash\n$ gh --version\ngh version 2.92.0 (2026-04-28)\n\n$ gh auth status\ngithub.com\n  ✓ Logged in to github.com account <github-username> (keyring)\n  - Active account: true\n  - Token scopes: 'admin:public_key', 'gist', 'read:org', 'repo'\n\n$ TOKEN=$(gh auth token)\n\n# token itself is fully valid — direct curl works, returns 200 with full 5000/hr bucket:\n$ curl -sI -H \"Authorization: Bearer $TOKEN\" https://api.github.com/user | head -1\nHTTP/2 200\n\n# but gh api silently sends with no Authorization header:\n$ gh api user --include 2>&1 | grep -iE '^(HTTP|x-ratelimit)'\nHTTP/2.0 401 Unauthorized\nX-Ratelimit-Limit: 60\nX-Ratelimit-Resource: core\n# ↑ unauthenticated REST IP bucket, not the authenticated 5000/hr\n\n$ gh api graphql -f query='query { viewer { login } }' --include 2>&1 | grep -iE '^(HTTP|x-ratelimit)'\nHTTP/2.0 403 Forbidden\nX-Ratelimit-Limit: 0\nX-Ratelimit-Resource: graphql\n# body: \"API rate limit exceeded for <IP>. (...Authenticated requests get a higher rate limit...)\"\n```\n\n### Confirming the diagnosis\n\nThe env-var path bypasses the keyring entirely (via `TokenFromEnvOrConfig` at `internal/config/config.go:241`), proving the failure is in the keyring read path, not the token, scopes, network, or `hosts.yml`:\n\n```bash\n$ GH_TOKEN=\"$(gh auth token)\" gh api user --include 2>&1 | grep -iE '^(HTTP|x-ratelimit)'\nHTTP/2.0 200 OK\nX-Ratelimit-Limit: 5000\nX-Ratelimit-Resource: core\n```\n\n## Expected behavior\n\nWhen `ActiveToken` cannot resolve a token because of a keyring access failure (`TimeoutError` or other non-`ErrNotFound` error), `gh api` should fail with a clear error message identifying the keyring as the cause, **not** silently send an unauthenticated request.\n\n## Actual behavior\n\n`gh api` silently omits the `Authorization` header. There is no log, warning, or surfaced error — the user sees only the downstream `HTTP 401` / `HTTP 403` and has no way to identify that the local keyring is the cause without instrumenting the gh source.\n\n## Environment\n\n| | |\n|---|---|\n| `gh --version` | `gh version 2.92.0 (2026-04-28)` |\n| OS | macOS (darwin 25.4.0) |\n| Shell | zsh |\n| Auth backend | keyring (macOS Keychain) |\n| `hosts.yml` | stub entry only — no `oauth_token` field; keyring is canonical |\n| `GITHUB_TOKEN` / `GH_TOKEN` / `GH_HOST` / `GITHUB_API_URL` | all unset |\n| `gh config list` | vanilla — no overrides |\n\n## Workarounds for users hitting this today\n\n1. **`GH_TOKEN=\"$(gh auth token)\" gh api …`** — bypasses the keyring entirely via the env-var short-circuit in `TokenFromEnvOrConfig`. Reliable.\n2. **Delete and recreate keychain entries** — sometimes resets stale ACLs:\n   ```bash\n   security delete-generic-password -s 'gh:github.com' -a '<your-username>'\n   security delete-generic-password -s 'gh:github.com'   # the unkeyed \"active slot\"\n   echo \"$TOKEN\" | gh auth login --with-token            # rewrites both with current ACLs\n   ```\n   Note: `gh` writes two keychain entries on login by design — one keyed under your username (per-user storage), one with empty `acct` (the active-slot pointer used for `gh auth switch`). This is **not** a bug; both entries are intentional. The bug is the silent failure when looking them up, not the dual-write.\n3. **`gh auth login --insecure-storage`** — stores the token plaintext in `hosts.yml` instead of the keyring, sidestepping the keyring path entirely.\n\n## Related issues\n\n- [#12885](https://github.com/cli/cli/issues/12885) — Keychain lookup ignores account field. Same area; this issue is upstream of the silent-discard problem reported here.\n- [#10136](https://github.com/cli/cli/issues/10136) (closed by [#11038](https://github.com/cli/cli/pull/11038)) — Account incorrectly reported active. Prior fix in this area; did not cover the silent-discard symptom.\n- [#10032](https://github.com/cli/cli/issues/10032) (closed) — \"401 Error at every turn.\" Symptom-only match; root cause undiagnosed at the time and is plausibly the same silent-discard bug.\n- [#8347 (discussion)](https://github.com/cli/cli/discussions/8347) — Multiple users report the same `GH_TOKEN=\"$(gh auth token)\" gh api …` workaround independently.\n",
+      "reactions": {
+        "url": "https://api.github.com/repos/cli/cli/issues/13317/reactions",
+        "total_count": 0,
+        "+1": 0,
+        "-1": 0,
+        "laugh": 0,
+        "hooray": 0,
+        "confused": 0,
+        "heart": 0,
+        "rocket": 0,
+        "eyes": 0
+      },
+      "timeline_url": "https://api.github.com/repos/cli/cli/issues/13317/timeline",
+      "performed_via_github_app": null,
+      "state_reason": null,
+      "pinned_comment": null,
+      "score": 1.0
+    },
+    {
+      "url": "https://api.github.com/repos/cli/cli/issues/13306",
+      "repository_url": "https://api.github.com/repos/cli/cli",
+      "labels_url": "https://api.github.com/repos/cli/cli/issues/13306/labels{/name}",
+      "comments_url": "https://api.github.com/repos/cli/cli/issues/13306/comments",
+      "events_url": "https://api.github.com/repos/cli/cli/issues/13306/events",
+      "html_url": "https://github.com/cli/cli/issues/13306",
+      "id": 4346958395,
+      "node_id": "I_kwDODKw3uc8AAAABAxlSOw",
+      "number": 13306,
+      "title": "False Positive: Windows Defender flags gh as `Trojan:Script/Wacatac.H!ml` via Scoop install",
+      "user": {
+        "login": "gauravkanoongo",
+        "id": 1622656,
+        "node_id": "MDQ6VXNlcjE2MjI2NTY=",
+        "avatar_url": "https://avatars.githubusercontent.com/u/1622656?v=4",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/gauravkanoongo",
+        "html_url": "https://github.com/gauravkanoongo",
+        "followers_url": "https://api.github.com/users/gauravkanoongo/followers",
+        "following_url": "https://api.github.com/users/gauravkanoongo/following{/other_user}",
+        "gists_url": "https://api.github.com/users/gauravkanoongo/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/gauravkanoongo/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/gauravkanoongo/subscriptions",
+        "organizations_url": "https://api.github.com/users/gauravkanoongo/orgs",
+        "repos_url": "https://api.github.com/users/gauravkanoongo/repos",
+        "events_url": "https://api.github.com/users/gauravkanoongo/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/gauravkanoongo/received_events",
+        "type": "User",
+        "user_view_type": "public",
+        "site_admin": false
+      },
+      "labels": [
+        {
+          "id": 1593484620,
+          "node_id": "MDU6TGFiZWwxNTkzNDg0NjIw",
+          "url": "https://api.github.com/repos/cli/cli/labels/bug",
+          "name": "bug",
+          "color": "d73a4a",
+          "default": true,
+          "description": "Something isn't working"
+        }
+      ],
+      "state": "closed",
+      "locked": false,
+      "assignees": [
+
+      ],
+      "milestone": null,
+      "comments": 5,
+      "created_at": "2026-04-28T23:46:19Z",
+      "updated_at": "2026-04-30T16:56:13Z",
+      "closed_at": "2026-04-30T16:56:03Z",
+      "assignee": null,
+      "author_association": "NONE",
+      "issue_field_values": [
+
+      ],
+      "type": null,
+      "active_lock_reason": null,
+      "sub_issues_summary": {
+        "total": 0,
+        "completed": 0,
+        "percent_completed": 0
+      },
+      "issue_dependencies_summary": {
+        "blocked_by": 0,
+        "total_blocked_by": 0,
+        "blocking": 0,
+        "total_blocking": 0
+      },
+      "body": "### Describe the bug\nWhen attempting to install or update the GitHub CLI using `scoop` on Windows 11, Windows Defender immediately blocks and quarantines the executable, flagging it as `Trojan:Script/Wacatac.B!ml` (or similar). \n\nThis appears to be a machine-learning false positive from Microsoft Defender, but it prevents the installation of the CLI via Scoop.\n\n### Affected version\n- `gh` version: 2.92.0\n- Windows 11 version: Microsoft Windows 25H2 (OS Build 26200.8313)\n- Windows Security Application Version: 1000.29554.0.1001\n- Windows Security Service Version: 10.0.29554.1001-0\n- Antimalware Client Version: 4.18.26030.3011\n- Engine Version: 1.1.26030.3008\n- Antivirus Version: 1.449.340.0\n- Antispyware Version: 1.449.340.0\n\n### Steps to reproduce the behavior\n1. Open a terminal on Windows 11 with Windows Defender active.\n2. Run `scoop install gh` (or `scoop update gh`).\n3. Windows Defender immediately throws a threat detection notification for Wacatac.\n\n<img width=\"500\" height=\"292\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/d5558308-335e-4f82-b0dc-a866ec16ec89\" />\n\n4. Scoop reports that the installation failed or the file is missing.\n\n### Expected vs actual behavior\n**Expected:** `scoop` successfully downloads, extracts, and links the `gh` binary without triggering antivirus heuristics.\n**Actual:** Windows Defender quarantines the download, breaking the Scoop installation process. \n\n### Additional context\nI understand this is likely an issue with Microsoft's Defender heuristics (specifically the `!ml` machine learning flag for Go binaries) rather than an actual infection in the `cli/cli` release. I am providing my Security Intelligence version above in case this needs to be submitted to Microsoft for a false-positive clearance.",
+      "reactions": {
+        "url": "https://api.github.com/repos/cli/cli/issues/13306/reactions",
+        "total_count": 2,
+        "+1": 2,
+        "-1": 0,
+        "laugh": 0,
+        "hooray": 0,
+        "confused": 0,
+        "heart": 0,
+        "rocket": 0,
+        "eyes": 0
+      },
+      "timeline_url": "https://api.github.com/repos/cli/cli/issues/13306/timeline",
+      "performed_via_github_app": null,
+      "state_reason": "completed",
+      "pinned_comment": null,
+      "score": 1.0
+    }
+  ],
+  "search_type": "lexical"
+}

@@ -113,6 +113,22 @@ The places callers do need to know which forge is active:
 These are documented above and will eventually be addressed in a
 Phase 2.5 polish pass.
 
+## How the matrix is verified
+
+Per-method conformance is locked in by two test tiers (see
+`docs/testing.md`):
+
+1. **Hand-rolled httptest** in `core/{forgejo,github}/*_test.go`
+   pins request shape + trim contract + error mapping for every
+   row.
+2. **Recorded api.github.com fixtures** in
+   `core/github/testdata/fixtures/` exercise the trim pipeline
+   against real wire-shapes from the public cli/cli repo (re-record
+   via `scripts/record-gh-fixtures.sh`).
+
+If you're updating a row from `△` to `✓`, both tiers should cover
+the new behavior before the row flips.
+
 ## How this doc is maintained
 
 When a new method joins the Provider interface, add a row here. When

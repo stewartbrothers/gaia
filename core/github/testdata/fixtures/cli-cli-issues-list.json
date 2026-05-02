@@ -1,0 +1,459 @@
+[
+  {
+    "url": "https://api.github.com/repos/cli/cli/issues/13330",
+    "repository_url": "https://api.github.com/repos/cli/cli",
+    "labels_url": "https://api.github.com/repos/cli/cli/issues/13330/labels{/name}",
+    "comments_url": "https://api.github.com/repos/cli/cli/issues/13330/comments",
+    "events_url": "https://api.github.com/repos/cli/cli/issues/13330/events",
+    "html_url": "https://github.com/cli/cli/issues/13330",
+    "id": 4367872829,
+    "node_id": "I_kwDODKw3uc8AAAABBFhzPQ",
+    "number": 13330,
+    "title": "`gh auth status` gives no indication of Keychain-stored OAuth token, making full de-authorization non-obvious",
+    "user": {
+      "login": "ruyrocha",
+      "id": 108208,
+      "node_id": "MDQ6VXNlcjEwODIwOA==",
+      "avatar_url": "https://avatars.githubusercontent.com/u/108208?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/ruyrocha",
+      "html_url": "https://github.com/ruyrocha",
+      "followers_url": "https://api.github.com/users/ruyrocha/followers",
+      "following_url": "https://api.github.com/users/ruyrocha/following{/other_user}",
+      "gists_url": "https://api.github.com/users/ruyrocha/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/ruyrocha/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/ruyrocha/subscriptions",
+      "organizations_url": "https://api.github.com/users/ruyrocha/orgs",
+      "repos_url": "https://api.github.com/users/ruyrocha/repos",
+      "events_url": "https://api.github.com/users/ruyrocha/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/ruyrocha/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "labels": [
+      {
+        "id": 1726593890,
+        "node_id": "MDU6TGFiZWwxNzI2NTkzODkw",
+        "url": "https://api.github.com/repos/cli/cli/labels/more-info-needed",
+        "name": "more-info-needed",
+        "color": "830eb5",
+        "default": false,
+        "description": "More info needed from user/contributor"
+      },
+      {
+        "id": 3490675323,
+        "node_id": "LA_kwDODKw3uc7QD3p7",
+        "url": "https://api.github.com/repos/cli/cli/labels/needs-triage",
+        "name": "needs-triage",
+        "color": "D6393F",
+        "default": false,
+        "description": "needs to be reviewed"
+      }
+    ],
+    "state": "open",
+    "locked": false,
+    "assignees": [
+
+    ],
+    "milestone": null,
+    "comments": 1,
+    "created_at": "2026-05-02T04:16:51Z",
+    "updated_at": "2026-05-02T05:06:31Z",
+    "closed_at": null,
+    "assignee": null,
+    "author_association": "NONE",
+    "issue_field_values": [
+
+    ],
+    "type": null,
+    "active_lock_reason": null,
+    "sub_issues_summary": {
+      "total": 0,
+      "completed": 0,
+      "percent_completed": 0
+    },
+    "issue_dependencies_summary": {
+      "blocked_by": 0,
+      "total_blocked_by": 0,
+      "blocking": 0,
+      "total_blocking": 0
+    },
+    "body": "### Describe the bug\n\n`gh auth status` reports SSH as the configured protocol for git operations, and `hosts.yml` contains no token. This creates a false impression that removing SSH keys and revoking PATs is sufficient to de-authorize a machine. In reality, `gh` stores its OAuth token (`gho_*`) silently in the system Keychain under `gh:github.com`, which survives all of those steps.\n\nA user who wants to fully revoke local access has no visible indicator that the Keychain entry exists or that `gh auth logout` is the only reliable way to remove it.\n\n### Affected version\n\nIt's designed this way since 2023 (v2.32.1 specifically).\n\n### Steps to reproduce the behavior\n\n1. Run `gh auth login` with SSH as the git protocol\n2. Confirm `hosts.yml` has no `oauth_token` field - only user/protocol metadata\n3. Revoke all PATs at github.com/settings/tokens\n4. Remove SSH keys from `~/.ssh/`\n5. Run `gh gist list` or any API-backed command\n6. Observe that it still authenticates successfully\n\n### Expected vs actual behavior\n\n**Expected:** Either `gh auth status` surfaces the Keychain-stored token clearly (e.g. `✓ Token stored in: system keychain (gh:github.com)`), or the security log / PAT revocation flow warns that a separate CLI OAuth token may still be active on the machine.\n\n**Actual:** The token is invisible to the user. `gh auth status` only shows `Token: gho_****` without indicating where it comes from. Nothing in GitHub's security UX (PAT revocation, SSH key removal, `hosts.yml` inspection) reveals the token or prompts the user to revoke it via `gh auth logout`.\n\n### Logs\n\n```shell\n❯ cat ~/.config/gh/hosts.yml\ngithub.com:\n    git_protocol: ssh\n    users:\n        ruyrocha:\n    user: ruyrocha\n\n❯ security find-generic-password -s \"gh:github.com\" -w\ngo-keyring-base64:[TOKEN]\n\n❯ gh gist list | head -1\n# still works after removing SSH keys and revoking all PATs\n```\n\n### Related issues\n\n- #13111 - `gh auth logout` does not erase the OAuth token from macOS Keychain. Related but distinct: assumes the user already knows to run `gh auth logout`. This issue is about the prior step — nothing surfaces that the Keychain token exists in the first place.\n- #13317 - `gh api` silently sends unauthenticated requests when Keychain lookup fails. Related but distinct: concerns a broken auth path; this issue concerns a working but invisible auth path that survives all conventional de-authorization steps.\n- #10108 - silent fallback to insecure storage with no warning to the user. Same area of auth transparency.\n- #9233 - old OAuth tokens not revoked on re-auth, leaving stale credentials in the user's account.",
+    "closed_by": null,
+    "reactions": {
+      "url": "https://api.github.com/repos/cli/cli/issues/13330/reactions",
+      "total_count": 0,
+      "+1": 0,
+      "-1": 0,
+      "laugh": 0,
+      "hooray": 0,
+      "confused": 0,
+      "heart": 0,
+      "rocket": 0,
+      "eyes": 0
+    },
+    "timeline_url": "https://api.github.com/repos/cli/cli/issues/13330/timeline",
+    "performed_via_github_app": null,
+    "state_reason": null,
+    "pinned_comment": null
+  },
+  {
+    "url": "https://api.github.com/repos/cli/cli/issues/13329",
+    "repository_url": "https://api.github.com/repos/cli/cli",
+    "labels_url": "https://api.github.com/repos/cli/cli/issues/13329/labels{/name}",
+    "comments_url": "https://api.github.com/repos/cli/cli/issues/13329/comments",
+    "events_url": "https://api.github.com/repos/cli/cli/issues/13329/events",
+    "html_url": "https://github.com/cli/cli/issues/13329",
+    "id": 4365796024,
+    "node_id": "I_kwDODKw3uc8AAAABBDjCuA",
+    "number": 13329,
+    "title": "feat(discussion create): add --label flag support",
+    "user": {
+      "login": "maxbeizer",
+      "id": 2006658,
+      "node_id": "MDQ6VXNlcjIwMDY2NTg=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2006658?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/maxbeizer",
+      "html_url": "https://github.com/maxbeizer",
+      "followers_url": "https://api.github.com/users/maxbeizer/followers",
+      "following_url": "https://api.github.com/users/maxbeizer/following{/other_user}",
+      "gists_url": "https://api.github.com/users/maxbeizer/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/maxbeizer/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/maxbeizer/subscriptions",
+      "organizations_url": "https://api.github.com/users/maxbeizer/orgs",
+      "repos_url": "https://api.github.com/users/maxbeizer/repos",
+      "events_url": "https://api.github.com/users/maxbeizer/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/maxbeizer/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": true
+    },
+    "labels": [
+      {
+        "id": 3490675323,
+        "node_id": "LA_kwDODKw3uc7QD3p7",
+        "url": "https://api.github.com/repos/cli/cli/labels/needs-triage",
+        "name": "needs-triage",
+        "color": "D6393F",
+        "default": false,
+        "description": "needs to be reviewed"
+      }
+    ],
+    "state": "open",
+    "locked": false,
+    "assignees": [
+
+    ],
+    "milestone": null,
+    "comments": 0,
+    "created_at": "2026-05-01T17:40:10Z",
+    "updated_at": "2026-05-01T17:40:20Z",
+    "closed_at": null,
+    "assignee": null,
+    "author_association": "CONTRIBUTOR",
+    "issue_field_values": [
+
+    ],
+    "type": null,
+    "active_lock_reason": null,
+    "sub_issues_summary": {
+      "total": 0,
+      "completed": 0,
+      "percent_completed": 0
+    },
+    "issue_dependencies_summary": {
+      "blocked_by": 0,
+      "total_blocked_by": 0,
+      "blocking": 0,
+      "total_blocking": 0
+    },
+    "body": "## Context\n\nThe `createDiscussion` GraphQL mutation does not support adding labels at creation time. This was deferred from #13316 to keep that PR focused on the core `Create` mutation.\n\n## Work needed\n\n1. Resolve label names → label IDs via a repo labels query\n2. Call `addLabelsToLabelable` mutation after the discussion is created (passing the created discussion node ID)\n3. Surface a `--label` flag in `gh discussion create`\n\nFollows pattern used by `gh issue create --label`.",
+    "closed_by": null,
+    "reactions": {
+      "url": "https://api.github.com/repos/cli/cli/issues/13329/reactions",
+      "total_count": 0,
+      "+1": 0,
+      "-1": 0,
+      "laugh": 0,
+      "hooray": 0,
+      "confused": 0,
+      "heart": 0,
+      "rocket": 0,
+      "eyes": 0
+    },
+    "timeline_url": "https://api.github.com/repos/cli/cli/issues/13329/timeline",
+    "performed_via_github_app": null,
+    "state_reason": null,
+    "pinned_comment": null
+  },
+  {
+    "url": "https://api.github.com/repos/cli/cli/issues/13328",
+    "repository_url": "https://api.github.com/repos/cli/cli",
+    "labels_url": "https://api.github.com/repos/cli/cli/issues/13328/labels{/name}",
+    "comments_url": "https://api.github.com/repos/cli/cli/issues/13328/comments",
+    "events_url": "https://api.github.com/repos/cli/cli/issues/13328/events",
+    "html_url": "https://github.com/cli/cli/pull/13328",
+    "id": 4365539797,
+    "node_id": "PR_kwDODKw3uc7Xeazs",
+    "number": 13328,
+    "title": "chore(deps): bump github.com/klauspost/compress from 1.18.5 to 1.18.6",
+    "user": {
+      "login": "dependabot[bot]",
+      "id": 49699333,
+      "node_id": "MDM6Qm90NDk2OTkzMzM=",
+      "avatar_url": "https://avatars.githubusercontent.com/in/29110?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/dependabot%5Bbot%5D",
+      "html_url": "https://github.com/apps/dependabot",
+      "followers_url": "https://api.github.com/users/dependabot%5Bbot%5D/followers",
+      "following_url": "https://api.github.com/users/dependabot%5Bbot%5D/following{/other_user}",
+      "gists_url": "https://api.github.com/users/dependabot%5Bbot%5D/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/dependabot%5Bbot%5D/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/dependabot%5Bbot%5D/subscriptions",
+      "organizations_url": "https://api.github.com/users/dependabot%5Bbot%5D/orgs",
+      "repos_url": "https://api.github.com/users/dependabot%5Bbot%5D/repos",
+      "events_url": "https://api.github.com/users/dependabot%5Bbot%5D/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/dependabot%5Bbot%5D/received_events",
+      "type": "Bot",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "labels": [
+      {
+        "id": 5922267844,
+        "node_id": "LA_kwDODKw3uc8AAAABYP6ixA",
+        "url": "https://api.github.com/repos/cli/cli/labels/dependencies",
+        "name": "dependencies",
+        "color": "0366d6",
+        "default": false,
+        "description": "Pull requests that update a dependency file"
+      },
+      {
+        "id": 6051677949,
+        "node_id": "LA_kwDODKw3uc8AAAABaLVG_Q",
+        "url": "https://api.github.com/repos/cli/cli/labels/go",
+        "name": "go",
+        "color": "16e2e2",
+        "default": false,
+        "description": "Pull requests that update Go code"
+      }
+    ],
+    "state": "open",
+    "locked": false,
+    "assignees": [
+
+    ],
+    "milestone": null,
+    "comments": 1,
+    "created_at": "2026-05-01T16:42:16Z",
+    "updated_at": "2026-05-01T17:47:13Z",
+    "closed_at": null,
+    "assignee": null,
+    "author_association": "CONTRIBUTOR",
+    "issue_field_values": [
+
+    ],
+    "type": null,
+    "active_lock_reason": null,
+    "draft": false,
+    "pull_request": {
+      "url": "https://api.github.com/repos/cli/cli/pulls/13328",
+      "html_url": "https://github.com/cli/cli/pull/13328",
+      "diff_url": "https://github.com/cli/cli/pull/13328.diff",
+      "patch_url": "https://github.com/cli/cli/pull/13328.patch",
+      "merged_at": null
+    },
+    "body": "Bumps [github.com/klauspost/compress](https://github.com/klauspost/compress) from 1.18.5 to 1.18.6.\n<details>\n<summary>Release notes</summary>\n<p><em>Sourced from <a href=\"https://github.com/klauspost/compress/releases\">github.com/klauspost/compress's releases</a>.</em></p>\n<blockquote>\n<h2>v1.18.6</h2>\n<h2>What's Changed</h2>\n<ul>\n<li>s2: Fix amd64 stack frame corruption by <a href=\"https://github.com/klauspost\"><code>@​klauspost</code></a> in <a href=\"https://redirect.github.com/klauspost/compress/pull/1145\">klauspost/compress#1145</a></li>\n<li>gzhttp: Canonicalize ETag header by <a href=\"https://github.com/justinmayhew\"><code>@​justinmayhew</code></a> in <a href=\"https://redirect.github.com/klauspost/compress/pull/1139\">klauspost/compress#1139</a></li>\n<li>perf: pool hash tables in Go encode paths to reduce allocations by <a href=\"https://github.com/huynhanx03\"><code>@​huynhanx03</code></a> in <a href=\"https://redirect.github.com/klauspost/compress/pull/1143\">klauspost/compress#1143</a></li>\n</ul>\n<h2>New Contributors</h2>\n<ul>\n<li><a href=\"https://github.com/justinmayhew\"><code>@​justinmayhew</code></a> made their first contribution in <a href=\"https://redirect.github.com/klauspost/compress/pull/1139\">klauspost/compress#1139</a></li>\n<li><a href=\"https://github.com/huynhanx03\"><code>@​huynhanx03</code></a> made their first contribution in <a href=\"https://redirect.github.com/klauspost/compress/pull/1143\">klauspost/compress#1143</a></li>\n<li><a href=\"https://github.com/thaJeztah\"><code>@​thaJeztah</code></a> made their first contribution in <a href=\"https://redirect.github.com/klauspost/compress/pull/1144\">klauspost/compress#1144</a></li>\n</ul>\n<p><strong>Full Changelog</strong>: <a href=\"https://github.com/klauspost/compress/compare/v1.18.5...v1.18.6\">https://github.com/klauspost/compress/compare/v1.18.5...v1.18.6</a></p>\n</blockquote>\n</details>\n<details>\n<summary>Commits</summary>\n<ul>\n<li><a href=\"https://github.com/klauspost/compress/commit/ac2f5e87a3089bd58c974ca53cef71c7aa8bf877\"><code>ac2f5e8</code></a> docs: use unix line-endings for markdown files (<a href=\"https://redirect.github.com/klauspost/compress/issues/1144\">#1144</a>)</li>\n<li><a href=\"https://github.com/klauspost/compress/commit/620d7b5cfbf89fbfdf69884f8a561a2981c25b11\"><code>620d7b5</code></a> s2: Fix amd64 stack frame corruption (<a href=\"https://redirect.github.com/klauspost/compress/issues/1145\">#1145</a>)</li>\n<li><a href=\"https://github.com/klauspost/compress/commit/1b63f2fece784da6334068c671e3f94366bf9d68\"><code>1b63f2f</code></a> build(deps): bump the github-actions group with 2 updates (<a href=\"https://redirect.github.com/klauspost/compress/issues/1141\">#1141</a>)</li>\n<li><a href=\"https://github.com/klauspost/compress/commit/3d86b893733380c370eba876f5beaaf63aeeea94\"><code>3d86b89</code></a> s2: pool hash tables in Go encode paths to reduce allocations (<a href=\"https://redirect.github.com/klauspost/compress/issues/1143\">#1143</a>)</li>\n<li><a href=\"https://github.com/klauspost/compress/commit/15967def6890f5494829394274686436976c4936\"><code>15967de</code></a> gzhttp: Canonicalize ETag header (<a href=\"https://redirect.github.com/klauspost/compress/issues/1139\">#1139</a>)</li>\n<li>See full diff in <a href=\"https://github.com/klauspost/compress/compare/v1.18.5...v1.18.6\">compare view</a></li>\n</ul>\n</details>\n<br />\n\n\n[![Dependabot compatibility score](https://dependabot-badges.githubapp.com/badges/compatibility_score?dependency-name=github.com/klauspost/compress&package-manager=go_modules&previous-version=1.18.5&new-version=1.18.6)](https://docs.github.com/en/github/managing-security-vulnerabilities/about-dependabot-security-updates#about-compatibility-scores)\n\nDependabot will resolve any conflicts with this PR as long as you don't alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.\n\n[//]: # (dependabot-automerge-start)\n[//]: # (dependabot-automerge-end)\n\n---\n\n<details>\n<summary>Dependabot commands and options</summary>\n<br />\n\nYou can trigger Dependabot actions by commenting on this PR:\n- `@dependabot rebase` will rebase this PR\n- `@dependabot recreate` will recreate this PR, overwriting any edits that have been made to it\n- `@dependabot show <dependency name> ignore conditions` will show all of the ignore conditions of the specified dependency\n- `@dependabot ignore this major version` will close this PR and stop Dependabot creating any more for this major version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this minor version` will close this PR and stop Dependabot creating any more for this minor version (unless you reopen the PR or upgrade to it yourself)\n- `@dependabot ignore this dependency` will close this PR and stop Dependabot creating any more for this dependency (unless you reopen the PR or upgrade to it yourself)\n\n\n</details>",
+    "closed_by": null,
+    "reactions": {
+      "url": "https://api.github.com/repos/cli/cli/issues/13328/reactions",
+      "total_count": 0,
+      "+1": 0,
+      "-1": 0,
+      "laugh": 0,
+      "hooray": 0,
+      "confused": 0,
+      "heart": 0,
+      "rocket": 0,
+      "eyes": 0
+    },
+    "timeline_url": "https://api.github.com/repos/cli/cli/issues/13328/timeline",
+    "performed_via_github_app": null,
+    "state_reason": null
+  },
+  {
+    "url": "https://api.github.com/repos/cli/cli/issues/13327",
+    "repository_url": "https://api.github.com/repos/cli/cli",
+    "labels_url": "https://api.github.com/repos/cli/cli/issues/13327/labels{/name}",
+    "comments_url": "https://api.github.com/repos/cli/cli/issues/13327/comments",
+    "events_url": "https://api.github.com/repos/cli/cli/issues/13327/events",
+    "html_url": "https://github.com/cli/cli/pull/13327",
+    "id": 4365124672,
+    "node_id": "PR_kwDODKw3uc7XdEiP",
+    "number": 13327,
+    "title": "fix(pr): remove numberFieldOnly optimization that skips API validation",
+    "user": {
+      "login": "williammartin",
+      "id": 1611510,
+      "node_id": "MDQ6VXNlcjE2MTE1MTA=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1611510?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/williammartin",
+      "html_url": "https://github.com/williammartin",
+      "followers_url": "https://api.github.com/users/williammartin/followers",
+      "following_url": "https://api.github.com/users/williammartin/following{/other_user}",
+      "gists_url": "https://api.github.com/users/williammartin/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/williammartin/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/williammartin/subscriptions",
+      "organizations_url": "https://api.github.com/users/williammartin/orgs",
+      "repos_url": "https://api.github.com/users/williammartin/repos",
+      "events_url": "https://api.github.com/users/williammartin/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/williammartin/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": true
+    },
+    "labels": [
+
+    ],
+    "state": "open",
+    "locked": false,
+    "assignees": [
+
+    ],
+    "milestone": null,
+    "comments": 0,
+    "created_at": "2026-05-01T15:19:06Z",
+    "updated_at": "2026-05-01T15:23:53Z",
+    "closed_at": null,
+    "assignee": null,
+    "author_association": "MEMBER",
+    "issue_field_values": [
+
+    ],
+    "type": null,
+    "active_lock_reason": null,
+    "draft": false,
+    "pull_request": {
+      "url": "https://api.github.com/repos/cli/cli/pulls/13327",
+      "html_url": "https://github.com/cli/cli/pull/13327",
+      "diff_url": "https://github.com/cli/cli/pull/13327.diff",
+      "patch_url": "https://github.com/cli/cli/pull/13327.patch",
+      "merged_at": null
+    },
+    "body": "## Summary\r\n\r\nFixes #13319\r\n\r\nRemoves the `numberFieldOnly` optimization in `pkg/cmd/pr/shared/finder.go` that caused `gh pr view <N> --json number` to return exit 0 even when `N` was an issue number (not a PR).\r\n\r\n## Problem\r\n\r\nThe optimization short-circuited the API call when only the `number` field was requested, returning a synthetic `PullRequest` struct without validating that the number actually corresponds to a PR. Since `f.prNumber` is set by parsing the selector as an integer, any valid number (including issue numbers) would succeed.\r\n\r\n## Fix\r\n\r\nRemove the optimization entirely. It saved a single API call for an extremely uncommon query - the caller already knows the number from the argument they passed. The correctness cost is not worth the marginal performance gain.",
+    "closed_by": null,
+    "reactions": {
+      "url": "https://api.github.com/repos/cli/cli/issues/13327/reactions",
+      "total_count": 0,
+      "+1": 0,
+      "-1": 0,
+      "laugh": 0,
+      "hooray": 0,
+      "confused": 0,
+      "heart": 0,
+      "rocket": 0,
+      "eyes": 0
+    },
+    "timeline_url": "https://api.github.com/repos/cli/cli/issues/13327/timeline",
+    "performed_via_github_app": null,
+    "state_reason": null
+  },
+  {
+    "url": "https://api.github.com/repos/cli/cli/issues/13326",
+    "repository_url": "https://api.github.com/repos/cli/cli",
+    "labels_url": "https://api.github.com/repos/cli/cli/issues/13326/labels{/name}",
+    "comments_url": "https://api.github.com/repos/cli/cli/issues/13326/comments",
+    "events_url": "https://api.github.com/repos/cli/cli/issues/13326/events",
+    "html_url": "https://github.com/cli/cli/pull/13326",
+    "id": 4363353567,
+    "node_id": "PR_kwDODKw3uc7XXegj",
+    "number": 13326,
+    "title": "Grammar fixes",
+    "user": {
+      "login": "scop",
+      "id": 109152,
+      "node_id": "MDQ6VXNlcjEwOTE1Mg==",
+      "avatar_url": "https://avatars.githubusercontent.com/u/109152?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/scop",
+      "html_url": "https://github.com/scop",
+      "followers_url": "https://api.github.com/users/scop/followers",
+      "following_url": "https://api.github.com/users/scop/following{/other_user}",
+      "gists_url": "https://api.github.com/users/scop/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/scop/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/scop/subscriptions",
+      "organizations_url": "https://api.github.com/users/scop/orgs",
+      "repos_url": "https://api.github.com/users/scop/repos",
+      "events_url": "https://api.github.com/users/scop/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/scop/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "labels": [
+      {
+        "id": 3581582503,
+        "node_id": "LA_kwDODKw3uc7Vepyn",
+        "url": "https://api.github.com/repos/cli/cli/labels/external",
+        "name": "external",
+        "color": "2700AF",
+        "default": false,
+        "description": "pull request originating outside of the CLI core team"
+      },
+      {
+        "id": 10197032444,
+        "node_id": "LA_kwDODKw3uc8AAAACX8pd_A",
+        "url": "https://api.github.com/repos/cli/cli/labels/unmet-requirements",
+        "name": "unmet-requirements",
+        "color": "ee2329",
+        "default": false,
+        "description": ""
+      }
+    ],
+    "state": "open",
+    "locked": false,
+    "assignees": [
+
+    ],
+    "milestone": null,
+    "comments": 1,
+    "created_at": "2026-05-01T07:22:30Z",
+    "updated_at": "2026-05-01T07:22:43Z",
+    "closed_at": null,
+    "assignee": null,
+    "author_association": "NONE",
+    "issue_field_values": [
+
+    ],
+    "type": null,
+    "active_lock_reason": null,
+    "draft": false,
+    "pull_request": {
+      "url": "https://api.github.com/repos/cli/cli/pulls/13326",
+      "html_url": "https://github.com/cli/cli/pull/13326",
+      "diff_url": "https://github.com/cli/cli/pull/13326.diff",
+      "patch_url": "https://github.com/cli/cli/pull/13326.patch",
+      "merged_at": null
+    },
+    "body": "<!--\r\n  Thank you for contributing to GitHub CLI!\r\n  To reference an open issue, please write this in your description: `Fixes #NUMBER`\r\n-->\r\n",
+    "closed_by": null,
+    "reactions": {
+      "url": "https://api.github.com/repos/cli/cli/issues/13326/reactions",
+      "total_count": 0,
+      "+1": 0,
+      "-1": 0,
+      "laugh": 0,
+      "hooray": 0,
+      "confused": 0,
+      "heart": 0,
+      "rocket": 0,
+      "eyes": 0
+    },
+    "timeline_url": "https://api.github.com/repos/cli/cli/issues/13326/timeline",
+    "performed_via_github_app": null,
+    "state_reason": null
+  }
+]
