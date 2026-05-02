@@ -38,6 +38,7 @@ func run() error {
 	)
 
 	registerSmokeTools(s)
+	registerAllTools(s)
 
 	return server.ServeStdio(s)
 }
