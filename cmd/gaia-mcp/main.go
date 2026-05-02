@@ -116,7 +116,7 @@ func buildServer() *server.MCPServer {
 // orchestrators (Coolify, Kubernetes, ECS) all send SIGTERM first
 // then SIGKILL after a grace period, so honoring SIGTERM cleanly is
 // what makes rolling deploys lossless.
-func runHTTP(cfg httpConfig, s *server.MCPServer, _ tokenStore) error {
+func runHTTP(cfg httpConfig, s *server.MCPServer, tokens tokenStore) error {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	// Use the mcp-go streamable-HTTP server as a plain http.Handler
@@ -124,8 +124,9 @@ func runHTTP(cfg httpConfig, s *server.MCPServer, _ tokenStore) error {
 	// internal http.Server has no timeouts set — fine for tests, bad
 	// for a public daemon (slow-loris exposure, dangling connections).
 	streamable := server.NewStreamableHTTPServer(s)
+	authed := bearerAuthMiddleware(tokens, streamable)
 	mux := http.NewServeMux()
-	mux.Handle(cfg.BasePath, streamable)
+	mux.Handle(cfg.BasePath, authed)
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,
@@ -140,6 +141,8 @@ func runHTTP(cfg httpConfig, s *server.MCPServer, _ tokenStore) error {
 			"addr", cfg.Addr, "path", cfg.BasePath,
 			"read_header_timeout", cfg.ReadHeaderTimeout.String(),
 			"idle_timeout", cfg.IdleTimeout.String(),
+			"auth", len(tokens) > 0,
+			"token_count", len(tokens),
 		)
 		errCh <- httpSrv.ListenAndServe()
 	}()
