@@ -110,6 +110,9 @@ func (*noopProvider) EditLabel(_ context.Context, _, _ string, _ string, _ provi
 func (*noopProvider) DeleteLabel(_ context.Context, _, _ string, _ string) error {
 	return errNotImplemented
 }
+func (*noopProvider) SubmitReview(_ context.Context, _, _ string, _ int, _ provider.SubmitReviewOptions) error {
+	return errNotImplemented
+}
 
 // Reference time.Time so an unused-import check never fires while tests
 // scaffold up. Removed once a real test uses it.
