@@ -14,7 +14,7 @@ import (
 // newAuthCmd is the parent for all `gaia auth ...` subcommands. It
 // has no behavior of its own — running `gaia auth` with no arg shows
 // help.
-func newAuthCmd() *cobra.Command {
+func newAuthCmd(flags *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
 		Short: "Authenticate gaia against a forge",
@@ -26,6 +26,8 @@ FORGEJO_TOKEN/GITHUB_TOKEN env vars (the credential is recorded in
 	}
 	cmd.AddCommand(newAuthForgejoCmd())
 	cmd.AddCommand(newAuthGHCmd())
+	cmd.AddCommand(newAuthStatusCmd(flags))
+	cmd.AddCommand(newAuthLogoutCmd())
 	return cmd
 }
 

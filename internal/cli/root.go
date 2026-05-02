@@ -68,7 +68,7 @@ auth setup.`,
 
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newWhoamiCmd(flags))
-	root.AddCommand(newAuthCmd())
+	root.AddCommand(newAuthCmd(flags))
 
 	return root
 }
