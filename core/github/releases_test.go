@@ -117,3 +117,48 @@ func TestDeleteReleaseGH(t *testing.T) {
 		t.Errorf("DELETE path: %q", deletePath)
 	}
 }
+
+func TestUploadReleaseAssetGH(t *testing.T) {
+	// Two servers: the API host (where the provider points) for any
+	// stray GETs, and the upload host (where assets actually go).
+	uploadCalled := false
+	upload := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		uploadCalled = true
+		if r.Method != http.MethodPost {
+			t.Errorf("method: %q", r.Method)
+		}
+		if !strings.HasSuffix(r.URL.Path, "/repos/o/r/releases/7/assets") {
+			t.Errorf("path: %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("name"); got != "x.tar.gz" {
+			t.Errorf("name query: %q", got)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/gzip" {
+			t.Errorf("Content-Type: %q", got)
+		}
+		body, _ := io.ReadAll(r.Body)
+		if string(body) != "binary-bytes" {
+			t.Errorf("body: %q", body)
+		}
+		w.WriteHeader(201)
+	}))
+	defer upload.Close()
+
+	// Build a provider whose API host is set so uploadHostFor()
+	// produces our test server's URL. Easiest path: subclass
+	// uploadHostFor by binding the provider's BaseURL directly to
+	// the upload server (the API server is unused in this test).
+	// We swap the `api.github.com` shortcut by setting BaseURL to
+	// the upload server URL; uploadHostFor falls through to the
+	// "non-github.com, no /api/v3" branch and returns it as-is.
+	p := newTestProvider(t, upload.URL)
+	if err := p.UploadReleaseAsset(context.Background(), "o", "r", 7, "x.tar.gz", "application/gzip", strings.NewReader("binary-bytes")); err != nil {
+		t.Fatalf("UploadReleaseAsset: %v", err)
+	}
+	if !uploadCalled {
+		t.Fatal("upload server never received the request")
+	}
+}
+
+// uploadHostFor's mapping is tested in-package; see
+// upload_host_internal_test.go.

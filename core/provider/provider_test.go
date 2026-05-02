@@ -3,6 +3,7 @@ package provider_test
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -126,6 +127,9 @@ func (*noopProvider) EditRelease(_ context.Context, _, _, _ string, _ provider.E
 	return nil, errNotImplemented
 }
 func (*noopProvider) DeleteRelease(_ context.Context, _, _, _ string) error {
+	return errNotImplemented
+}
+func (*noopProvider) UploadReleaseAsset(_ context.Context, _, _ string, _ int64, _, _ string, _ io.Reader) error {
 	return errNotImplemented
 }
 
