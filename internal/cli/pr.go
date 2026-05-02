@@ -18,6 +18,7 @@ func newPRCmd(flags *globalFlags) *cobra.Command {
 	}
 	cmd.AddCommand(newPRListCmd(flags))
 	cmd.AddCommand(newPRViewCmd(flags))
+	cmd.AddCommand(newPRDiffCmd(flags))
 	return cmd
 }
 
