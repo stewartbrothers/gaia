@@ -1,0 +1,88 @@
+name: Release
+
+# Triggers on tag push (v* convention). Tags created via:
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# The workflow:
+#   1. checkout + setup Go (mirrors the CI workflow)
+#   2. shell-installs goreleaser (third-party actions don't mirror
+#      to code.forgejo.org; install via go install pinned to a
+#      specific version that matches local dev)
+#   3. runs goreleaser with --skip=publish (we publish ourselves)
+#   4. attaches dist/* to the tag's Forgejo release via the gitea
+#      API
+#
+# A failure at any step leaves the tag pushed but with an empty
+# release; re-running the workflow (or running goreleaser locally
+# and uploading via the gitea API) re-attaches the artifacts.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # goreleaser's git-based changelog needs the full history
+          # to walk commits since the previous tag.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      # Pinned to a specific version so reproducible builds: bump
+      # both this and the local-dev `go install` command at the
+      # same time.
+      - name: Install goreleaser
+        run: go install github.com/goreleaser/goreleaser/v2@v2.4.5
+
+      - name: Run goreleaser
+        run: |
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          goreleaser release --clean --skip=publish
+
+      - name: Upload artifacts to Forgejo release
+        env:
+          # FORGEJO_RELEASE_TOKEN is a repo-scoped token with the
+          # `write:repository` scope. Add it via the Forgejo UI:
+          # Repository Settings → Secrets → Add Secret. The CI runner
+          # exports it automatically as $FORGEJO_RELEASE_TOKEN.
+          FORGEJO_RELEASE_TOKEN: ${{ secrets.FORGEJO_RELEASE_TOKEN }}
+          # The forge passes the tag name through GITHUB_REF on tag
+          # pushes (Forgejo Actions mirrors the GitHub variable
+          # naming for compatibility).
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+          API_BASE: ${{ github.server_url }}/api/v1
+        run: |
+          set -euo pipefail
+
+          # Resolve the release ID. Tag pushes auto-create an empty
+          # release on Forgejo; we fetch its ID then upload assets
+          # to that ID's /assets endpoint.
+          release_id=$(curl -fsSL \
+            -H "Authorization: token ${FORGEJO_RELEASE_TOKEN}" \
+            "${API_BASE}/repos/${REPO}/releases/tags/${TAG}" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+
+          echo "Release ID for tag ${TAG}: ${release_id}"
+
+          for f in dist/*.tar.gz dist/*.zip dist/*checksums.txt; do
+            [ -f "$f" ] || continue
+            echo "Uploading $(basename "$f")"
+            curl -fsSL \
+              -H "Authorization: token ${FORGEJO_RELEASE_TOKEN}" \
+              -X POST \
+              -F "attachment=@${f}" \
+              "${API_BASE}/repos/${REPO}/releases/${release_id}/assets?name=$(basename "$f")"
+            echo
+          done
+
+          echo "✓ Upload complete"
