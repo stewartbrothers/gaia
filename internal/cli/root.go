@@ -72,6 +72,7 @@ auth setup.`,
 	root.AddCommand(newIssueCmd(flags))
 	root.AddCommand(newPRCmd(flags))
 	root.AddCommand(newSearchCmd(flags))
+	root.AddCommand(newLabelCmd(flags))
 
 	return root
 }
