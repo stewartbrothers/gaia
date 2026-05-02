@@ -21,3 +21,8 @@
 *.local.yaml
 .env
 .env.*
+
+# Top-level binaries: produced by `go build ./cmd/gaia` or
+# `go build ./cmd/gaia-mcp` without -o (which writes to cwd, not bin/).
+/gaia
+/gaia-mcp
