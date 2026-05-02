@@ -120,21 +120,106 @@ when truncated. Pass the cursor back unchanged on the next call.
 
 ## HTTP transport
 
-`gaia-mcp --http :8080` runs the streamable-HTTP transport. One
+`gaia-mcp --http <addr>` runs the streamable-HTTP transport. One
 URL serves both direct JSON-RPC responses and SSE streams; an
 MCP-aware client picks per-request. The protocol-level handshake
 is identical to stdio (`initialize` → `notifications/initialized`
 → `tools/list` / `tools/call`), so any client that works against
 stdio works against HTTP with a transport-config switch.
 
+### Bind policy
+
+Anyone who reaches the HTTP listener acts as the configured forge
+token holder. To prevent accidental public exposure, gaia-mcp
+refuses to start in unsafe combinations:
+
+| `--http` binds to | bearer auth (`--token-file`) | `--allow-public-no-auth` | result |
+|---|---|---|---|
+| `127.0.0.1`, `[::1]`, `localhost` | optional | n/a | start |
+| non-loopback (`:8080`, `0.0.0.0:…`, public IP) | configured | n/a | start |
+| non-loopback | not configured | `true` | start (proxy in front) |
+| non-loopback | not configured | `false` (default) | **refuse** |
+
+`localhost` (and `127.0.0.1`) is the only bind where no-auth is
+allowed by default — the network already gates reachability to
+the same host. Any other bind requires either bearer auth on
+gaia-mcp or an explicit acknowledgment that auth happens upstream
+(`--allow-public-no-auth`, intended for reverse-proxy deployments).
+
 ```bash
-gaia-mcp --http :8080
-gaia-mcp --http :8080 --base-path /v1   # custom URL prefix
-gaia-mcp --http :8080 \
-  --read-header-timeout 10s \
-  --idle-timeout 120s \
-  --shutdown-timeout 10s
+gaia-mcp --http 127.0.0.1:8080                            # local agent
+gaia-mcp --http :8080 --token-file /etc/gaia-mcp/tokens   # public, authed
+gaia-mcp --http :8080 --allow-public-no-auth              # behind a proxy
 ```
+
+### Bearer auth
+
+`--token-file <path>` enables `Authorization: Bearer <token>` on
+every request. The file format:
+
+```
+# comments allowed (full-line, # prefix)
+tok_alice                    # bare token; label auto-set "token-N"
+tok_bob   alice              # token + space + free-form label
+tok_carol bob's-laptop       # multi-word labels are fine
+```
+
+The file mode must be `0600` (owner read/write only). gaia-mcp
+refuses to start with anything more permissive — same posture
+ssh takes for `~/.ssh/id_rsa`. Generate tokens with:
+
+```bash
+umask 077
+mkdir -p /etc/gaia-mcp
+{ echo "$(openssl rand -base64 32) alice@laptop"
+  echo "$(openssl rand -base64 32) bob@desktop"; } > /etc/gaia-mcp/tokens
+chmod 0600 /etc/gaia-mcp/tokens
+```
+
+Constant-time comparison guards against timing-attack token
+recovery. Failed auth returns `401 Unauthorized` with
+`WWW-Authenticate: Bearer realm="gaia-mcp"` and an opaque body
+("Unauthorized") — nothing about *why* the token was rejected.
+Detail goes only to the audit log on stderr.
+
+### Audit log
+
+Every authenticated request emits one INFO line:
+
+```json
+{"level":"INFO","msg":"auth_success","label":"alice@laptop",
+ "remote":"203.0.113.7:54321","path":"/mcp"}
+```
+
+Every rejected one emits a WARN with a stable reason enum:
+
+```json
+{"level":"WARN","msg":"auth_failure","reason":"unknown_token",
+ "remote":"203.0.113.7:54321","path":"/mcp"}
+```
+
+Reason values: `no_authorization_header`, `non_bearer_scheme`,
+`empty_bearer`, `unknown_token`. The token itself never appears.
+The label is what survives token rotation — use it as the stable
+identity in dashboards and alerts.
+
+`remote` honors `X-Forwarded-For` when set, so deployments behind
+nginx / oauth2-proxy / Cloudflare attribute calls to the real
+client. Configure the proxy to **strip client-supplied XFF and set
+its own** — multi-element XFF where the leftmost is
+client-controlled is spoofable.
+
+### Single-tenant scope
+
+This commit lands one shared bearer namespace: every valid token
+authenticates against the *same* upstream forge credentials
+(`gaia auth forgejo …` on the host). True multi-tenant — where
+token A maps to user A's forge token and token B to user B's — is
+a follow-up; tracked alongside the deploy doc in #41.
+
+Practically: today, configure one bearer per agent so the audit
+log stays useful (you can tell *which* agent called a tool), but
+all agents currently share the operator's forge identity.
 
 ### Smoke test from the shell
 
@@ -194,16 +279,13 @@ needs to track listener lifecycle.
 
 ### What's deferred
 
-This commit lands the unauthenticated single-tenant transport.
-The follow-ups (each with its own issue):
+- **#41** — `/healthz` endpoint suitable for orchestrator health
+  checks + container-deployment doc with Dockerfile, compose
+  example, reverse-proxy guidance.
+- Per-tenant forge credentials (token A → user A's forge token).
+  Filed as a #40 follow-up; one deploy of gaia-mcp acting as
+  multiple identities is non-trivial config-wise.
 
-- **#40** — per-request bearer-token auth + multi-tenant config
-  (one `gaia-mcp` serves multiple users, each with their own
-  forge credentials).
-- **#41** — `/healthz` endpoint suitable for orchestrator
-  health checks + container-deployment doc with Dockerfile,
-  compose example, reverse-proxy guidance.
-
-Until #40 lands, the HTTP transport should only be exposed inside
-a trusted network (same docker network as Forgejo, or behind a
-reverse proxy that handles auth itself).
+The transport is now safe to expose on a public port given a
+properly-restricted token file; deploy guidance with full nginx /
+docker-compose examples lands with #41.
