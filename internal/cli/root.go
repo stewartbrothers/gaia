@@ -70,6 +70,7 @@ auth setup.`,
 	root.AddCommand(newWhoamiCmd(flags))
 	root.AddCommand(newAuthCmd(flags))
 	root.AddCommand(newIssueCmd(flags))
+	root.AddCommand(newPRCmd(flags))
 
 	return root
 }
