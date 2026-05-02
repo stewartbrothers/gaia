@@ -2,17 +2,14 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/stewartbrothers/gaia/core/auth"
 	"github.com/stewartbrothers/gaia/core/exitcode"
+	"github.com/stewartbrothers/gaia/core/github"
 )
 
 // githubAPIURL is the production GitHub.com API base. A package-level
@@ -32,7 +29,7 @@ func newAuthGHCmd() *cobra.Command {
 GET /user against api.github.com, and records the credential. After
 this, gaia commands targeting github.com work without env vars.
 
-Phase 1 ships paste-a-PAT only. Phase 2 will add OAuth Device Flow
+Phase 1 shipped paste-a-PAT only; Phase 2 will add OAuth Device Flow
 (` + "`gaia auth gh --device`" + `) once a public OAuth app is registered;
 this command's flags are forward-compatible with that.
 
@@ -105,43 +102,18 @@ Contents: read; Issues: read+write; Pull requests: read+write.`,
 	return cmd
 }
 
-// validateGitHubToken issues a GET /user to baseURL with token, returns
-// the login. Uses Bearer auth (works for both classic and fine-grained
-// PATs; GitHub's docs prefer Bearer for all token types).
-//
-// We don't have a github provider yet (#31), so this is a one-shot
-// HTTP call rather than a full provider. Phase 2 will replace this
-// with core/github.Provider.Whoami once that lands.
+// validateGitHubToken validates a token by calling Whoami via the
+// real github.Provider. Replaces the one-shot HTTP call that was
+// here when core/github didn't exist (#31). The provider's auth
+// header, retry logic, and error mapping all kick in for free —
+// behavior is identical to a regular `gaia whoami` call against
+// github except the provider construction is local to this command
+// (we can't go through forgebuilder because no credentials are
+// stored yet — that's the whole point of `gaia auth gh`).
 func validateGitHubToken(ctx context.Context, baseURL, token string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/user", nil)
-	if err != nil {
-		return "", exitcode.Wrap(err, exitcode.Generic, "build GitHub /user request")
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", exitcode.Wrap(err, exitcode.Network, "GET /user")
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return "", exitcode.Wrap(
-			fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body)),
-			exitcode.FromHTTP(resp.StatusCode),
-			"GET /user",
-		)
-	}
-
-	var u struct {
-		Login string `json:"login"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&u); err != nil {
-		return "", exitcode.Wrap(err, exitcode.Generic, "decode /user response")
-	}
-	return u.Login, nil
+	p := github.NewProvider(github.Options{
+		BaseURL: baseURL,
+		Token:   token,
+	})
+	return p.Whoami(ctx)
 }
