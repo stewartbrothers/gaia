@@ -14,3 +14,11 @@ func SetGithubAPIURLForTest(u string) string {
 	githubAPIURL = u
 	return old
 }
+
+// SetGitRunnerForTest swaps the gitRunnerForTest hook used by
+// `gaia pr checkout` so tests can intercept git subprocess
+// invocations without spawning git. nil restores the production
+// execGit.
+func SetGitRunnerForTest(fn gitRunner) {
+	gitRunnerForTest = fn
+}
