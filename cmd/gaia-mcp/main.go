@@ -52,6 +52,12 @@ type httpConfig struct {
 	ReadHeaderTimeout time.Duration
 	IdleTimeout       time.Duration
 	ShutdownTimeout   time.Duration
+	// AllowPublicNoAuth lets the operator bind to a non-loopback
+	// address without configuring bearer tokens. Required when a
+	// reverse proxy handles auth in front of gaia-mcp; otherwise
+	// startup refuses with a usage error to prevent accidental
+	// public exposure.
+	AllowPublicNoAuth bool
 }
 
 func run(args []string) error {
@@ -63,6 +69,7 @@ func run(args []string) error {
 	fs.DurationVar(&cfg.ReadHeaderTimeout, "read-header-timeout", 10*time.Second, "max time to read request headers (slow-loris guard)")
 	fs.DurationVar(&cfg.IdleTimeout, "idle-timeout", 120*time.Second, "max idle time between requests on a keep-alive connection")
 	fs.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", 10*time.Second, "max drain window on SIGTERM/SIGINT before in-flight requests are cut")
+	fs.BoolVar(&cfg.AllowPublicNoAuth, "allow-public-no-auth", false, "permit binding to a non-loopback interface without bearer auth (only safe behind a reverse proxy that authenticates requests itself)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -70,6 +77,14 @@ func run(args []string) error {
 	s := buildServer()
 
 	if cfg.Addr != "" {
+		policy := bindPolicy{
+			Addr:              cfg.Addr,
+			HasAuth:           false, // tokens land in commit 2 of this stack
+			AllowPublicNoAuth: cfg.AllowPublicNoAuth,
+		}
+		if err := policy.validate(); err != nil {
+			return err
+		}
 		return runHTTP(cfg, s)
 	}
 	return server.ServeStdio(s)
