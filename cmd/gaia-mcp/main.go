@@ -119,6 +119,18 @@ func runHTTP(cfg httpConfig, s *server.MCPServer) error {
 	mux := http.NewServeMux()
 	mux.Handle(cfg.BasePath, authed)
 
+	// /healthz and /readyz are mounted on the same listener so a
+	// single port is the deploy contract. Both sit *outside* the
+	// auth middleware — orchestrators don't carry bearer tokens, and
+	// the responses are opaque (no credential surface).
+	//
+	// /healthz is liveness (process alive); /readyz is readiness
+	// (forge reachable + token valid). Orchestrators that distinguish
+	// the two configure healthz on the restart probe and readyz on
+	// the traffic probe.
+	mux.Handle("/healthz", healthzHandler())
+	mux.Handle("/readyz", readyzHandler(build, logger, 5*time.Second))
+
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           mux,

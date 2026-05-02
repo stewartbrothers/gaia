@@ -1,0 +1,30 @@
+# Keep the Docker build context small.
+
+.git
+.github
+.forgejo
+bin/
+dist/
+coverage.out
+coverage.html
+*.test
+*.local.yaml
+.env
+.env.*
+
+# Tests + recorded fixtures aren't needed in the runtime build.
+# `go build` doesn't pull *_test.go files anyway, and the fixture
+# JSON adds ~340KB of build-context churn for nothing.
+**/testdata/
+**/*_test.go
+
+# Editor + OS noise.
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Top-level binaries the .gitignore at repo root catches.
+/gaia
+/gaia-mcp

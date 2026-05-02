@@ -1,0 +1,88 @@
+# Example docker-compose for gaia-mcp alongside Forgejo.
+#
+# Two patterns shown side-by-side:
+#
+#   1. Loopback only (gaia-mcp.local)
+#      Bound to 127.0.0.1 on the host. Reachable from the same
+#      machine over plain HTTP. Suitable for a developer workstation
+#      where the agent runs locally next to gaia-mcp.
+#
+#   2. Public + TLS (gaia-mcp.public)
+#      Bound inside an internal docker network only. nginx
+#      terminates TLS on the host's :443 and proxies to gaia-mcp.
+#      Suitable for a small team's shared deployment.
+#
+# Pass-through auth means clients supply their own forge PAT in
+# Authorization: Bearer; gaia-mcp itself stores no credentials.
+# That's why the deploy doesn't carry any token-file / secret —
+# there's nothing to inject.
+#
+# Copy this file to docker-compose.yml, drop the pattern you don't
+# need, fill in DNS/cert paths, and `docker compose up -d`.
+
+services:
+  # ---------------------------------------------------------------
+  # Pattern 1 — loopback only
+  # ---------------------------------------------------------------
+  gaia-mcp.local:
+    image: gaia-mcp:latest
+    restart: unless-stopped
+    ports:
+      # 127.0.0.1 prefix binds the published port to host loopback,
+      # NOT 0.0.0.0. Without the prefix Docker binds 0.0.0.0 by
+      # default — that would defeat the bind policy.
+      - "127.0.0.1:8080:8080"
+    command:
+      - --http
+      - :8080
+    healthcheck:
+      # Mirrors the Dockerfile HEALTHCHECK; explicit here so
+      # `docker compose ps` reflects health status.
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  # ---------------------------------------------------------------
+  # Pattern 2 — public via reverse proxy (nginx terminates TLS)
+  # ---------------------------------------------------------------
+  gaia-mcp.public:
+    image: gaia-mcp:latest
+    restart: unless-stopped
+    networks:
+      - forge-net
+    expose:
+      - "8080" # internal-only; not published to host
+    command:
+      - --http
+      - :8080
+      - --allow-public-no-tls # nginx in front handles TLS
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    networks:
+      - forge-net
+    ports:
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      # Mount your TLS cert + key from your cert-manager / Caddy /
+      # Let's Encrypt sidecar of choice. Paths must match nginx.conf.
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      gaia-mcp.public:
+        condition: service_healthy
+
+networks:
+  forge-net:
+    # If Forgejo is in a separate compose stack, mark this
+    # external: true and `docker network create forge-net` once.
+    driver: bridge
