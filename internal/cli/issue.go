@@ -19,6 +19,13 @@ func newIssueCmd(flags *globalFlags) *cobra.Command {
 	}
 	cmd.AddCommand(newIssueListCmd(flags))
 	cmd.AddCommand(newIssueViewCmd(flags))
+	cmd.AddCommand(newIssueCreateCmd(flags))
+	cmd.AddCommand(newIssueEditCmd(flags))
+	cmd.AddCommand(newIssueCloseCmd(flags))
+	cmd.AddCommand(newIssueReopenCmd(flags))
+	cmd.AddCommand(newIssueCommentCmd(flags))
+	cmd.AddCommand(newIssueCommentEditCmd(flags))
+	cmd.AddCommand(newIssueCommentDeleteCmd(flags))
 	return cmd
 }
 
