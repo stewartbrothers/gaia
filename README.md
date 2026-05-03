@@ -1,21 +1,30 @@
 # gaia — Git AI Access
 
-Token-trimmed, agent-friendly CLI and MCP server for Forgejo (and
-eventually GitHub). Built so that LLM-driven agents can interact with
-a forge over either shell tools or the Model Context Protocol without
-burning tokens on the bloat that comes with raw REST responses.
+> **Latest: v0.2.0** — released 2026-05-03. Phase 4 features (cache,
+> NDJSON streaming, webhooks, packages, wikis), chain primitives
+> (parallel + composition), substantial security hardening pass.
+> See [`CHANGELOG.md`](CHANGELOG.md#020--2026-05-03) for the full
+> notes and [`bench/`](bench/README.md) for measured byte/token wins.
+
+Token-trimmed, agent-friendly CLI and MCP server for **Forgejo and
+GitHub**. Built so that LLM-driven agents can interact with a forge
+over either shell tools or the Model Context Protocol without burning
+tokens on the bloat that comes with raw REST responses.
 
 `gaia` ships:
 
 - **`gaia` CLI** — every read + write operation an AI agent or human
   typically needs against a forge, with output shaped for LLM
   consumption: JSON-by-default, `--fields` projection, paginated
-  envelopes, and structured exit codes.
-- **`gaia-mcp`** — a Model Context Protocol stdio server (HTTP/SSE in
-  Phase 3) exposing every CLI operation as an MCP tool with the same
-  envelope shape.
+  envelopes, structured exit codes, NDJSON streaming, and
+  multi-step workflow chains.
+- **`gaia-mcp`** — a Model Context Protocol server with both stdio
+  and streamable HTTP transports, pass-through bearer auth (the
+  client's forge PAT travels untouched; gaia-mcp stores nothing).
 - A shared **`core/`** Go library with a `Provider` interface that
-  backs both frontends. Forgejo first; GitHub provider in Phase 2.
+  backs both frontends. Forgejo and GitHub providers at parity for
+  issues, PRs, comments, labels, releases, search, packages, wikis,
+  webhooks.
 
 ## Install
 
@@ -25,7 +34,7 @@ brew tap Gerwood/gaia https://github.com/stewartbrothers/gaia
 brew install gaia
 
 # Or download a tagged release for your platform (replace TAG + PLATFORM):
-TAG=v0.1.0 PLATFORM=linux_x86_64
+TAG=v0.2.0 PLATFORM=linux_x86_64
 curl -fsSLO "https://github.com/stewartbrothers/gaia/releases/download/${TAG}/gaia_${TAG}_${PLATFORM}.tar.gz"
 tar -xzf "gaia_${TAG}_${PLATFORM}.tar.gz"
 sudo install gaia gaia-mcp /usr/local/bin/
@@ -67,16 +76,30 @@ $ gaia --repo o/r pr merge 42 --method squash
 ## Command surface (current)
 
 ```
-gaia auth   forgejo | gh | status | logout
-gaia issue  list | view | create | edit | close | reopen
-            comment | comment-edit | comment-delete
-gaia pr     list | view | diff | comments
-            create | edit | close | reopen | comment-create
-            merge | review | checkout
-gaia label  list | create | edit | delete
-gaia search <query>
+gaia auth     forgejo | gh | status | logout
+gaia issue    list | view | create | edit | close | reopen
+              comment | comment-edit | comment-delete
+gaia pr       list | view | diff | comments | ci-wait
+              create | edit | close | reopen | comment-create
+              merge | review | checkout
+gaia label    list | create | edit | delete
+gaia release  list | view | create | edit | delete | publish
+gaia packages list | view | delete | upload
+gaia wiki     list | view | search | edit | delete
+gaia webhook  list | view | create | edit | delete
+              deliveries | redeliver | test
+gaia chain    run | resume | list | abort
+gaia cache    nuke
+gaia search   <query>
 gaia whoami | version
 ```
+
+Every command supports `--format json|pretty|ndjson` and `--fields`
+projection; mutating commands honour `--dry-run` where it makes
+sense. See [`docs/output-format.md`](docs/output-format.md) for the
+envelope shape and [`docs/exit-codes.md`](docs/exit-codes.md) for
+the structured exit-code matrix (0 success, 2 usage, 3 not-found,
+4 auth, 5 rate-limit, 6 network, 7-11 CI/merge/policy outcomes).
 
 ## Docs
 
@@ -95,10 +118,29 @@ gaia whoami | version
 
 ## Status
 
-**v0.1.0** — first developer-preview release. Phases 1–3 functionally
-complete: Forgejo + GitHub providers, full CLI + MCP surface (stdio
-and HTTP transports with pass-through bearer auth, healthz/readyz,
-container deploy), goreleaser-driven multi-arch binaries.
+**v0.2.0** — second developer-preview release. Phases 1-3 complete +
+most of Phase 4 shipped:
+
+- **Forgejo + GitHub providers at parity** for issues, PRs, comments,
+  labels, releases, search, packages, wikis, webhooks (clone-cache
+  fallback for GitHub wikis since they aren't REST-served).
+- **CLI + MCP** with stdio + streamable HTTP transports, pass-through
+  bearer auth, healthz/readyz, container deploy.
+- **Local SQLite cache** with TTL + ETag/If-Modified-Since
+  conditional GET (~820× speedup on cache-bench).
+- **NDJSON streaming output** for list commands (~150× faster
+  time-to-first-byte).
+- **Chain primitives** complete (linear → yield/resume →
+  parallel/for_each/composition); `pr-create-and-land` canned
+  chain measures **81% byte / 86% tool-turn reduction** vs the
+  multi-call agent flow.
+- **Security hardening pass** — chain shell-injection closed,
+  prompt-injection markers, env scrub, govulncheck gate, SHA-pinned
+  CI actions, `SECURITY.md`.
+- **Distribution infrastructure** — Homebrew tap, GitHub mirror,
+  release workflow polish.
+- **Goreleaser-driven multi-arch binaries** + per-resource measured
+  byte/token baselines under [`bench/`](bench/README.md).
 
 ### Versioning
 
@@ -109,22 +151,27 @@ shape, exit codes) may land at minor bumps**. See
 cut-a-release procedure; see [`CHANGELOG.md`](CHANGELOG.md) for
 release notes.
 
-### What's next
+### What's next (v0.3.0 milestone)
 
-Phase 4 (cache #42, indexed search #43, webhook helpers #85/#44, CI
-runs/logs #45, NDJSON streaming #46), wider Distribution (homebrew
-#49, upstream submission #51), and broader surface (package
-registry #107, wikis #108).
+Remaining Phase 4 work plus follow-ups from this cycle:
+
+- **#43** Cross-resource indexed search (depends on the cache
+  layer that just landed).
+- **#45** `gaia ci runs` / `gaia ci logs` helpers.
+- **#51** Forgejo upstream submission (process work).
+- **#153** Wire remaining `Get<Resource>` methods through
+  `GetCached` (today only `GetIssue` and `GetPullRequest` are
+  cached).
 
 ## Roadmap
 
-| Phase | Tracker | Goal |
-| ----- | ------- | ---- |
-| 1     | [#1](../../issues/1) | Forgejo provider, full CLI surface, stdio MCP server |
-| 2     | [#2](../../issues/2) | GitHub provider parity |
-| 3     | [#3](../../issues/3) | Remote MCP transport (HTTP/SSE) |
-| 4     | [#4](../../issues/4) | Cache, indexed search, webhook + CI helpers |
-| —     | [#5](../../issues/5) | Distribution & upstreaming |
+| Phase | Tracker | Goal | Status |
+| ----- | ------- | ---- | ------ |
+| 1     | [#1](../../issues/1) | Forgejo provider, full CLI surface, stdio MCP server | ✓ shipped (v0.1.0) |
+| 2     | [#2](../../issues/2) | GitHub provider parity | ✓ shipped (v0.1.0) |
+| 3     | [#3](../../issues/3) | Remote MCP transport (HTTP/SSE) | ✓ shipped (v0.1.0) |
+| 4     | [#4](../../issues/4) | Cache, indexed search, webhook + CI helpers | mostly shipped (v0.2.0); #43 + #45 remain |
+| —     | [#5](../../issues/5) | Distribution & upstreaming | mostly shipped (v0.2.0); #51 remains |
 
 ## Build
 
