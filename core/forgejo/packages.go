@@ -3,10 +3,12 @@ package forgejo
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"strconv"
 	"time"
 
+	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/core/types"
 )
@@ -84,6 +86,17 @@ func (p *Provider) GetPackage(ctx context.Context, owner, pkgType, name, version
 // success status; the client treats any 2xx as success.
 func (p *Provider) DeletePackage(ctx context.Context, owner, pkgType, name, version string) error {
 	return p.client.Delete(ctx, packagePath(owner, pkgType, name, version))
+}
+
+// UploadPackage is wired up here as a stub returning an exit-coded
+// "not implemented" error so the contract from #122 lands without
+// committing to the wire shape in the same commit. The real
+// generic-package PUT impl lands in the next commit; keeping this
+// stub here for one commit means every other commit in this PR
+// stays green even when checked out individually.
+func (p *Provider) UploadPackage(_ context.Context, _, _, _, _ string, _ provider.UploadPackageOptions, _ io.Reader) error {
+	return exitcode.Errorf(exitcode.Generic,
+		"forgejo UploadPackage stub — real implementation lands in the next commit of #122")
 }
 
 // packagePath builds `/packages/{owner}/{type}/{name}/{version}` with

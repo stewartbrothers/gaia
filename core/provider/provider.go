@@ -155,6 +155,21 @@ type Provider interface {
 	// DeletePackage removes one package version. 204 is success.
 	DeletePackage(ctx context.Context, owner, pkgType, name, version string) error
 
+	// UploadPackage publishes a single artifact to a package version.
+	// On Forgejo this targets the generic-package endpoint:
+	//   PUT /packages/{owner}/generic/{name}/{version}/{file}
+	// streaming `body` as the binary payload. On GitHub the
+	// per-registry upload surface (npm publish, container manifest
+	// push, ...) doesn't fold into one shape; the GitHub provider
+	// returns a "not implemented" error until per-kind dispatch
+	// lands as a follow-up.
+	//
+	// `pkgType` selects the registry. PR #122 ships only "generic"
+	// on Forgejo; non-generic types are rejected with a usage error
+	// so callers don't see a confusing 404 from a path that doesn't
+	// exist for their forge+registry combo.
+	UploadPackage(ctx context.Context, owner, pkgType, name, version string, opts UploadPackageOptions, body io.Reader) error
+
 	// --- Wikis (Phase 4 / #108) --------------------------------------
 
 	// ListWikiPages returns wiki page summaries (Title + Path +

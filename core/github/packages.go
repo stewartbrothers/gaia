@@ -22,6 +22,7 @@ package github
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"strconv"
 	"time"
@@ -230,4 +231,25 @@ func packageVersionPath(scope, owner, pkgType, name string, versionID int64) str
 		url.PathEscape(name),
 		versionID,
 	)
+}
+
+// UploadPackage is intentionally NotImplemented on GitHub. GitHub
+// Packages publish flows are per-registry: npm uses `npm publish`
+// against `npm.pkg.github.com` (semver versioning + tarball upload +
+// per-version metadata); container/GHCR uses Docker registry v2 push
+// (manifest + layer blobs); maven/nuget/rubygems each have their own
+// publish protocols. Folding all of those into one provider method
+// isn't useful — the per-registry semantics differ enough that a
+// single shape would force callers to pre-format an
+// already-protocol-specific payload.
+//
+// The follow-up issue tracks per-kind dispatch (e.g.,
+// `UploadPackage(pkgType="container", ...)` proxying through GHCR's
+// v2 API). For now, the documented error tells callers exactly what
+// to look up.
+//
+// See `docs/provider-parity.md` row for `UploadPackage`.
+func (p *Provider) UploadPackage(_ context.Context, _, pkgType, _, _ string, _ provider.UploadPackageOptions, _ io.Reader) error {
+	return exitcode.Errorf(exitcode.Generic,
+		"GitHub Packages upload is not implemented for pkgType=%q — per-registry publish flows (npm publish, GHCR v2 push, ...) are tracked in a #122 follow-up", pkgType)
 }
