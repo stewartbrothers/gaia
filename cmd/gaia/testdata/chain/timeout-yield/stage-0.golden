@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "data": {
+    "chain": "timeout-yields",
+    "status": "yielded",
+    "steps": [
+      {
+        "id": "slow",
+        "run": "sleep 2",
+        "status": "yielded",
+        "exit_code": -1,
+        "duration_ms": 0,
+        "timed_out": true
+      }
+    ],
+    "duration_ms": 0,
+    "resume_token": "<TOKEN>",
+    "yield_reason": "timeout",
+    "yield_payload": {
+      "exit_code": -1,
+      "stderr": "",
+      "stdout": "",
+      "step": "slow"
+    },
+    "remaining_steps": [
+      "never"
+    ]
+  }
+}

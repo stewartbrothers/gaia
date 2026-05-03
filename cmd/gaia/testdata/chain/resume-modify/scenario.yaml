@@ -1,0 +1,42 @@
+description: |
+  Chain yields; agent resumes with --decision modify --modify-step
+  --modify-vars to change a var so the yielded step can recover.
+  Exercises B-2.5.
+
+  The chain uses ${unlock} as a guard: when unlock=no the step
+  exits 5 (yields); when unlock=yes the step echoes ok. The agent
+  modifies unlock=yes on resume.
+
+chain_yaml: |
+  name: modify-recovers
+  vars:
+    unlock:
+      default: "no"
+  steps:
+    - id: check
+      run: 'if [ "${unlock}" = "yes" ]; then echo ok; else exit 5; fi'
+      yield_on:
+        - rate_limited
+
+stages:
+  - description: gaia chain run — yields (unlock=no)
+    args:
+      - chain
+      - run
+      - --chain-file
+      - ${chainfile}
+    exit_code: 0
+  - description: |
+      gaia chain resume --decision modify — flips unlock to yes;
+      the yielded step re-runs with the new var and succeeds.
+    args:
+      - chain
+      - resume
+      - ${token:0}
+      - --decision
+      - modify
+      - --modify-step
+      - check
+      - --modify-vars
+      - unlock=yes
+    exit_code: 0

@@ -1,0 +1,23 @@
+description: |
+  Per-step `timeout:` kicks in, runner kills the subprocess, step
+  yields with condition `timeout`. Exercises B-2.1.
+
+chain_yaml: |
+  name: timeout-yields
+  steps:
+    - id: slow
+      run: sleep 2
+      timeout: 50ms
+      yield_on:
+        - timeout
+    - id: never
+      run: echo never reached
+
+stages:
+  - description: gaia chain run — yields after 50ms
+    args:
+      - chain
+      - run
+      - --chain-file
+      - ${chainfile}
+    exit_code: 0

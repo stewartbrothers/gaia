@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "data": {
+    "chain": "cleanup-runs",
+    "status": "aborted",
+    "steps": [
+      {
+        "id": "stop",
+        "run": "exit 4",
+        "status": "failed",
+        "exit_code": 4,
+        "duration_ms": 0
+      }
+    ],
+    "duration_ms": 0,
+    "abort_reason": "auth_error",
+    "cleanup_results": [
+      {
+        "id": "log",
+        "run": "echo cleanup-ran",
+        "status": "ok",
+        "stdout": "cleanup-ran\n",
+        "duration_ms": 0
+      }
+    ]
+  }
+}

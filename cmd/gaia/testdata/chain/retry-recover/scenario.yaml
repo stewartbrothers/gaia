@@ -1,0 +1,28 @@
+description: |
+  Step fails twice, succeeds on the 3rd attempt. Retries record in
+  StepResult.Attempts. Final outcome is success — no yield/abort
+  mid-retry. Exercises B-2.2.
+
+chain_yaml: |
+  name: retry-recovers
+  vars:
+    sentinel:
+      required: true
+  steps:
+    - id: flaky
+      run: 'n=$(cat "${sentinel}" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "${sentinel}"; if [ $n -lt 3 ]; then exit 1; fi; echo recovered'
+      retry:
+        max: 5
+        delay: 1ms
+        backoff: constant
+
+stages:
+  - description: gaia chain run — recovers after 2 retries
+    args:
+      - chain
+      - run
+      - --chain-file
+      - ${chainfile}
+      - --var
+      - sentinel=${tempdir}/attempts
+    exit_code: 0

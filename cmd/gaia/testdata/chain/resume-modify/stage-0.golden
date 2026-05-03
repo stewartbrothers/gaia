@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "data": {
+    "chain": "modify-recovers",
+    "status": "yielded",
+    "steps": [
+      {
+        "id": "check",
+        "run": "if [ \"no\" = \"yes\" ]; then echo ok; else exit 5; fi",
+        "status": "yielded",
+        "exit_code": 5,
+        "duration_ms": 0
+      }
+    ],
+    "duration_ms": 0,
+    "resume_token": "<TOKEN>",
+    "yield_reason": "rate_limited",
+    "yield_payload": {
+      "exit_code": 5,
+      "stderr": "",
+      "stdout": "",
+      "step": "check"
+    }
+  }
+}
