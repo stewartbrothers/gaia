@@ -1,0 +1,49 @@
+description: |
+  `gaia issue list --format ndjson` happy path. Two issues come back
+  from the fake forge; each emits as one {"item": ...} line, then a
+  {"_metadata": ...} trailer. Trust markers persist on title (and on
+  the body when present). Exit code is 0.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/issues
+    status: 200
+    body: |
+      [
+        {
+          "number": 1, "title": "first thing", "state": "open",
+          "user": {"login": "alice"},
+          "labels": [{"id": 1, "name": "bug", "color": "ff0000"}],
+          "created_at": "2026-04-01T00:00:00Z",
+          "updated_at": "2026-04-02T00:00:00Z"
+        },
+        {
+          "number": 2, "title": "second thing", "state": "closed",
+          "user": {"login": "bob"},
+          "labels": [],
+          "created_at": "2026-04-03T00:00:00Z",
+          "updated_at": "2026-04-04T00:00:00Z",
+          "closed_at": "2026-04-04T00:00:00Z"
+        }
+      ]
+
+stages:
+  - description: gaia issue list --format ndjson — one issue per line + trailer
+    args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - --format
+      - ndjson
+      - issue
+      - list
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: GET
+      path: /repos/o/r/issues
+      header_has_auth: true

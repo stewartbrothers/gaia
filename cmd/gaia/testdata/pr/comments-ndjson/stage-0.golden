@@ -1,0 +1,4 @@
+{"item":{"author":{"login":"alice"},"body":{"_trust":"external","_value":"thread comment"},"created_at":"2026-04-01T00:00:00Z","id":1,"source":"issue","updated_at":"2026-04-01T00:00:00Z"}}
+{"item":{"author":{"login":"bob"},"body":{"_trust":"external","_value":"review-level remark"},"created_at":"2026-04-02T00:00:00Z","id":50,"source":"review","updated_at":"2026-04-02T00:00:00Z"}}
+{"item":{"author":{"login":"carol"},"body":{"_trust":"external","_value":"inline note"},"created_at":"2026-04-03T00:00:00Z","id":100,"line":42,"path":"src/main.go","source":"inline","updated_at":"2026-04-03T00:00:00Z"}}
+{"_metadata":{"next_cursor":null,"schema_version":"1.0","total":3}}
