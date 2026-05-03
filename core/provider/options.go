@@ -200,3 +200,16 @@ type EditReleaseOptions struct {
 	Draft      *bool  `json:"draft,omitempty"`
 	Prerelease *bool  `json:"prerelease,omitempty"`
 }
+
+// --- Packages (Phase 4 / #107) -----------------------------------
+
+// ListPackagesOptions filters and paginates a ListPackages call.
+// Type narrows to a registry kind ("npm", "maven", "container",
+// "generic", ...); empty means all kinds. Q is a name-substring
+// filter passed straight through to Forgejo's `q` query parameter.
+type ListPackagesOptions struct {
+	Type   string
+	Q      string
+	Limit  int
+	Cursor string
+}
