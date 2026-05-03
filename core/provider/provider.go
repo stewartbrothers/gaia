@@ -196,4 +196,42 @@ type Provider interface {
 
 	// DeleteWikiPage removes a wiki page by slug. 204 is success.
 	DeleteWikiPage(ctx context.Context, owner, repo, slug string) error
+
+	// --- Webhooks (Phase 4 / #85) ---------------------------------
+
+	// ListWebhooks returns the repo's configured webhooks.
+	ListWebhooks(ctx context.Context, owner, repo string, opts ListWebhooksOptions) ([]types.Webhook, *Page, error)
+
+	// GetWebhook returns one webhook by ID.
+	GetWebhook(ctx context.Context, owner, repo string, id int64) (*types.Webhook, error)
+
+	// CreateWebhook installs a new webhook on the repo.
+	CreateWebhook(ctx context.Context, owner, repo string, opts CreateWebhookOptions) (*types.Webhook, error)
+
+	// EditWebhook patches an existing webhook by ID. AddEvents and
+	// RemoveEvents apply incrementally over the current event list
+	// (the implementation does the merge by pre-fetching).
+	EditWebhook(ctx context.Context, owner, repo string, id int64, opts EditWebhookOptions) (*types.Webhook, error)
+
+	// DeleteWebhook removes a webhook by ID. 204 is success.
+	DeleteWebhook(ctx context.Context, owner, repo string, id int64) error
+
+	// ListWebhookDeliveries returns recent delivery summaries for the
+	// given webhook. Bodies are NOT inlined; fetch
+	// GetWebhookDelivery for the per-delivery full payload.
+	ListWebhookDeliveries(ctx context.Context, owner, repo string, id int64, opts ListDeliveriesOptions) ([]types.WebhookDelivery, *Page, error)
+
+	// GetWebhookDelivery returns one delivery's full request +
+	// response payload. Use sparingly: a single delivery for a busy
+	// repo can be 50–200 KB.
+	GetWebhookDelivery(ctx context.Context, owner, repo string, id, deliveryID int64) (*types.WebhookDeliveryDetail, error)
+
+	// RedeliverWebhook re-fires a previously-sent delivery. The
+	// receiver sees the same payload + signature, with a header
+	// flag indicating it's a redelivery.
+	RedeliverWebhook(ctx context.Context, owner, repo string, id, deliveryID int64) error
+
+	// TestWebhook sends a synthetic ping event to the webhook so
+	// the operator can confirm the receiver is reachable.
+	TestWebhook(ctx context.Context, owner, repo string, id int64) error
 }
