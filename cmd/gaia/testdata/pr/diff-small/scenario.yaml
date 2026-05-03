@@ -1,0 +1,26 @@
+description: |
+  `gaia pr diff 42` parses a one-file unified diff into the structured
+  envelope. The mock returns text/plain; gaia's diff parser produces
+  hunks with line entries.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/pulls/42.diff
+    status: 200
+    content_type: text/plain
+    body_file: diff.txt
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - pr
+      - diff
+      - "42"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

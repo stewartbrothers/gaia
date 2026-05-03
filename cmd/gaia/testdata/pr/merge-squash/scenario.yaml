@@ -1,0 +1,30 @@
+description: |
+  `gaia pr merge 42 --method squash` POSTs to /pulls/42/merge with a
+  204 success. Output is the human "✓ Merged …" line.
+
+mocks:
+  - method: POST
+    path: /repos/o/r/pulls/42/merge
+    status: 204
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - pr
+      - merge
+      - "42"
+      - --method
+      - squash
+      - --delete-branch
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: POST
+      path: /repos/o/r/pulls/42/merge
+      body_contains: '"do":"squash"'

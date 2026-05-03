@@ -1,0 +1,37 @@
+description: |
+  `gaia pr comment-create 42 --body "looks good"` POSTs to the
+  /issues/N/comments endpoint (PR comments live there in Forgejo).
+
+mocks:
+  - method: POST
+    path: /repos/o/r/issues/42/comments
+    status: 201
+    body: |
+      {
+        "id": 200,
+        "user": {"login": "alice"},
+        "body": "looks good",
+        "created_at": "2026-04-05T00:00:00Z",
+        "updated_at": "2026-04-05T00:00:00Z"
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - pr
+      - comment-create
+      - "42"
+      - --body
+      - "looks good"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: POST
+      path: /repos/o/r/issues/42/comments
+      body_contains: '"body":"looks good"'

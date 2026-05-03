@@ -1,0 +1,26 @@
+description: |
+  Merge fails with 405 — PR isn't mergeable. exit code 1 (Generic).
+  Pins the error mapping; mergeability is the canonical PR-write
+  failure mode.
+
+mocks:
+  - method: POST
+    path: /repos/o/r/pulls/42/merge
+    status: 405
+    body: |
+      {"message": "PR is not mergeable"}
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - pr
+      - merge
+      - "42"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 1
