@@ -22,9 +22,15 @@ type Scope struct {
 }
 
 // Substitute resolves `${name}` and `${name.path.to.field}` references
-// in s. Returns the resolved string and a list of references that
-// couldn't be resolved — callers decide whether to error or render
-// them as <unset:name> for dry-run visibility.
+// in s without any shell-quoting. Equivalent to SubstituteRaw — kept
+// as the package's named entry point so callers that don't hand the
+// result to a shell (`on_failure.return` map values, dry-run renders,
+// etc.) stay readable.
+//
+// For run lines that are about to be passed to `sh -c`, callers MUST
+// use SubstituteShell instead so substituted values are quoted as
+// shell-literal data and can't inject metacharacters. See #135 for the
+// security background.
 //
 // Resolution order for `${name}` (no dot):
 //
@@ -38,6 +44,47 @@ type Scope struct {
 // keys (or array indices for numeric segments — though Phase A
 // doesn't ship a use case for that).
 func Substitute(s string, scope Scope) (resolved string, unresolved []string) {
+	return SubstituteRaw(s, scope)
+}
+
+// SubstituteRaw is the verbatim-substitution variant: each resolved
+// value is spliced into the result with no transformation. Use this
+// for contexts that aren't a shell command — e.g. on_failure.return
+// map values that the chain runner serializes as JSON, or dry-run
+// renderings shown to the operator.
+func SubstituteRaw(s string, scope Scope) (resolved string, unresolved []string) {
+	return substituteWith(s, scope, func(v string) string { return v })
+}
+
+// SubstituteShell is the shell-safe substitution variant: each
+// resolved value is wrapped via shellQuote before being spliced into
+// the result, so substituted vars/captures cannot inject shell
+// metacharacters into the surrounding `run:` string.
+//
+// Mitigation for #135: a hostile var (`'; rm -rf $HOME #`) or a
+// hostile forge response captured into a downstream step's `run:` is
+// rendered as a single-quoted shell literal, not as new shell tokens.
+//
+// The chain runner uses SubstituteShell at every call site whose
+// result is fed to `sh -c`. Static parts of the run line — the verbs
+// and flags written by the chain author — are NOT quoted, so a chain
+// like `run: gaia pr merge ${pr.number}` still works the way the
+// author expects. Only the values from ${...} substitutions get the
+// quoting treatment.
+//
+// Authors who genuinely need to interpret a substituted value as
+// shell tokens can wrap their own indirection: `run: sh -c "${cmd}"`
+// where ${cmd} is intended as a script body. That's an explicit,
+// auditable opt-in; the default is safe.
+func SubstituteShell(s string, scope Scope) (resolved string, unresolved []string) {
+	return substituteWith(s, scope, shellQuote)
+}
+
+// substituteWith is the single source of truth for the parsing logic.
+// transform is applied to each successfully resolved value before it's
+// written into the output buffer; unresolved refs are written back
+// literally as `${ref}` regardless of the transform.
+func substituteWith(s string, scope Scope, transform func(string) string) (resolved string, unresolved []string) {
 	var b strings.Builder
 	i := 0
 	for i < len(s) {
@@ -57,7 +104,7 @@ func Substitute(s string, scope Scope) (resolved string, unresolved []string) {
 				b.WriteString(ref)
 				b.WriteByte('}')
 			} else {
-				b.WriteString(val)
+				b.WriteString(transform(val))
 			}
 			i += 2 + end + 1
 			continue
@@ -66,6 +113,23 @@ func Substitute(s string, scope Scope) (resolved string, unresolved []string) {
 		i++
 	}
 	return b.String(), unresolved
+}
+
+// shellQuote wraps s in single quotes for safe interpolation into a
+// `sh -c`-style command line. The only character that breaks a
+// single-quoted POSIX shell context is the single quote itself; we
+// close the quoted run, emit an escaped quote, and reopen — the
+// canonical close-escape-reopen idiom (one literal embedded quote
+// becomes a four-char run: close-quote, backslash, quote,
+// open-quote). Empty strings render as a pair of empty single
+// quotes — an explicit empty argument — rather than nothing, so an
+// unset-but-resolvable value doesn't silently disappear from the
+// command line.
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // lookup resolves a single ref string (the contents of `${...}`)

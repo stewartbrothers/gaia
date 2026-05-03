@@ -75,12 +75,102 @@ func TestRunDryRun(t *testing.T) {
 	if len(res.Steps) != 1 {
 		t.Fatalf("steps: %d", len(res.Steps))
 	}
-	if res.Steps[0].Run != "echo hello world" {
+	// Substituted vars are shell-quoted in the resolved run line so
+	// hostile values can't inject shell metacharacters (#135).
+	if res.Steps[0].Run != "echo hello 'world'" {
 		t.Errorf("resolved run: %q", res.Steps[0].Run)
 	}
 	if res.Steps[0].Status != chain.StepSkipped {
 		t.Errorf("dry-run step should be skipped; got %s", res.Steps[0].Status)
 	}
+}
+
+// TestRunShellInjectionVarIsQuoted is the end-to-end regression for
+// #135. A var containing shell metachars must NOT be able to escape
+// the run-line literal and execute a separate command. Concretely:
+// the hostile value embeds a `touch` command; if quoting fails, the
+// chain runner's `sh -c` would create the marker file. With proper
+// shell-quoting, the marker file is never created.
+func TestRunShellInjectionVarIsQuoted(t *testing.T) {
+	tmp := t.TempDir()
+	marker := filepath.Join(tmp, "should-not-exist")
+
+	// The classic shell-injection payload: close the literal, run
+	// arbitrary commands, comment out the trailing literal.
+	hostile := "value\"; touch '" + marker + "'; echo \""
+
+	c := &chain.Chain{
+		Name: "inject",
+		Vars: map[string]chain.VarSpec{"var": {Required: true}},
+		Steps: []chain.Step{
+			{ID: "echo", Run: "echo HELLO_${var}"},
+		},
+	}
+	res, err := chain.Run(context.Background(), c,
+		map[string]string{"var": hostile}, chain.RunOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != chain.StatusSuccess {
+		t.Fatalf("status: %s, failure: %+v", res.Status, res.Failure)
+	}
+	if _, err := os.Stat(marker); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("shell-injection succeeded: marker file %q exists (err=%v) — quoting failed", marker, err)
+	}
+	// The hostile bytes should still appear in stdout (echoed verbatim
+	// as a single argument), confirming the value was passed through
+	// as data rather than swallowed.
+	if !strings.Contains(res.Steps[0].Stdout, hostile) {
+		t.Errorf("hostile value missing from stdout — quoting may have mangled it: %q", res.Steps[0].Stdout)
+	}
+}
+
+// TestRunShellInjectionCaptureIsQuoted exercises the same regression
+// via a capture (the more dangerous adversary path: a hostile forge
+// response feeding a downstream `run:` step). The first step writes
+// a hostile JSON envelope to a file via a heredoc (no var
+// substitution involved, so the test fixture itself isn't subject to
+// shell-quoting); the second step reads + emits it as the capture
+// source; the third step splices the captured field into `sh -c`.
+func TestRunShellInjectionCaptureIsQuoted(t *testing.T) {
+	tmp := t.TempDir()
+	marker := filepath.Join(tmp, "capture-pwn")
+	fixture := filepath.Join(tmp, "envelope.json")
+
+	// Hostile JSON: data.field carries a payload that, if spliced
+	// unquoted into `echo got=${obj.field}`, would close the literal
+	// and run a touch command.
+	payload := `a"; touch ` + marker + `; echo "b`
+	envBytes := []byte(`{"data":{"field":` + jsonString(payload) + `}}`)
+	if err := os.WriteFile(fixture, envBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := &chain.Chain{
+		Name: "inject-capture",
+		Steps: []chain.Step{
+			{ID: "fetch", Capture: "obj", Run: "cat " + fixture},
+			{ID: "use", Run: "echo got=${obj.field}"},
+		},
+	}
+	res, err := chain.Run(context.Background(), c, nil, chain.RunOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != chain.StatusSuccess {
+		t.Fatalf("status: %s, failure: %+v", res.Status, res.Failure)
+	}
+	if _, err := os.Stat(marker); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("capture-driven shell-injection succeeded: %q exists", marker)
+	}
+}
+
+// jsonString quotes a string for inline JSON construction in the
+// injection test. Just escapes `"` and `\` — enough for the payload
+// shape we use (no embedded control characters).
+func jsonString(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+	return `"` + r.Replace(s) + `"`
 }
 
 func TestRunHappyPath(t *testing.T) {
@@ -746,8 +836,11 @@ func TestResumeModifyDecision(t *testing.T) {
 		},
 		Steps: []chain.Step{
 			{
+				// Substitution is now shell-quoted — the chain author
+				// no longer needs to wrap the ref in double quotes
+				// against word-splitting (#135 makes that the default).
 				ID:      "check",
-				Run:     "if [ ! -f \"${path}\" ]; then exit 5; fi; echo recovered",
+				Run:     "if [ ! -f ${path} ]; then exit 5; fi; echo recovered",
 				YieldOn: []chain.YieldCondition{chain.YieldRateLimited},
 			},
 		},

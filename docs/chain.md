@@ -41,7 +41,10 @@ vars:
 
 steps:
   - id: open
-    run: gaia pr create --title "${title}" --body "${body}" --head "${head}" --base "${base}"
+    # Substituted refs are shell-quoted automatically (#135), so don't
+    # wrap them in your own "..." — that would put the quote chars
+    # inside the resulting argument.
+    run: gaia pr create --title ${title} --body ${body} --head ${head} --base ${base}
     capture: pr
     on_failure:
       return:
@@ -200,6 +203,60 @@ error:
 
 So `error: "${error.message}"` surfaces the failing process's stderr
 to the agent.
+
+### Security: variable substitution semantics
+
+Substituted values are treated as **shell-literal data**, not as
+shell tokens. Each `${var}` / `${capture.path}` reference inside a
+`run:` string is wrapped in POSIX single quotes before being
+spliced into the resolved command line. A hostile var or
+attacker-controlled capture cannot inject shell metacharacters
+(`;`, `&&`, backticks, `$()`, newlines, …) because the surrounding
+single quotes neutralise them.
+
+Concrete example:
+
+```yaml
+steps:
+  - id: greet
+    run: echo Hello, ${name}
+```
+
+Run with `--var name="'; rm -rf \$HOME #"` — the resolved line is
+
+```
+echo Hello, ''\''; rm -rf $HOME #'
+```
+
+i.e. one single-quoted argument that the surrounding `sh -c`
+prints verbatim. No deletion happens.
+
+This is a deliberately safe-by-default design (#135). Authors **do
+not** need to wrap `${var}` references in their own `"..."` —
+doing so puts the surrounding quote characters *inside* the
+resulting argument:
+
+```yaml
+# WRONG — the title arg literally becomes 'feat: thing'
+run: gaia pr create --title "${title}"
+
+# RIGHT — the title arg is feat: thing
+run: gaia pr create --title ${title}
+```
+
+If a chain genuinely needs to hand a substituted value to a
+sub-shell as a script body (rare), the author opts in explicitly:
+
+```yaml
+# Operator KNOWS body is intended as shell code; uses an explicit
+# nested sh -c so the outer literal isn't shell-quoted.
+run: sh -c "${body}"
+```
+
+The `on_failure.return` substitution path is **not** shell-quoted —
+its values are emitted into the failure envelope as JSON, not
+handed to a shell. Captures into a YAML map context keep their raw
+form.
 
 ## Capture semantics
 

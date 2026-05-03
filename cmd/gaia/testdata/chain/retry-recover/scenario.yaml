@@ -10,7 +10,10 @@ chain_yaml: |
       required: true
   steps:
     - id: flaky
-      run: 'n=$(cat "${sentinel}" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "${sentinel}"; if [ $n -lt 3 ]; then exit 1; fi; echo recovered'
+      # Substituted vars are shell-quoted automatically (#135) — drop
+      # the manual double quotes; the resolved line carries each
+      # substitution as a single shell-literal token.
+      run: 'n=$(cat ${sentinel} 2>/dev/null || echo 0); n=$((n+1)); echo $n > ${sentinel}; if [ $n -lt 3 ]; then exit 1; fi; echo recovered'
       retry:
         max: 5
         delay: 1ms

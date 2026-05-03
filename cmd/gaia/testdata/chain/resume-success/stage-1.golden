@@ -13,7 +13,7 @@
       },
       {
         "id": "maybe-yield",
-        "run": "if [ ! -f \"<TEMPDIR>/sentinel\" ]; then touch \"<TEMPDIR>/sentinel\"; exit 5; fi; echo recovered",
+        "run": "if [ ! -f '<TEMPDIR>/sentinel' ]; then touch '<TEMPDIR>/sentinel'; exit 5; fi; echo recovered",
         "status": "ok",
         "stdout": "recovered\n",
         "duration_ms": 0
