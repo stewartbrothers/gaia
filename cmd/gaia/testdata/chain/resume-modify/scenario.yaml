@@ -14,7 +14,11 @@ chain_yaml: |
       default: "no"
   steps:
     - id: check
-      run: 'if [ "${unlock}" = "yes" ]; then echo ok; else exit 5; fi'
+      # Substituted vars are shell-quoted automatically (#135) — drop
+      # the manual double quotes around ${unlock} so the equality
+      # check compares the literal value, not the value with extra
+      # quotes wrapped around it.
+      run: 'if [ ${unlock} = yes ]; then echo ok; else exit 5; fi'
       yield_on:
         - rate_limited
 

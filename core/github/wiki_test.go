@@ -167,6 +167,58 @@ func TestGetWikiPageHandlesSlugWithSpaces(t *testing.T) {
 	}
 }
 
+// TestGetWikiPageRejectsTraversalSlug is the end-to-end regression
+// for #136's read-side path-traversal: a hostile slug like
+// `../../../etc/passwd` MUST return an error before any os.Stat /
+// os.ReadFile is attempted on a path outside the cache. The fix
+// validates slug at the boundary; this test asserts the error is
+// surfaced and no body is returned.
+func TestGetWikiPageRejectsTraversalSlug(t *testing.T) {
+	bare := initBareWiki(t, map[string]string{
+		"Home.md": "# Welcome\nbody",
+	})
+	p := newWikiTestProvider(t, bare)
+	cases := []string{
+		"../escape",
+		"../../etc/passwd",
+		"..",
+		".git",
+		".hidden",
+		"slug/with/slash",
+		"slug\\with\\backslash",
+	}
+	for _, slug := range cases {
+		t.Run(slug, func(t *testing.T) {
+			got, err := p.GetWikiPage(context.Background(), "o", "r", slug)
+			if err == nil {
+				t.Fatalf("expected error for slug %q; got page %+v", slug, got)
+			}
+			if got != nil {
+				t.Errorf("page should be nil on error; got %+v", got)
+			}
+		})
+	}
+}
+
+// TestEditWikiPageRejectsTraversalSlug — write-side counterpart.
+// Without the boundary validation, EditWikiPage would write the body
+// to a file path constructed from `dir + slug + ".md"` — meaning
+// `slug = "../../../tmp/owned"` would write `<tmp>/owned.md`. The fix
+// rejects the slug before any filesystem write happens.
+func TestEditWikiPageRejectsTraversalSlug(t *testing.T) {
+	bare := initBareWiki(t, map[string]string{"Home.md": "first"})
+	p := newWikiTestProvider(t, bare)
+	cases := []string{"../escape", "../../etc/passwd", "..", ".git", ".rc"}
+	for _, slug := range cases {
+		t.Run(slug, func(t *testing.T) {
+			_, err := p.EditWikiPage(context.Background(), "o", "r", slug, "body")
+			if err == nil {
+				t.Fatalf("expected error for slug %q", slug)
+			}
+		})
+	}
+}
+
 func TestSearchWikiPagesMatchesTitleAndBody(t *testing.T) {
 	bare := initBareWiki(t, map[string]string{
 		"Home.md":        "Welcome to the project. Body has FOO sprinkled in.",

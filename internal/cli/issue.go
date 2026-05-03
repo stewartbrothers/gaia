@@ -137,18 +137,23 @@ func prettyIssueView(w io.Writer, data any) error {
 	if !ok {
 		return fmt.Errorf("prettyIssueView: unexpected type %T", data)
 	}
+	// Title is forge-supplied; keep it on the header line for
+	// readability rather than wrapping in markers (truncated headers
+	// would be noisier than the marginal injection risk).
 	_, _ = fmt.Fprintf(w, "#%d %s\n", issue.Number, issue.Title)
 	_, _ = fmt.Fprintf(w, "State: %s   Author: %s\n", issue.State, issue.Author.Login)
 	if len(issue.Labels) > 0 {
 		_, _ = fmt.Fprintf(w, "Labels: %s\n", joinLabelNames(issue.Labels))
 	}
 	if issue.Body != "" {
-		_, _ = fmt.Fprintf(w, "\n%s\n", issue.Body)
+		_, _ = fmt.Fprintln(w)
+		writeExternal(w, issue.Body)
 	}
 	if len(issue.Comments) > 0 {
 		_, _ = fmt.Fprintln(w, "\n--- Comments ---")
 		for _, c := range issue.Comments {
-			_, _ = fmt.Fprintf(w, "\n@%s on %s:\n%s\n", c.Author.Login, c.CreatedAt.Format("2006-01-02"), c.Body)
+			_, _ = fmt.Fprintf(w, "\n@%s on %s:\n", c.Author.Login, c.CreatedAt.Format("2006-01-02"))
+			writeExternal(w, c.Body)
 		}
 	}
 	return nil

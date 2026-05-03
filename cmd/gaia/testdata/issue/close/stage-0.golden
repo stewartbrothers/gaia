@@ -1,14 +1,17 @@
 {
   "schema_version": "1.0",
   "data": {
-    "number": 42,
-    "title": "answer",
-    "state": "closed",
     "author": {
       "login": "alice"
     },
+    "closed_at": "2026-04-05T00:00:00Z",
     "created_at": "2026-04-01T00:00:00Z",
-    "updated_at": "2026-04-05T00:00:00Z",
-    "closed_at": "2026-04-05T00:00:00Z"
+    "number": 42,
+    "state": "closed",
+    "title": {
+      "_trust": "external",
+      "_value": "answer"
+    },
+    "updated_at": "2026-04-05T00:00:00Z"
   }
 }

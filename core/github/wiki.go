@@ -190,6 +190,14 @@ func (p *Provider) SearchWikiPages(ctx context.Context, owner, repo, query strin
 // before the write so we don't accidentally overwrite an upstream
 // change.
 func (p *Provider) EditWikiPage(ctx context.Context, owner, repo, slug, body string) (*types.WikiPage, error) {
+	// Validate slug at the boundary — same allowlist used by
+	// resolveWikiFile, applied even when the page doesn't exist yet
+	// (the new-page branch below joins slug into the cache dir
+	// directly, and would otherwise be a write-side traversal sink).
+	// See #136.
+	if err := validatePathSegment(slug); err != nil {
+		return nil, err
+	}
 	cache, err := p.wikicache()
 	if err != nil {
 		return nil, err
@@ -232,8 +240,12 @@ func (p *Provider) EditWikiPage(ctx context.Context, owner, repo, slug, body str
 }
 
 // DeleteWikiPage removes the page file then commits + pushes. Missing
-// slugs map to exitcode.NotFound (no commit issued).
+// slugs map to exitcode.NotFound (no commit issued). Slug is validated
+// at the boundary against the cache's allowlist (#136).
 func (p *Provider) DeleteWikiPage(ctx context.Context, owner, repo, slug string) error {
+	if err := validatePathSegment(slug); err != nil {
+		return err
+	}
 	cache, err := p.wikicache()
 	if err != nil {
 		return err
@@ -282,11 +294,24 @@ func scanWikiDir(dir string) ([]types.WikiPage, error) {
 }
 
 // resolveWikiFile returns the on-disk path for a slug, trying each
-// supported extension in turn. Missing → exitcode.NotFound.
+// supported extension in turn. Missing → exitcode.NotFound. The slug
+// is validated against the cache's path-segment allowlist before any
+// filesystem access, so caller-controlled traversal attempts (`..`,
+// embedded separators, hidden-name prefixes) fail loudly rather than
+// escape the cache directory (#136).
 func resolveWikiFile(dir, slug string) (string, error) {
+	if err := validatePathSegment(slug); err != nil {
+		return "", err
+	}
 	for _, ext := range wikiPageExtensions {
 		path := filepath.Join(dir, slug+ext)
 		if _, err := os.Stat(path); err == nil {
+			// Defence-in-depth: refuse the result if it somehow lives
+			// outside dir despite the segment check passing.
+			rel, relErr := filepath.Rel(dir, path)
+			if relErr != nil || strings.HasPrefix(rel, "..") || strings.ContainsRune(rel, filepath.Separator) {
+				return "", exitcode.Errorf(exitcode.Usage, "wiki path %q escapes cache base", slug)
+			}
 			return path, nil
 		}
 	}

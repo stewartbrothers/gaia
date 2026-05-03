@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -97,17 +98,80 @@ func defaultWikiCacheRoot() (string, error) {
 	return filepath.Join(home, ".cache", "gaia", "wikis"), nil
 }
 
+// pathSegmentRegexp is the strict allowlist for cache path segments.
+// owner / repo / slug names that don't match are rejected at the
+// boundary by validatePathSegment so a hostile caller can't inject
+// `..` (path traversal) or path separators.
+//
+// GitHub's own owner / repo grammar is `[A-Za-z0-9._-]+` with the
+// hidden-name and dot-only forms forbidden (`.` and `..`). Wiki page
+// slugs follow the same grammar — GitHub turns `Setup Guide` into
+// `Setup-Guide` on disk and rejects characters outside this set in
+// the web UI. We mirror that here.
+var pathSegmentRegexp = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+
+// validatePathSegment rejects any string that isn't safe to use as a
+// single path segment under the wiki cache root. Layered checks: the
+// regex is the canonical allowlist; the explicit `.`, `..`,
+// hidden-prefix, and embedded-separator checks make the intent
+// readable in the error messages and serve as belt-and-braces
+// against future regex tweaks.
+//
+// Callers MUST run this on every owner / repo / slug they take from
+// outside (CLI flags, MCP client args, chain captures) before
+// passing the value to filepath.Join inside the cache root.
+func validatePathSegment(s string) error {
+	if s == "" {
+		return exitcode.Errorf(exitcode.Usage, "path segment is empty")
+	}
+	if s == "." || s == ".." {
+		return exitcode.Errorf(exitcode.Usage, "path segment %q is forbidden", s)
+	}
+	if strings.ContainsAny(s, "/\\\x00") {
+		return exitcode.Errorf(exitcode.Usage, "path segment %q contains forbidden separator or null byte", s)
+	}
+	if strings.HasPrefix(s, ".") {
+		return exitcode.Errorf(exitcode.Usage, "path segment %q starts with `.` (hidden-name traversal forbidden)", s)
+	}
+	if !pathSegmentRegexp.MatchString(s) {
+		return exitcode.Errorf(exitcode.Usage, "path segment %q contains characters outside [A-Za-z0-9_.-]", s)
+	}
+	return nil
+}
+
+// safeJoin appends segment to base via filepath.Join after validating
+// segment. As defence-in-depth, it then verifies the resulting path
+// is still under base (using filepath.Rel) so a future
+// validatePathSegment bug can't silently grant traversal.
+func safeJoin(base, segment string) (string, error) {
+	if err := validatePathSegment(segment); err != nil {
+		return "", err
+	}
+	joined := filepath.Join(base, segment)
+	rel, err := filepath.Rel(base, joined)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") || strings.ContainsRune(rel, filepath.Separator) {
+		return "", exitcode.Errorf(exitcode.Usage, "path segment %q resolves outside cache base", segment)
+	}
+	return joined, nil
+}
+
 // ensureClone returns the path to a checked-out wiki clone for
 // {owner}/{repo}, cloning if absent and refreshing if older than the
 // TTL. Callers may safely modify the returned working tree — the
 // next ensureClone call observes the modifications until a refresh
 // fast-forwards them away.
 func (c *wikiCache) ensureClone(ctx context.Context, owner, repo, remote string) (string, error) {
-	ownerDir := filepath.Join(c.root, owner)
+	ownerDir, err := safeJoin(c.root, owner)
+	if err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(ownerDir, 0o700); err != nil {
 		return "", exitcode.Wrap(err, exitcode.Generic, "create wiki cache owner dir")
 	}
-	repoDir := filepath.Join(ownerDir, repo)
+	repoDir, err := safeJoin(ownerDir, repo)
+	if err != nil {
+		return "", err
+	}
 	gitDir := filepath.Join(repoDir, ".git")
 
 	if _, err := os.Stat(gitDir); err != nil {
@@ -250,6 +314,12 @@ func (c *wikiCache) hasStagedChanges(ctx context.Context, dir string) (bool, err
 // (use "" for "no chdir", e.g. clone). stderr is captured into the
 // returned error so failures are diagnosable; stdout is discarded
 // (none of our git invocations consume it).
+//
+// The error message routes both the joined argv AND git's combined
+// output through scrubToken before formatting (#137): even though
+// the token never enters argv since the env-vars-for-auth fix, a
+// future config mistake or git internals tweak that surfaces the
+// token in either field shouldn't exfiltrate it through error logs.
 func (c *wikiCache) runGit(ctx context.Context, dir string, args ...string) error {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	if dir != "" {
@@ -258,7 +328,9 @@ func (c *wikiCache) runGit(ctx context.Context, dir string, args ...string) erro
 	cmd.Env = c.gitEnv()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("git %s: %w (output: %s)", strings.Join(args, " "), err, scrubToken(string(out), c.token))
+		joinedArgs := scrubToken(strings.Join(args, " "), c.token)
+		scrubbedOut := scrubToken(string(out), c.token)
+		return fmt.Errorf("git %s: %w (output: %s)", joinedArgs, err, scrubbedOut)
 	}
 	return nil
 }
@@ -268,12 +340,29 @@ func (c *wikiCache) runGit(ctx context.Context, dir string, args ...string) erro
 //   - GIT_TERMINAL_PROMPT=0 prevents an interactive prompt if a remote
 //     auth fails (we want a fast hard-error in that case).
 //   - GIT_ASKPASS=/bin/echo suppresses any password helper invocation.
+//   - GIT_CONFIG_COUNT / GIT_CONFIG_KEY_0 / GIT_CONFIG_VALUE_0
+//     (only when c.token is non-empty): pushes an
+//     `http.extraHeader=Authorization: Bearer <token>` config into
+//     git via env vars rather than via the URL or `git -c …` argv.
+//     `git -c` would expose the bearer header in argv, which is
+//     visible to other users on multi-user hosts via `ps` and to
+//     process accounting; the env-var path keeps the secret in
+//     /proc/<pid>/environ which is mode 0400 (owner-only) on
+//     Linux. Requires git 2.31+ for GIT_CONFIG_COUNT support.
 //
-// The token is embedded directly in the remote URL, so no env-based
-// credential plumbing is needed.
+// Mitigation for #137: every wikiRemoteURL now carries no
+// credential, and the auth header travels via this env channel so
+// the token never enters argv.
 func (c *wikiCache) gitEnv() []string {
 	env := os.Environ()
 	env = append(env, "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=/bin/echo")
+	if c.token != "" {
+		env = append(env,
+			"GIT_CONFIG_COUNT=1",
+			"GIT_CONFIG_KEY_0=http.extraHeader",
+			fmt.Sprintf("GIT_CONFIG_VALUE_0=Authorization: Bearer %s", c.token),
+		)
+	}
 	return env
 }
 
@@ -287,16 +376,20 @@ func scrubToken(s, token string) string {
 	return strings.ReplaceAll(s, token, "<redacted>")
 }
 
-// wikiRemoteURL returns the authenticated clone/push URL for a GitHub
-// wiki. Empty token → unauthenticated (works for read of public
-// wikis, fails on push — the caller's commitAndPush surfaces that as
-// a hard error).
-func wikiRemoteURL(host, owner, repo, token string) string {
+// wikiRemoteURL returns the unauthenticated clone/push URL for a
+// GitHub wiki. The token argument is accepted for API
+// backwards-compat but is intentionally ignored: auth travels via
+// gitEnv()'s GIT_CONFIG_* triple (http.extraHeader=Authorization:
+// Bearer <token>) so the credential never enters argv.
+//
+// Mitigation for #137: previously this function embedded the PAT
+// directly in the URL, which made the token visible to any process
+// on the host that could read /proc/<pid>/cmdline or run `ps`.
+// That value is now never serialised — it lives only in the per-
+// invocation env where /proc/<pid>/environ is mode 0400.
+func wikiRemoteURL(host, owner, repo, _ string) string {
 	if host == "" {
 		host = "github.com"
 	}
-	if token == "" {
-		return fmt.Sprintf("https://%s/%s/%s.wiki.git", host, owner, repo)
-	}
-	return fmt.Sprintf("https://x-access-token:%s@%s/%s/%s.wiki.git", token, host, owner, repo)
+	return fmt.Sprintf("https://%s/%s/%s.wiki.git", host, owner, repo)
 }

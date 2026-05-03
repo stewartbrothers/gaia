@@ -37,6 +37,38 @@ type Envelope struct {
 	Meta          map[string]any `json:"_meta,omitempty"`
 }
 
+// envelopeJSON is the on-the-wire shape used by MarshalJSON. Same
+// fields as Envelope but without the custom marshaler so json.Marshal
+// doesn't recurse infinitely.
+type envelopeJSON struct {
+	SchemaVersion string         `json:"schema_version"`
+	Data          any            `json:"data"`
+	Truncated     bool           `json:"_truncated,omitempty"`
+	NextCursor    string         `json:"_next_cursor,omitempty"`
+	Meta          map[string]any `json:"_meta,omitempty"`
+}
+
+// MarshalJSON applies trust-tag rewriting to Data before standard
+// JSON encoding. Fields tagged `gaia:"trust=external"` (issue
+// bodies, comments, wiki content, etc.) are emitted as
+// `{"_trust": "external", "_value": "<text>"}` so agents can
+// distinguish operator-supplied input from forge-supplied content
+// (#146 / docs/agent-guide.md threat model).
+//
+// Untagged data passes through verbatim, so operations that don't
+// return user-provided text (whoami, label list, version, etc.) keep
+// their existing wire shape unchanged.
+func (e *Envelope) MarshalJSON() ([]byte, error) {
+	out := envelopeJSON{
+		SchemaVersion: e.SchemaVersion,
+		Data:          applyTrustTags(e.Data),
+		Truncated:     e.Truncated,
+		NextCursor:    e.NextCursor,
+		Meta:          e.Meta,
+	}
+	return json.Marshal(out)
+}
+
 // New constructs an Envelope around data with the current
 // SchemaVersion stamped in.
 func New(data any) *Envelope {
@@ -75,12 +107,20 @@ func (e *Envelope) WithMeta(key string, value any) *Envelope {
 // The implementation round-trips Data through JSON so the spec can
 // match the wire shape rather than Go field names — agents type
 // `--fields created_at,labels.name`, not `--fields CreatedAt,Labels.Name`.
+//
+// Trust-tag preservation (#146): trust-tag rewriting is applied
+// BEFORE the JSON round-trip so a projected field carrying external
+// content keeps its `_trust` marker. Without this ordering, Project
+// would convert tagged structs to plain map[string]any and the
+// MarshalJSON-time walker would have no struct shape left to find
+// the tag on.
 func (e *Envelope) Project(spec string) error {
 	fs := ParseFields(spec)
 	if len(fs) == 0 {
 		return nil
 	}
-	raw, err := json.Marshal(e.Data)
+	tagged := applyTrustTags(e.Data)
+	raw, err := json.Marshal(tagged)
 	if err != nil {
 		return fmt.Errorf("envelope: marshal data for projection: %w", err)
 	}

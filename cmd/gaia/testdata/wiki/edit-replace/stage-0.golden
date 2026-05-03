@@ -1,9 +1,15 @@
 {
   "schema_version": "1.0",
   "data": {
-    "title": "Home",
+    "body": {
+      "_trust": "external",
+      "_value": "new body"
+    },
     "path": "Home",
-    "body": "new body",
+    "title": {
+      "_trust": "external",
+      "_value": "Home"
+    },
     "updated_at": "0001-01-01T00:00:00Z"
   }
 }

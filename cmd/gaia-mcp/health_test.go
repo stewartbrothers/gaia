@@ -74,4 +74,19 @@ func TestHealthzMountedAndUnauthenticated(t *testing.T) {
 	if resp2.StatusCode != http.StatusUnauthorized {
 		t.Errorf("/mcp unauthenticated: got %d, want 401", resp2.StatusCode)
 	}
+
+	// /readyz: no auth → 200 (#139). Liveness-only — no upstream
+	// call, no rate-limit consumption.
+	resp3, err := http.Get("http://" + addr + "/readyz")
+	if err != nil {
+		t.Fatalf("GET /readyz: %v", err)
+	}
+	defer func() { _ = resp3.Body.Close() }()
+	if resp3.StatusCode != http.StatusOK {
+		t.Errorf("/readyz unauthenticated: got %d, want 200", resp3.StatusCode)
+	}
+	body3, _ := io.ReadAll(resp3.Body)
+	if string(body3) != "ready" {
+		t.Errorf("/readyz body: %q", body3)
+	}
 }

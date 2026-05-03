@@ -2,4 +2,6 @@
 State: open   Author: alice
 Labels: p1, feature
 
+<<<EXTERNAL untrusted-content
 what is the answer?
+EXTERNAL>>>

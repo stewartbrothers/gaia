@@ -147,12 +147,14 @@ func prettyPRView(w io.Writer, data any) error {
 			pr.CISummary.State, pr.CISummary.Successful, pr.CISummary.Failed, pr.CISummary.Pending, pr.CISummary.Total)
 	}
 	if pr.Body != "" {
-		_, _ = fmt.Fprintf(w, "\n%s\n", pr.Body)
+		_, _ = fmt.Fprintln(w)
+		writeExternal(w, pr.Body)
 	}
 	if len(pr.Comments) > 0 {
 		_, _ = fmt.Fprintln(w, "\n--- Comments ---")
 		for _, c := range pr.Comments {
-			_, _ = fmt.Fprintf(w, "\n@%s on %s:\n%s\n", c.Author.Login, c.CreatedAt.Format("2006-01-02"), c.Body)
+			_, _ = fmt.Fprintf(w, "\n@%s on %s:\n", c.Author.Login, c.CreatedAt.Format("2006-01-02"))
+			writeExternal(w, c.Body)
 		}
 	}
 	return nil

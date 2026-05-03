@@ -6,7 +6,7 @@
     "steps": [
       {
         "id": "check",
-        "run": "if [ \"yes\" = \"yes\" ]; then echo ok; else exit 5; fi",
+        "run": "if [ 'yes' = yes ]; then echo ok; else exit 5; fi",
         "status": "ok",
         "stdout": "ok\n",
         "duration_ms": 0

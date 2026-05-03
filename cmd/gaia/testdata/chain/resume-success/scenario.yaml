@@ -18,7 +18,10 @@ chain_yaml: |
     - id: first
       run: echo first
     - id: maybe-yield
-      run: 'if [ ! -f "${sentinel}" ]; then touch "${sentinel}"; exit 5; fi; echo recovered'
+      # Substituted vars are shell-quoted automatically (#135) — drop
+      # the manual double quotes; the substitution renders as a
+      # single shell-literal token even when it contains spaces.
+      run: 'if [ ! -f ${sentinel} ]; then touch ${sentinel}; exit 5; fi; echo recovered'
       yield_on:
         - rate_limited
     - id: tail

@@ -22,14 +22,15 @@ import (
 // command. Each subcommand reads from this struct rather than hitting
 // os.Getenv or duplicating cobra wiring.
 type globalFlags struct {
-	Profile  string
-	Provider string
-	APIURL   string
-	Repo     string
-	Format   string
-	Fields   string
-	Limit    int
-	Cursor   string
+	Profile           string
+	Provider          string
+	APIURL            string
+	Repo              string
+	Format            string
+	Fields            string
+	Limit             int
+	Cursor            string
+	NoExternalMarkers bool
 }
 
 // NewRootCmd constructs a fresh root command tree. Each call returns
@@ -65,6 +66,7 @@ auth setup.`,
 	pf.StringVar(&flags.Fields, "fields", "", "field projection, e.g. number,title,labels.name")
 	pf.IntVar(&flags.Limit, "limit", 0, "page limit (0 = default 30)")
 	pf.StringVar(&flags.Cursor, "cursor", "", "pagination cursor from previous response")
+	pf.BoolVar(&flags.NoExternalMarkers, "no-external-markers", false, "in --format pretty, render forge-supplied user content (issue/PR/wiki bodies, comments, etc.) verbatim instead of wrapping in <<<EXTERNAL / EXTERNAL>>> delimiters; JSON output is unaffected (#146)")
 
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newWhoamiCmd(flags))

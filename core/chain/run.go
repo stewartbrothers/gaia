@@ -254,7 +254,11 @@ func Resume(ctx context.Context, token, decision string, opts RunOptions) (*Resu
 func executeSteps(ctx context.Context, c *Chain, stepsList []Step, startAt int, scope Scope, res *Result, opts RunOptions, vars map[string]string) {
 	for i := startAt; i < len(stepsList); i++ {
 		step := stepsList[i]
-		resolved, unresolved := Substitute(step.Run, scope)
+		// Use SubstituteShell — the resolved string is fed to `sh -c`
+		// and substituted values must be treated as shell-literal data.
+		// See #135 / docs/chain.md "Security: variable substitution
+		// semantics" for the rationale.
+		resolved, unresolved := SubstituteShell(step.Run, scope)
 		sr := StepResult{
 			ID:     step.ID,
 			Run:    resolved,
@@ -509,7 +513,9 @@ func runCleanup(ctx context.Context, c *Chain, scope Scope, res *Result, opts Ru
 		return
 	}
 	for _, step := range c.Cleanup {
-		resolved, unresolved := Substitute(step.Run, scope)
+		// Cleanup steps run via `sh -c` exactly like main steps; same
+		// shell-quoting requirement applies (#135).
+		resolved, unresolved := SubstituteShell(step.Run, scope)
 		sr := StepResult{ID: step.ID, Run: resolved}
 
 		if len(unresolved) > 0 {
@@ -695,11 +701,14 @@ func buildFailure(step Step, scope Scope, defaultReason, errMsg, stdout string) 
 }
 
 // substAny recursively substitutes ${...} refs in every string
-// inside a YAML-decoded value tree.
+// inside a YAML-decoded value tree. Used for on_failure.return map
+// values which are emitted as JSON, not handed to a shell — so this
+// path uses SubstituteRaw deliberately (the values must round-trip
+// verbatim into the failure envelope, not be shell-quoted).
 func substAny(v any, scope Scope) any {
 	switch x := v.(type) {
 	case string:
-		out, _ := Substitute(x, scope)
+		out, _ := SubstituteRaw(x, scope)
 		return out
 	case map[string]any:
 		out := make(map[string]any, len(x))

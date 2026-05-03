@@ -1,9 +1,15 @@
 {
   "schema_version": "1.0",
   "data": {
-    "title": "NewPage",
+    "body": {
+      "_trust": "external",
+      "_value": "fresh page"
+    },
     "path": "NewPage",
-    "body": "fresh page",
+    "title": {
+      "_trust": "external",
+      "_value": "NewPage"
+    },
     "updated_at": "0001-01-01T00:00:00Z"
   }
 }

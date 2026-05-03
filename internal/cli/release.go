@@ -540,7 +540,8 @@ func prettyReleaseView(w io.Writer, data any) error {
 		_, _ = fmt.Fprintf(w, "  Published: %s\n", r.PublishedAt.Format("2006-01-02 15:04"))
 	}
 	if r.Body != "" {
-		_, _ = fmt.Fprintf(w, "\n%s\n", r.Body)
+		_, _ = fmt.Fprintln(w)
+		writeExternal(w, r.Body)
 	}
 	return nil
 }

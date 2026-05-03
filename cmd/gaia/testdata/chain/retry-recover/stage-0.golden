@@ -6,7 +6,7 @@
     "steps": [
       {
         "id": "flaky",
-        "run": "n=$(cat \"<TEMPDIR>/attempts\" 2\u003e/dev/null || echo 0); n=$((n+1)); echo $n \u003e \"<TEMPDIR>/attempts\"; if [ $n -lt 3 ]; then exit 1; fi; echo recovered",
+        "run": "n=$(cat '<TEMPDIR>/attempts' 2\u003e/dev/null || echo 0); n=$((n+1)); echo $n \u003e '<TEMPDIR>/attempts'; if [ $n -lt 3 ]; then exit 1; fi; echo recovered",
         "status": "ok",
         "stdout": "recovered\n",
         "duration_ms": 0,

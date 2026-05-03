@@ -124,12 +124,24 @@ func runHTTP(cfg httpConfig, s *server.MCPServer) error {
 	// auth middleware — orchestrators don't carry bearer tokens, and
 	// the responses are opaque (no credential surface).
 	//
-	// /healthz is liveness (process alive); /readyz is readiness
-	// (forge reachable + token valid). Orchestrators that distinguish
-	// the two configure healthz on the restart probe and readyz on
-	// the traffic probe.
+	// /healthz is liveness (process alive). /readyz is now also
+	// liveness-equivalent for this stateless protocol-translation
+	// daemon: the listener being bound is the only readiness signal
+	// gaia-mcp owns. Earlier versions made an authenticated forge
+	// round-trip here using the host's credentials — that's been
+	// removed (#139) because (a) any unauthenticated peer could
+	// drain the host's forge rate limit one probe at a time, and
+	// (b) the host PAT existing at rest violated the
+	// pass-through-auth invariant.
+	//
+	// Operators who want to monitor "forge reachable from this
+	// gaia-mcp host" should run a CLI probe (`gaia whoami`) from
+	// their monitoring host. Real MCP callers already see upstream
+	// errors on their own /mcp requests — adding a server endpoint
+	// just creates more attack surface for no signal a caller can't
+	// already get.
 	mux.Handle("/healthz", healthzHandler())
-	mux.Handle("/readyz", readyzHandler(build, logger, 5*time.Second))
+	mux.Handle("/readyz", readyzHandler())
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,

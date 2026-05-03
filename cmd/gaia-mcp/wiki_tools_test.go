@@ -83,8 +83,11 @@ func TestWikiViewTool(t *testing.T) {
 	if err != nil || res.IsError {
 		t.Fatalf("err=%v res=%s", err, resultText(t, res))
 	}
-	if !strings.Contains(resultText(t, res), `"title":"Home"`) {
-		t.Errorf("expected Home title in result; got %q", resultText(t, res))
+	// WikiPage.Title now serialises as a trust-tagged object
+	// (#146). The wire shape is `"title":{"_trust":"external",
+	// "_value":"Home"}` rather than a plain string.
+	if !strings.Contains(resultText(t, res), `"title":{"_trust":"external","_value":"Home"}`) {
+		t.Errorf("expected trust-tagged Home title in result; got %q", resultText(t, res))
 	}
 }
 
