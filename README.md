@@ -83,6 +83,7 @@ gaia whoami | version
 - [`docs/exit-codes.md`](docs/exit-codes.md) — `0|2|3|4|5|6` matrix
 - [`docs/mcp.md`](docs/mcp.md) — wiring `gaia-mcp` into MCP-aware clients
 - [`docs/deploy-mcp.md`](docs/deploy-mcp.md) — `gaia-mcp --http` container deploy
+- [`docs/chain.md`](docs/chain.md) — `gaia chain run` for multi-step workflows
 - [`docs/agent-guide.md`](docs/agent-guide.md) — dense pointers for AI agents
 - [`docs/dogfood-comparison.md`](docs/dogfood-comparison.md) — empirical
   byte/token comparisons vs raw curl + tea

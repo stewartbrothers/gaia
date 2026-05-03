@@ -74,6 +74,7 @@ auth setup.`,
 	root.AddCommand(newSearchCmd(flags))
 	root.AddCommand(newLabelCmd(flags))
 	root.AddCommand(newReleaseCmd(flags))
+	root.AddCommand(newChainCmd(flags))
 
 	return root
 }
