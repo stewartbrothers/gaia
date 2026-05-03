@@ -89,16 +89,4 @@ func TestHealthzMountedAndUnauthenticated(t *testing.T) {
 	if string(body3) != "ready" {
 		t.Errorf("/readyz body: %q", body3)
 	}
-
-	// /readyz/upstream: no auth → 401 (#139). Bearer required so
-	// each caller spends only their own forge quota on the
-	// upstream Whoami probe.
-	resp4, err := http.Get("http://" + addr + "/readyz/upstream")
-	if err != nil {
-		t.Fatalf("GET /readyz/upstream: %v", err)
-	}
-	defer func() { _ = resp4.Body.Close() }()
-	if resp4.StatusCode != http.StatusUnauthorized {
-		t.Errorf("/readyz/upstream unauthenticated: got %d, want 401", resp4.StatusCode)
-	}
 }

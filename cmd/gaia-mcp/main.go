@@ -135,14 +135,13 @@ func runHTTP(cfg httpConfig, s *server.MCPServer) error {
 	// pass-through-auth invariant.
 	//
 	// Operators who want to monitor "forge reachable from this
-	// gaia-mcp host" use /readyz/upstream, which is mounted INSIDE
-	// the auth middleware; the bearer the probe carries is the
-	// forge token used for the Whoami round-trip, so each caller
-	// spends only their own quota.
+	// gaia-mcp host" should run a CLI probe (`gaia whoami`) from
+	// their monitoring host. Real MCP callers already see upstream
+	// errors on their own /mcp requests — adding a server endpoint
+	// just creates more attack surface for no signal a caller can't
+	// already get.
 	mux.Handle("/healthz", healthzHandler())
 	mux.Handle("/readyz", readyzHandler())
-	mux.Handle("/readyz/upstream", passThroughAuthMiddleware(logger,
-		readyzUpstreamHandler(build, logger, 5*time.Second)))
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,

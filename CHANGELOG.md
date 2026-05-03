@@ -44,11 +44,9 @@ reserved for breaking changes only.
   on unauthenticated requests (#139). The endpoint is now
   liveness-equivalent (200 "ready" while the listener is bound,
   no upstream call). Operators who need to monitor forge
-  reachability point their probe at `/readyz/upstream` instead;
-  that endpoint requires a bearer (mounted inside
-  `passThroughAuthMiddleware`) and uses the supplied bearer as
-  the forge token, so each caller spends only their own quota
-  rather than the host's.
+  reachability should run a CLI probe (`gaia whoami`) from their
+  monitoring host — real MCP callers already see upstream errors
+  on their own `/mcp` requests.
 
 ### Wire-shape change (consumers must update)
 
