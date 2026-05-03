@@ -121,3 +121,57 @@ changelog:
 # the `gitea` API.
 release:
   disable: true
+
+# brews: maintain a Homebrew formula in this same repo at
+# Formula/gaia.rb so users can:
+#
+#   brew tap Gerwood/gaia https://github.com/stewartbrothers/gaia
+#   brew install gaia
+#
+# On every tagged release, goreleaser opens a commit against `main`
+# updating Formula/gaia.rb's `url` and `sha256` fields to point at the
+# new release archives. The token used for the push is the same
+# FORGEJO_RELEASE_TOKEN the release workflow already needs (a
+# repo-scoped token with `write:repository` is sufficient because the
+# tap *is* this repo — no separate `homebrew-tap` repo to maintain).
+#
+# `skip_upload: auto` keeps goreleaser from updating the formula on
+# pre-release tags (-rc.N, -beta.N) so tap users don't accidentally
+# pin a release-candidate build via `brew install`.
+#
+# `download_strategy: CurlDownloadStrategy` is the Homebrew default for
+# tarballs; spelling it out avoids surprises if Homebrew flips a
+# default later.
+brews:
+  - name: gaia
+    homepage: https://github.com/stewartbrothers/gaia
+    description: Token-trimmed CLI + MCP server for Forgejo and GitHub
+    license: Apache-2.0
+    skip_upload: auto
+    # The tap lives in this repo (the canonical Forgejo repo). The
+    # brews block needs `git.api_url` set so goreleaser hits the
+    # Forgejo API instead of github.com. `gitea` is the supported
+    # value (Forgejo is API-compatible).
+    repository:
+      owner: Gerwood
+      name: gaia
+      branch: main
+      git:
+        url: 'git@github.com:stewartbrothers/gaia.git'
+        ssh_command: 'ssh -i {{ .KeyPath }} -o StrictHostKeyChecking=accept-new'
+        private_key: '{{ .Env.GORELEASER_TAP_DEPLOY_KEY }}'
+    # Where in the repo the formula file lives. Homebrew will look
+    # under `Formula/` automatically when the tap is added, so this
+    # path doubles as the install path.
+    directory: Formula
+    # Bottle commit metadata — the maintainer info goes on the
+    # commit goreleaser pushes.
+    commit_author:
+      name: gaia-release-bot
+      email: aidev@stewartbrothers.com.au
+    commit_msg_template: 'release: bump Homebrew formula to {{ .Tag }}'
+    test: |
+      system "#{bin}/gaia", "version"
+    install: |
+      bin.install "gaia"
+      bin.install "gaia-mcp"
