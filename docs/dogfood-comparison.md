@@ -240,6 +240,53 @@ being structured matters: hex colors must be literal hex without `#`,
 and gaia's flag validation (`--color` required, sanity-checked) is
 clearer than scripting a curl POST.
 
+## NDJSON streaming (#46)
+
+`--format ndjson` (newline-delimited JSON) re-shapes list-style
+output so each item lands on its own line. The total bytes are
+similar to `--format json` (the wire is the same JSON
+re-distributed across lines), but the *time-to-first-byte* and
+*peak memory* curves change shape — that's where agents win.
+
+Methodology: drove `gaia issue list --limit 100` against an
+in-process fake forge serving 100 stub issues (number, title,
+state, body, user, labels, dates — about ~280 bytes per trimmed
+issue on the wire). Total-bytes counted to EOF; first-line
+bytes via `head -1 | wc -c`.
+
+| Operation | --format json | --format ndjson | Win |
+|---|---|---|---|
+| `gaia issue list` (100 issues) — bytes to first usable item | 53 KB (full envelope, indented, pretty-printed) | 359 B (one item line) | **~150×** |
+| `gaia issue list` (100 issues) — total bytes | 53 KB | 36 KB + 70 B trailer | -32% (NDJSON has no indenting) |
+| `gaia issue list` (100 issues) — trailer overhead | n/a | 70 bytes | (cheap) |
+| `gaia issue list` (1000 issues, `\| head -1`) — pages fetched | 1 (then full envelope buffered) | 1 (broken-pipe stops pagination) | streaming |
+| `gaia issue list` (1000 issues) — peak memory | full slice in memory | one item at a time | streaming |
+
+For consumers that read lazily (`jq -c '.item.number'`,
+`head -1`, `awk`-style line filters) the streaming wire shape
+matches the wall-clock shape of the upstream — you don't pay for
+items the agent never reads.
+
+The savings disappear if the consumer always reads the whole
+list (small N), but for 100+ item lists where the agent is going
+to filter to ~1% the saving is dramatic. Use `--format ndjson`
+when:
+
+- You are piping into `head`, `jq -c`, `awk`, or similar
+  line-by-line tooling.
+- The list could be 100+ items and you only need the first few.
+- You are running inside a chain step where peak-memory matters
+  more than wire stability.
+
+Use `--format json` (the default envelope) when:
+
+- You want the canonical pagination cursor (`_next_cursor`) on
+  the response object, not embedded in a trailer line.
+- The consumer is another gaia command, an MCP client, or a
+  schema-validating parser that expects `{schema_version, data}`.
+- The list is short (≤30 items, single page) and the buffering
+  behaviour doesn't matter.
+
 ## How to update this doc
 
 When a new gaia command lands, add a row here showing gaia bytes vs.

@@ -42,6 +42,18 @@ func newReleaseListCmd(flags *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if flags.Format == "ndjson" {
+				return renderListStreaming(cmd, flags, func(cursor string) ([]any, *provider.Page, error) {
+					rels, page, err := p.ListReleases(cmd.Context(), owner, repo, provider.ListReleasesOptions{
+						Limit:  flags.Limit,
+						Cursor: cursor,
+					})
+					if err != nil {
+						return nil, nil, err
+					}
+					return toAnySlice(rels), page, nil
+				})
+			}
 			rels, page, err := p.ListReleases(cmd.Context(), owner, repo, provider.ListReleasesOptions{
 				Limit:  flags.Limit,
 				Cursor: flags.Cursor,

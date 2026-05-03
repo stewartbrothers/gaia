@@ -158,3 +158,59 @@ func TestSearchEmptyResults(t *testing.T) {
 		t.Errorf("expected 'no results'; got %q", stdout.String())
 	}
 }
+
+// TestSearchNDJSON pins streaming output for `gaia search`. The
+// search command's result shape is {kind, number, title, repo} —
+// each emits as one item line. Title carries trust=external; pin the
+// marker per line.
+func TestSearchNDJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{
+				"number":     42,
+				"title":      "fix: memory leak in cache",
+				"repository": map[string]any{"full_name": "o/r"},
+			},
+			{
+				"number":       101,
+				"title":        "feat: cap memory usage",
+				"repository":   map[string]any{"full_name": "o/r"},
+				"pull_request": map[string]any{},
+			},
+		})
+	}))
+	defer srv.Close()
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"--repo", "o/r",
+		"--format", "ndjson",
+		"search", "memory leak",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	lines := strings.Split(strings.TrimRight(stdout.String(), "\n"), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected 2 results + trailer = 3 lines; got %d:\n%s",
+			len(lines), stdout.String())
+	}
+	for i := 0; i < 2; i++ {
+		if !strings.Contains(lines[i], `"item"`) {
+			t.Errorf("line %d should be item-wrapped; got: %s", i, lines[i])
+		}
+		if !strings.Contains(lines[i], `"_trust":"external"`) {
+			t.Errorf("line %d title should have _trust marker; got: %s", i, lines[i])
+		}
+	}
+	if !strings.Contains(lines[2], `"_metadata"`) {
+		t.Errorf("last line should be _metadata trailer; got: %s", lines[2])
+	}
+}

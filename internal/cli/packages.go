@@ -85,6 +85,20 @@ func newPackagesListCmd(flags *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if flags.Format == "ndjson" {
+				return renderListStreaming(cmd, flags, func(cursor string) ([]any, *provider.Page, error) {
+					pkgs, page, err := p.ListPackages(cmd.Context(), owner, provider.ListPackagesOptions{
+						Type:   pkgType,
+						Q:      q,
+						Limit:  flags.Limit,
+						Cursor: cursor,
+					})
+					if err != nil {
+						return nil, nil, err
+					}
+					return toAnySlice(pkgs), page, nil
+				})
+			}
 			pkgs, page, err := p.ListPackages(cmd.Context(), owner, provider.ListPackagesOptions{
 				Type:   pkgType,
 				Q:      q,

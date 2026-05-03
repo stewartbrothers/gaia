@@ -50,6 +50,18 @@ func newWikiListCmd(flags *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if flags.Format == "ndjson" {
+				return renderListStreaming(cmd, flags, func(cursor string) ([]any, *provider.Page, error) {
+					pages, page, err := p.ListWikiPages(cmd.Context(), owner, repo, provider.ListWikiPagesOptions{
+						Limit:  flags.Limit,
+						Cursor: cursor,
+					})
+					if err != nil {
+						return nil, nil, err
+					}
+					return toAnySlice(pages), page, nil
+				})
+			}
 			pages, page, err := p.ListWikiPages(cmd.Context(), owner, repo, provider.ListWikiPagesOptions{
 				Limit:  flags.Limit,
 				Cursor: flags.Cursor,

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/stewartbrothers/gaia/core/envelope"
+	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/provider"
 )
 
@@ -76,7 +78,16 @@ type prettyFunc func(io.Writer, any) error
 // command-supplied pretty rendering to cmd.OutOrStdout().
 //
 // page may be nil for non-list commands.
+//
+// --format ndjson on a single-resource (non-list) command is rejected
+// with a usage error: streaming a single object is meaningless. List
+// commands that want NDJSON go through renderListStreaming below
+// instead, which never reaches this function on the streaming path.
 func renderEnvelope(cmd *cobra.Command, flags *globalFlags, data any, page *provider.Page, pretty prettyFunc) error {
+	if flags.Format == "ndjson" {
+		return exitcode.Errorf(exitcode.Usage,
+			"--format ndjson is only valid on list-style commands; use --format json for single-resource fetches")
+	}
 	if flags.Format == "pretty" && pretty != nil {
 		// Stash the operator's --no-external-markers preference for
 		// the pretty rendering layer to consult via externalMarkers.
@@ -103,4 +114,133 @@ func renderEnvelope(cmd *cobra.Command, flags *globalFlags, data any, page *prov
 		return fmt.Errorf("encode envelope: %w", err)
 	}
 	return nil
+}
+
+// PageFetcher returns one page of items at the given cursor. Empty
+// cursor means "first page". The returned *provider.Page tells the
+// caller whether to keep going (Truncated=true → call again with the
+// returned NextCursor).
+//
+// Items are returned as []any so a single helper can serve every list
+// command — the streaming path doesn't introspect the items, it just
+// hands them to envelope.StreamWriter for marshaling.
+type PageFetcher func(cursor string) (items []any, page *provider.Page, err error)
+
+// renderListStreaming is the NDJSON code path for list-style commands.
+// It loops over pages via fetch, emitting each item as one NDJSON line,
+// then writes a `_metadata` trailer with the total count and the
+// final next_cursor (if pagination was truncated).
+//
+// Cancellation: when the consumer closes its stdout pipe, the
+// StreamWriter's next Write returns io.ErrClosedPipe; we exit the loop
+// without invoking fetch again. That's the broken-pipe path agents use
+// to bound their reads (`gaia issue list --format ndjson | head -1`).
+//
+// When --format is not "ndjson", renderListStreaming fetches one page
+// and forwards through renderEnvelope. This branch exists so a list
+// command can call ONE function regardless of format choice; the
+// non-streaming branch matches today's wire shape (one combined
+// envelope) so existing JSON/pretty goldens stay green.
+//
+// The non-streaming branch hands renderEnvelope a []any (the same
+// shape the streaming branch consumes); per-command pretty renderers
+// that want a typed slice should branch on flags.Format themselves
+// rather than going through this helper. See newIssueListCmd for the
+// canonical pattern: typed renderEnvelope on the json/pretty path,
+// renderListStreaming-with-fetcher on the ndjson path.
+func renderListStreaming(cmd *cobra.Command, flags *globalFlags, fetch PageFetcher) error {
+	if flags.Format != "ndjson" {
+		// Defensive: callers route to renderEnvelope directly for
+		// json/pretty so they can preserve the typed-slice contract
+		// pretty renderers depend on. If a caller sends a non-ndjson
+		// format here anyway we still produce a valid envelope.
+		items, page, err := fetch(flags.Cursor)
+		if err != nil {
+			return err
+		}
+		return renderEnvelope(cmd, flags, items, page, nil)
+	}
+
+	sw := envelope.NewStreamWriter(cmd.OutOrStdout())
+	cursor := flags.Cursor
+	total := 0
+	var lastPage *provider.Page
+
+	for {
+		items, page, err := fetch(cursor)
+		if err != nil {
+			return err
+		}
+		lastPage = page
+		for _, item := range items {
+			if err := sw.Write(item); err != nil {
+				if errors.Is(err, io.ErrClosedPipe) {
+					// Consumer closed stdout — stop fetching, do
+					// not write a trailer (the consumer doesn't
+					// want it and the pipe write would just fail
+					// again).
+					return nil
+				}
+				return err
+			}
+			total++
+		}
+		// Continue paginating only if the caller did not pass an
+		// explicit --cursor (which signals "give me one page from
+		// here") and the page reports more results upstream.
+		if flags.Cursor != "" {
+			break
+		}
+		if page == nil || !page.Truncated || page.NextCursor == "" || page.NextCursor == cursor {
+			break
+		}
+		cursor = page.NextCursor
+	}
+
+	nextCursor := ""
+	if lastPage != nil && lastPage.Truncated && flags.Cursor != "" {
+		// User asked for one page from a cursor; surface the next
+		// cursor so they can resume.
+		nextCursor = lastPage.NextCursor
+	}
+	trailer := envelope.NewMetadata(total, nextCursor)
+	if err := sw.WriteTrailer(trailer); err != nil {
+		if errors.Is(err, io.ErrClosedPipe) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// toAnySlice is a tiny helper for list commands that have a typed
+// slice ([]types.Issue, []types.PullRequest, ...) and need an []any
+// for PageFetcher's contract. Generics-free is unfortunately the
+// shape that fits cobra's flag-callback contract cleanest.
+func toAnySlice[T any](xs []T) []any {
+	out := make([]any, len(xs))
+	for i := range xs {
+		out[i] = xs[i]
+	}
+	return out
+}
+
+// renderListStreamingForTest is a cobra-free entry point used by the
+// export_test shim so cli_test can drive the streaming helper directly.
+// Constructs a minimal *cobra.Command with the supplied writer as
+// stdout and the supplied flags so renderListStreaming runs end-to-end.
+func renderListStreamingForTest(format, cursor string, fetch PageFetcher, w io.Writer) error {
+	cmd := &cobra.Command{}
+	cmd.SetOut(w)
+	flags := &globalFlags{Format: format, Cursor: cursor}
+	return renderListStreaming(cmd, flags, fetch)
+}
+
+// renderEnvelopeRejectsNDJSONForTest exercises the single-resource
+// rejection branch in renderEnvelope.
+func renderEnvelopeRejectsNDJSONForTest(w io.Writer) error {
+	cmd := &cobra.Command{}
+	cmd.SetOut(w)
+	flags := &globalFlags{Format: "ndjson"}
+	return renderEnvelope(cmd, flags, map[string]any{"x": 1}, nil, nil)
 }
