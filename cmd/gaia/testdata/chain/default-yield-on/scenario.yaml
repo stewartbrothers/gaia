@@ -1,0 +1,23 @@
+description: |
+  Chain-level `default_yield_on` applies when a step omits its own
+  `yield_on`. Exercises B-2.3.
+
+chain_yaml: |
+  name: default-yield
+  default_yield_on:
+    - rate_limited
+    - timeout
+  steps:
+    - id: boom
+      run: exit 5
+    - id: never
+      run: echo never
+
+stages:
+  - description: gaia chain run — yields via chain default
+    args:
+      - chain
+      - run
+      - --chain-file
+      - ${chainfile}
+    exit_code: 0

@@ -115,6 +115,11 @@ error (bad flags, var validation).
 name: <required, freeform>           # used in result envelope + logs
 description: <optional, freeform>
 
+# Phase B-2: chain-level fallback yield list. Applies to steps that
+# don't declare their own yield_on.
+default_yield_on:
+  - <YieldCondition>                 # auth_error, rate_limited, timeout, ...
+
 vars:
   <name>:                            # snake_case or camelCase
     required: <bool>                 # error at startup if not supplied
@@ -124,9 +129,22 @@ steps:                               # at least one; ordered
   - id: <required, [A-Za-z_][A-Za-z0-9_]*>
     run: <required, shell command>
     capture: <optional, ident>       # save stdout into ${this-name.*}
+    yield_on: [<YieldCondition>...]  # pause+resume conditions
+    abort_on: [<YieldCondition>...]  # stop conditions
+    timeout: <duration>              # Phase B-2; e.g. "30s", "5m", "1h"
+    retry:                           # Phase B-2
+      max: <int>                     # extra attempts after the first
+      delay: <duration>              # wait between attempts
+      backoff: <constant|linear|exponential>
     on_failure:
       return:                        # map shipped as Result.Failure on failure
         <key>: <value, with ${} substitution>
+
+# Phase B-2: best-effort steps that run on abort. Same shape as
+# steps:; share chain-level vars + captures.
+cleanup:
+  - id: <required>
+    run: <required>
 ```
 
 ## Variable substitution
@@ -377,20 +395,126 @@ Default-fail (Phase A) is still the right answer for chains where
 the agent isn't expected to recover — single-shot CI lints,
 deterministic tooling pipelines, etc.
 
+## Per-step timeout + retry (Phase B-2)
+
+```yaml
+- id: brittle
+  run: gaia pr ci-wait ${pr.number}
+  timeout: 30m              # any time.ParseDuration string
+  yield_on: [timeout]       # route timeout-induced failure as yield
+  retry:
+    max: 3                  # up to 3 retries (4 total attempts)
+    delay: 30s              # wait between attempts
+    backoff: exponential    # 30s, 60s, 120s, ... (linear / constant also)
+```
+
+**Timeout** kills the step's subprocess after the configured wall-
+clock duration; the runner emits the step result with
+`timed_out: true` and routes the synthetic `timeout` condition
+through `yield_on` / `abort_on` / `default_yield_on` like any other
+condition.
+
+**Retry** wraps the step in a loop. Up to `max` retries after the
+initial attempt, sleeping `delay` between (scaled by backoff).
+Final-attempt-only routing means a transient failure that recovers
+on retry produces a clean `StepOK` — the chain doesn't yield in the
+middle of a retry sequence. The step's `attempts` field records
+how many tries it took.
+
+Backoff strategies:
+
+| `backoff:` | Sleep schedule (after attempt N) |
+|---|---|
+| `constant` | `delay`, `delay`, `delay`, ... |
+| `linear` | `delay`, `2×delay`, `3×delay`, ... |
+| `exponential` (default) | `delay`, `2×delay`, `4×delay`, ... |
+
+## Chain-level `default_yield_on` (Phase B-2)
+
+```yaml
+default_yield_on: [rate_limited, timeout]
+steps:
+  - id: a
+    run: gaia ...
+    # no per-step yield_on — the chain default applies
+  - id: b
+    run: gaia ...
+    yield_on: [auth_error]   # explicit per-step list — chain default does NOT apply here
+```
+
+The chain default applies only when a step has an empty `yield_on`.
+A non-empty per-step list is the authoritative whitelist for that
+step (so an operator who explicitly opted out of a default can
+do so by listing the conditions they DO want, leaving out the
+default ones). `abort_on` is unaffected — there's no
+`default_abort_on` (yet).
+
+## `cleanup:` block (Phase B-2)
+
+```yaml
+steps:
+  - id: open
+    run: gaia pr create ...
+    capture: pr
+  - id: merge
+    run: gaia pr merge ${pr.number}
+    abort_on: [merge_conflict]
+
+cleanup:
+  - id: close-orphan
+    run: gaia pr close ${pr.number} --comment "abandoned by chain"
+```
+
+Cleanup steps run **only on abort**, in declared order, on a
+best-effort basis. A failing cleanup step is recorded but doesn't
+halt later cleanup steps — the goal is "clean up as much as
+possible." Cleanup steps share the chain's resolved scope (vars +
+captures from the main run) so they can reference whatever the main
+chain produced.
+
+The aborted Result envelope carries:
+
+```json
+{
+  "data": {
+    "status": "aborted",
+    "abort_reason": "merge_conflict",
+    "cleanup_results": [
+      { "id": "close-orphan", "status": "ok", "duration_ms": 412, ... }
+    ],
+    ...
+  }
+}
+```
+
+## `--decision modify` (Phase B-2)
+
+When a chain yields, the agent can re-run the yielded step with
+modified vars instead of just continuing or aborting:
+
+```bash
+gaia chain resume <token> \
+  --decision modify \
+  --modify-step wait-checks \
+  --modify-vars timeout=10m,branch=main
+```
+
+`--modify-step` must match the yielded step's id; only the yielded
+step is editable mid-flight (other steps' args are part of the
+frozen chain spec). `--modify-vars` accepts the same `key=value`
+shape as the original `--var` flag (repeatable; comma-separated;
+`=` splits on first occurrence).
+
+The modified vars are persisted to the resumed state so a re-yield
+preserves them — an agent that fixes a value once doesn't have to
+re-pass it on every retry.
+
 ## Limitations (current)
 
 - **Saved chains** in `.gaia/chains/<name>.yaml` (Phase B-3): today
   every invocation passes `--chain-file <path>`.
-- **`gaia chain resume --decision modify`** (Phase B-2): change
-  the yielded step's args before re-running. Today only
-  `continue` and `abort` are supported.
-- **Per-step `timeout` + `retry`** (Phase B-2): currently any
-  exit-code-based yield/abort works, but timeout-driven yields
-  need the runner to enforce per-step deadlines.
-- **Chain-level `default_yield_on`** (Phase B-2): operators
-  declare `yield_on` per step today.
-- **`cleanup:` block on abort** (Phase B-2): no automatic cleanup
-  of partially-completed work.
+- **`pr-create-and-land` canned chain** (Phase B-3): not yet
+  shipped at `.gaia/chains/`.
 - **Parallel steps + for_each** (Phase C): no parallel fan-out
   for "5 comments at once" patterns.
 - **Named chain composition** (Phase C): one chain calling

@@ -1,0 +1,23 @@
+description: |
+  Chain aborts; cleanup steps run best-effort, populate
+  Result.CleanupResults. Exercises B-2.4.
+
+chain_yaml: |
+  name: cleanup-runs
+  steps:
+    - id: stop
+      run: exit 4
+      abort_on:
+        - auth_error
+  cleanup:
+    - id: log
+      run: echo cleanup-ran
+
+stages:
+  - description: gaia chain run — aborts, cleanup runs
+    args:
+      - chain
+      - run
+      - --chain-file
+      - ${chainfile}
+    exit_code: 1

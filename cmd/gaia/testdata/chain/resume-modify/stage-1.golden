@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "data": {
+    "chain": "modify-recovers",
+    "status": "success",
+    "steps": [
+      {
+        "id": "check",
+        "run": "if [ \"yes\" = \"yes\" ]; then echo ok; else exit 5; fi",
+        "status": "ok",
+        "stdout": "ok\n",
+        "duration_ms": 0
+      }
+    ],
+    "duration_ms": 0
+  }
+}

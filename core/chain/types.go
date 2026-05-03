@@ -49,6 +49,23 @@ type Chain struct {
 	Description string             `yaml:"description,omitempty"`
 	Vars        map[string]VarSpec `yaml:"vars,omitempty"`
 	Steps       []Step             `yaml:"steps"`
+
+	// DefaultYieldOn applies to every step that does not declare
+	// its own yield_on. Per-step yield_on (and abort_on) override.
+	// Useful for the common pattern "yield on rate-limit or
+	// timeout for everything in this chain" without repeating the
+	// declaration on each step. Phase B-2.
+	DefaultYieldOn []YieldCondition `yaml:"default_yield_on,omitempty"`
+
+	// Cleanup runs on abort, in declared order, on a best-effort
+	// basis (each step's success/failure is recorded but a failing
+	// cleanup step doesn't stop later cleanup steps from running).
+	// Cleanup steps share the chain's resolved vars + captures.
+	// Result.CleanupResults carries per-step records for the agent
+	// to inspect. Cleanup does NOT run on success / yield / failure
+	// — only on abort, where a partially-completed chain may have
+	// left orphan state behind. Phase B-2.
+	Cleanup []Step `yaml:"cleanup,omitempty"`
 }
 
 // VarSpec describes one chain input. Required vars must be supplied
@@ -87,6 +104,37 @@ type Step struct {
 	YieldOn   []YieldCondition `yaml:"yield_on,omitempty"`
 	AbortOn   []YieldCondition `yaml:"abort_on,omitempty"`
 	OnFailure *FailureAction   `yaml:"on_failure,omitempty"`
+
+	// Timeout caps a single step's wall-clock duration. On expiry,
+	// the runner kills the subprocess and yields with condition
+	// `timeout` (which routes through the step's yield_on /
+	// abort_on / chain default_yield_on chain). Format is any
+	// time.ParseDuration string (e.g. "30s", "5m", "1h"). Empty
+	// string disables the per-step cap. Phase B-2.
+	Timeout string `yaml:"timeout,omitempty"`
+
+	// Retry tunes per-step retry-on-failure. nil disables retries
+	// (default). When set, a non-zero exit re-runs the step up to
+	// Max times with Delay between attempts (scaled per Backoff).
+	// Final-attempt failure routes normally (yield_on, abort_on,
+	// on_failure). Retries do NOT yield/abort between attempts —
+	// only the final outcome routes. Phase B-2.
+	Retry *RetrySpec `yaml:"retry,omitempty"`
+}
+
+// RetrySpec configures per-step retry. Sensible defaults: max 3,
+// delay 1s, exponential backoff. Operators tune the knobs that
+// matter for their step.
+//
+// Backoff strategies:
+//
+//	"constant"    — wait Delay between every attempt.
+//	"linear"      — Delay, 2*Delay, 3*Delay, ...
+//	"exponential" — Delay, 2*Delay, 4*Delay, 8*Delay, ... (default)
+type RetrySpec struct {
+	Max     int    `yaml:"max,omitempty"`
+	Delay   string `yaml:"delay,omitempty"`
+	Backoff string `yaml:"backoff,omitempty"`
 }
 
 // YieldCondition is the fixed vocabulary chains use to label step
@@ -205,6 +253,16 @@ type StepResult struct {
 	Stdout     string `json:"stdout,omitempty"`
 	Stderr     string `json:"stderr,omitempty"`
 	DurationMs int64  `json:"duration_ms"`
+
+	// Attempts records how many tries the runner made for this
+	// step (1 = no retry needed, ≥2 = retried). Set only when
+	// Step.Retry is configured. Phase B-2.
+	Attempts int `json:"attempts,omitempty"`
+
+	// TimedOut is true when the step's per-step Timeout was
+	// reached and the subprocess was killed. The condition the
+	// runner routes through is `timeout`. Phase B-2.
+	TimedOut bool `json:"timed_out,omitempty"`
 }
 
 // Result.Status values.

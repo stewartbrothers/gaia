@@ -36,6 +36,23 @@ type RunOptions struct {
 	// Empty defaults to DefaultStateDir() at run time. Tests pass
 	// a tempdir.
 	StateDir string
+
+	// Modify carries a `--decision modify` directive on Resume.
+	// Required when decision == "modify"; ignored otherwise. Phase B-2.
+	Modify *ModifyDirective
+}
+
+// ModifyDirective tells Resume to mutate the yielded step's vars
+// before re-running. StepID must match the step that yielded —
+// otherwise the operator is editing a step that hasn't run, which
+// is a different feature (and would race with later substitution).
+//
+// Vars are merged into the chain's resolved scope, replacing any
+// existing key. Captures aren't editable: they're outputs of prior
+// steps, not inputs the operator can rebind.
+type ModifyDirective struct {
+	StepID string
+	Vars   map[string]string
 }
 
 const defaultMaxOutputBytes = 4096
@@ -92,6 +109,9 @@ func Run(ctx context.Context, c *Chain, supplied map[string]string, opts RunOpti
 
 	chainStart := time.Now()
 	executeSteps(ctx, c, c.Steps, 0, scope, res, opts, vars)
+	if res.Status == StatusAborted {
+		runCleanup(ctx, c, scope, res, opts)
+	}
 	res.DurationMs = time.Since(chainStart).Milliseconds()
 
 	return res, nil
@@ -135,20 +155,48 @@ func Resume(ctx context.Context, token, decision string, opts RunOptions) (*Resu
 	}
 
 	if decision == "abort" {
-		// Honor the operator's abort. Cleanup steps land in B-2; for
-		// now just emit the aborted envelope and clean the state file.
-		_ = DeleteState(opts.StateDir, token)
-		return &Result{
+		// Honor the operator's abort: build the aborted envelope,
+		// run any cleanup: steps best-effort, then clean state.
+		res := &Result{
 			Chain:       state.Chain.Name,
 			Status:      StatusAborted,
 			AbortReason: state.YieldReason,
 			Steps:       state.Steps,
 			Captured:    state.Captures,
-		}, nil
+		}
+		runCleanup(ctx, &state.Chain, Scope{
+			Vars:     copyStringMap(state.Vars),
+			Captures: copyAnyMap(state.Captures),
+		}, res, opts)
+		_ = DeleteState(opts.StateDir, token)
+		return res, nil
 	}
 
-	if decision != "continue" {
-		return nil, fmt.Errorf("chain: unknown resume decision %q (want continue|abort)", decision)
+	if decision == "modify" {
+		// Operator supplies new var values for the yielded step.
+		// We validate the directive points at the right step (the
+		// one that's about to re-run), merge the var changes into
+		// the persisted scope, and persist them so a later yield
+		// re-uses the modified vars rather than reverting.
+		if opts.Modify == nil {
+			return nil, fmt.Errorf("chain: --decision modify requires a Modify directive")
+		}
+		yieldedStep := state.Chain.Steps[state.YieldedAtStep]
+		if opts.Modify.StepID != yieldedStep.ID {
+			return nil, fmt.Errorf("chain: modify directive targets step %q, but the yielded step is %q (only the yielded step can be modified)", opts.Modify.StepID, yieldedStep.ID)
+		}
+		for k, v := range opts.Modify.Vars {
+			state.Vars[k] = v
+		}
+		// Persist the modified state so a re-yield carries forward
+		// the new vars. Save before we proceed to executeSteps so
+		// a subsequent panic doesn't strand the modification.
+		if err := SaveState(opts.StateDir, state); err != nil {
+			return nil, fmt.Errorf("chain: persist modified state: %w", err)
+		}
+		// Fall through to the same "continue" path below.
+	} else if decision != "continue" {
+		return nil, fmt.Errorf("chain: unknown resume decision %q (want continue|abort|modify)", decision)
 	}
 
 	// Re-build scope from state. Vars are flat strings (yaml.v3
@@ -171,6 +219,9 @@ func Resume(ctx context.Context, token, decision string, opts RunOptions) (*Resu
 
 	chainStart := time.Now()
 	executeSteps(ctx, &state.Chain, state.Chain.Steps, state.YieldedAtStep, scope, res, opts, state.Vars)
+	if res.Status == StatusAborted {
+		runCleanup(ctx, &state.Chain, scope, res, opts)
+	}
 	res.DurationMs = time.Since(chainStart).Milliseconds()
 
 	// Always remove the OLD state file. If the chain yielded again,
@@ -185,6 +236,15 @@ func Resume(ctx context.Context, token, decision string, opts RunOptions) (*Resu
 // `startAt` is the index in stepsList to begin at (0 for Run, the
 // yielded-step index for Resume). `vars` is the resolved var map
 // (passed separately so we can persist it on yield).
+//
+// Per-step semantics (Phase B-2 additions in parens):
+//   - substitute ${vars} / ${captures.field} into step.Run
+//   - unresolved refs → chain failure (unresolved_variables)
+//   - (run with optional Step.Timeout via context.WithTimeout)
+//   - (retry up to Step.Retry.Max times with delay/backoff between
+//     attempts; only the FINAL attempt routes through yield/abort)
+//   - on non-zero: route by yield_on / abort_on / chain
+//     default_yield_on, then on_failure, then default failure
 //
 // Side effects on res:
 //   - appends to res.Steps for each step that runs
@@ -222,28 +282,54 @@ func executeSteps(ctx context.Context, c *Chain, stepsList []Step, startAt int, 
 			return
 		}
 
+		// Run-with-retry. Each attempt may set its own deadline via
+		// Step.Timeout. The final attempt's outcome is what routes
+		// through yield/abort/failure. Intermediate attempts just
+		// sleep and try again. DurationMs covers the whole
+		// retry sequence so an operator sees real wall-clock cost.
 		stepStart := time.Now()
-		stdout, stderr, exitCode, runErr := execShell(ctx, resolved)
+		stdout, stderr, exitCode, attempts, timedOut, runErr := runWithRetry(ctx, step, resolved)
 		sr.DurationMs = time.Since(stepStart).Milliseconds()
-		sr.ExitCode = exitCode
 		sr.Stdout = truncate(stdout, opts.MaxOutputBytes)
 		sr.Stderr = truncate(stderr, opts.MaxOutputBytes)
+		sr.ExitCode = exitCode
+		if step.Retry != nil {
+			sr.Attempts = attempts
+		}
+		sr.TimedOut = timedOut
 
 		if opts.Progress != nil {
 			status := "ok"
 			if runErr != nil || exitCode != 0 {
 				status = "failed"
 			}
-			_, _ = fmt.Fprintf(opts.Progress, "[%s] %s in %dms\n", step.ID, status, sr.DurationMs)
+			_, _ = fmt.Fprintf(opts.Progress, "[%s] %s\n", step.ID, status)
 		}
 
 		if runErr != nil || exitCode != 0 {
+			// Timeout outranks exit-code mapping: when the runner
+			// killed the subprocess, the condition is `timeout`
+			// regardless of what exit code the SIGKILL'd shell
+			// happened to surface.
 			condition := MapExitCode(exitCode)
+			if timedOut {
+				condition = YieldTimeout
+			}
 
-			// Routing order: yield_on first (caller wants pause),
-			// abort_on second (caller wants stop with cleanup),
+			// Routing order: per-step yield_on first (caller wants pause),
+			// per-step abort_on second (caller wants stop), chain
+			// default_yield_on third (only when step.YieldOn is empty),
 			// fall-through to failure last.
-			if containsCondition(step.YieldOn, condition) {
+			//
+			// default_yield_on does NOT apply when the step has its
+			// own non-empty yield_on — the per-step list is the
+			// authoritative whitelist for that step.
+			yieldList := step.YieldOn
+			if len(yieldList) == 0 {
+				yieldList = c.DefaultYieldOn
+			}
+
+			if containsCondition(yieldList, condition) {
 				sr.Status = StepYielded
 				res.Steps = append(res.Steps, sr)
 				if err := emitYield(c, stepsList, i, condition, sr, scope, vars, res, opts); err != nil {
@@ -274,6 +360,9 @@ func executeSteps(ctx context.Context, c *Chain, stepsList []Step, startAt int, 
 			res.Status = StatusFailure
 			res.FailedStep = step.ID
 			reason := "step_exited_nonzero"
+			if timedOut {
+				reason = "step_timed_out"
+			}
 			errStr := strings.TrimSpace(stderr)
 			if errStr == "" && runErr != nil {
 				errStr = runErr.Error()
@@ -288,6 +377,160 @@ func executeSteps(ctx context.Context, c *Chain, stepsList []Step, startAt int, 
 			res.Captured[step.Capture] = scope.Captures[step.Capture]
 		}
 		res.Steps = append(res.Steps, sr)
+	}
+}
+
+// runWithRetry runs a single step with optional per-step timeout and
+// retry. Returns the FINAL attempt's outcome plus the total attempts
+// made and whether the final attempt timed out.
+//
+// Retry behavior:
+//   - Step.Retry == nil: one attempt, no sleep.
+//   - Step.Retry.Max == N: up to N+1 total attempts (initial + N retries).
+//   - Between attempts: sleep Step.Retry.Delay scaled by backoff.
+//
+// Timeout behavior:
+//   - Step.Timeout != "": each attempt gets a fresh
+//     context.WithTimeout. Expiry → kill subprocess, route via
+//     YieldTimeout. Retries do NOT extend across attempts — each
+//     attempt has its own deadline.
+//
+// Final-attempt-only routing means a transient failure that recovers
+// on retry produces a clean StepOK — the chain doesn't yield in the
+// middle of a retry sequence.
+func runWithRetry(ctx context.Context, step Step, resolved string) (stdout, stderr string, exitCode, attempts int, timedOut bool, runErr error) {
+	max := 0
+	var delay time.Duration
+	backoff := "exponential"
+	if step.Retry != nil {
+		max = step.Retry.Max
+		if step.Retry.Delay != "" {
+			delay, _ = time.ParseDuration(step.Retry.Delay) // already validated
+		}
+		if step.Retry.Backoff != "" {
+			backoff = step.Retry.Backoff
+		}
+	}
+
+	var stepTimeout time.Duration
+	if step.Timeout != "" {
+		stepTimeout, _ = time.ParseDuration(step.Timeout) // already validated
+	}
+
+	for attempt := 0; attempt <= max; attempt++ {
+		attempts = attempt + 1
+
+		// Fresh per-attempt context if the step declares a timeout.
+		// Without the per-attempt fresh context, a long-running first
+		// attempt would consume the whole step's deadline budget.
+		runCtx := ctx
+		var cancel context.CancelFunc
+		if stepTimeout > 0 {
+			runCtx, cancel = context.WithTimeout(ctx, stepTimeout)
+		}
+
+		stdout, stderr, exitCode, runErr = execShell(runCtx, resolved)
+		// timedOut: we consider an attempt timed-out when our
+		// context's deadline expired AND the run errored. The
+		// shell typically exits 137/143/-1 in this case.
+		timedOut = false
+		if runCtx.Err() != nil && (runErr != nil || exitCode != 0) {
+			timedOut = true
+		}
+		if cancel != nil {
+			cancel()
+		}
+
+		// Success? Done.
+		if runErr == nil && exitCode == 0 {
+			return stdout, stderr, exitCode, attempts, false, nil
+		}
+
+		// Final attempt? Return what we have.
+		if attempt >= max {
+			return stdout, stderr, exitCode, attempts, timedOut, runErr
+		}
+
+		// Sleep with backoff before the next attempt. Honor parent
+		// ctx cancellation so a cancelled chain doesn't keep
+		// retrying.
+		sleep := backoffDelay(delay, attempt, backoff)
+		if sleep > 0 {
+			select {
+			case <-ctx.Done():
+				return stdout, stderr, exitCode, attempts, timedOut, runErr
+			case <-time.After(sleep):
+			}
+		}
+	}
+	return stdout, stderr, exitCode, attempts, timedOut, runErr
+}
+
+// backoffDelay computes the per-attempt sleep before the (attempt+1)-th
+// retry. attempt is 0-based: attempt=0 is the gap after the FIRST
+// failure, attempt=1 after the second, etc.
+//
+// constant     — base every time
+// linear       — base * (attempt+1)         (1×, 2×, 3×, ...)
+// exponential  — base * 2^attempt           (1×, 2×, 4×, 8×, ...)
+func backoffDelay(base time.Duration, attempt int, backoff string) time.Duration {
+	if base <= 0 {
+		return 0
+	}
+	switch backoff {
+	case "constant":
+		return base
+	case "linear":
+		return base * time.Duration(attempt+1)
+	case "exponential", "":
+		return base * (1 << attempt)
+	default:
+		return base
+	}
+}
+
+// runCleanup runs the chain's cleanup steps best-effort, recording
+// each in res.CleanupResults. Failing cleanup steps don't stop later
+// cleanup steps from running — the goal is to clean up as much as
+// possible even if some pieces are already broken.
+//
+// Cleanup steps share the chain's resolved scope (vars + captures
+// from the main run), so an operator can reference ${pr.number} in
+// `gaia pr close` to close whatever the main run created. Cleanup
+// steps cannot capture (no later steps to consume it) and cannot
+// yield (the chain is already aborted).
+//
+// Errors during cleanup are recorded but not propagated; a failing
+// cleanup step is just a StepResult{Status: failed, ...} entry. A
+// cleanup step with unresolved vars is similarly recorded as failed
+// without halting the rest of cleanup.
+func runCleanup(ctx context.Context, c *Chain, scope Scope, res *Result, opts RunOptions) {
+	if len(c.Cleanup) == 0 {
+		return
+	}
+	for _, step := range c.Cleanup {
+		resolved, unresolved := Substitute(step.Run, scope)
+		sr := StepResult{ID: step.ID, Run: resolved}
+
+		if len(unresolved) > 0 {
+			sr.Status = StepFailed
+			sr.Stderr = "unresolved variable references: " + strings.Join(unresolved, ", ")
+			res.CleanupResults = append(res.CleanupResults, sr)
+			continue
+		}
+
+		stepStart := time.Now()
+		stdout, stderr, exitCode, runErr := execShell(ctx, resolved)
+		sr.DurationMs = time.Since(stepStart).Milliseconds()
+		sr.ExitCode = exitCode
+		sr.Stdout = truncate(stdout, opts.MaxOutputBytes)
+		sr.Stderr = truncate(stderr, opts.MaxOutputBytes)
+		if runErr != nil || exitCode != 0 {
+			sr.Status = StepFailed
+		} else {
+			sr.Status = StepOK
+		}
+		res.CleanupResults = append(res.CleanupResults, sr)
 	}
 }
 

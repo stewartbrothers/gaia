@@ -126,13 +126,17 @@ Exit codes:
 }
 
 func newChainResumeCmd(flags *globalFlags) *cobra.Command {
-	var decision string
+	var (
+		decision   string
+		modifyStep string
+		modifyVars []string
+	)
 	cmd := &cobra.Command{
 		Use:   "resume <token>",
 		Short: "Resume a chain that yielded earlier",
 		Long: `Pick up a chain that paused on a yield_on condition.
 
-  gaia chain resume <token> [--decision continue|abort]
+  gaia chain resume <token> [--decision continue|abort|modify [--modify-step ID --modify-vars k=v,...]]
 
 The token is the resume_token from the original ` + "`gaia chain run`" + `
 envelope. Use ` + "`gaia chain list`" + ` to see currently-yielded chains
@@ -144,16 +148,39 @@ if you've lost the token.
              commit, retried a transient outage).
   abort      discard the yielded chain. Equivalent to
              ` + "`gaia chain abort`" + `.
+  modify     change the yielded step's vars before re-running.
+             Requires --modify-step <step-id> matching the
+             yielded step + one or more --modify-vars k=v
+             entries (repeatable; comma-separated also accepted).
 
-Phase B-2 will add a "modify" decision that lets you change the
-yielded step's args before re-running.`,
+Modify shape (chosen for shell-safety + minimal escaping):
+
+  gaia chain resume <token> --decision modify \
+       --modify-step wait-checks \
+       --modify-vars timeout=10m,branch=main
+
+Only the yielded step's id may appear in --modify-step. Other
+steps' args are part of the frozen chain spec and aren't
+adjustable mid-flight; agents that want to change those should
+abort + start a fresh chain with new --var inputs.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			stateDir, err := resolveStateDir()
 			if err != nil {
 				return err
 			}
-			res, err := chain.Resume(cmd.Context(), args[0], decision, chain.RunOptions{StateDir: stateDir})
+			runOpts := chain.RunOptions{StateDir: stateDir}
+			if decision == "modify" {
+				if modifyStep == "" {
+					return exitcode.Errorf(exitcode.Usage, "--decision modify requires --modify-step <step-id>")
+				}
+				vars, err := parseVarFlags(modifyVars)
+				if err != nil {
+					return err
+				}
+				runOpts.Modify = &chain.ModifyDirective{StepID: modifyStep, Vars: vars}
+			}
+			res, err := chain.Resume(cmd.Context(), args[0], decision, runOpts)
 			if err != nil {
 				return exitcode.Wrap(err, exitcode.Usage, "resume chain")
 			}
@@ -163,7 +190,9 @@ yielded step's args before re-running.`,
 			return chainExitFromStatus(res)
 		},
 	}
-	cmd.Flags().StringVar(&decision, "decision", "continue", "continue or abort (modify lands in B-2)")
+	cmd.Flags().StringVar(&decision, "decision", "continue", "continue, abort, or modify")
+	cmd.Flags().StringVar(&modifyStep, "modify-step", "", "step id to modify (must match the yielded step; required for --decision modify)")
+	cmd.Flags().StringSliceVar(&modifyVars, "modify-vars", nil, "var overrides as key=value (repeatable; required for --decision modify)")
 	return cmd
 }
 
