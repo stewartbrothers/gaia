@@ -2,8 +2,11 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/core/types"
 )
@@ -71,5 +74,58 @@ func (p *Provider) MergePullRequest(ctx context.Context, owner, repo string, n i
 	// match the docs precisely we'd need a Client.Put helper. Filed
 	// as follow-up; for now the Post path works against
 	// api.github.com per current docs.
-	return p.client.Post(ctx, fmt.Sprintf("/repos/%s/%s/pulls/%d/merge", owner, repo, n), body, nil)
+	err := p.client.Post(ctx, fmt.Sprintf("/repos/%s/%s/pulls/%d/merge", owner, repo, n), body, nil)
+	return classifyMergeError(err)
+}
+
+// classifyMergeError upgrades a generic HTTP error from GitHub's
+// merge endpoint into one of the structured chain-routable codes.
+// GitHub uses:
+//
+//	409 — head ref out of date / merge conflict (→ MergeConflict)
+//	405 — branch protection blocked the merge (→ ReviewRequired
+//	      when the body mentions reviews/approvals, otherwise
+//	      → PolicyViolation)
+//
+// Same body-sniffing rationale as forgejo.classifyMergeError.
+func classifyMergeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var ec *exitcode.Error
+	if !errors.As(err, &ec) {
+		return err
+	}
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "HTTP 409"):
+		return exitcode.Wrap(err, exitcode.MergeConflict, "merge conflict")
+	case strings.Contains(msg, "HTTP 405"):
+		if mentionsReview(msg) {
+			return exitcode.Wrap(err, exitcode.ReviewRequired, "review required")
+		}
+		return exitcode.Wrap(err, exitcode.PolicyViolation, "merge blocked by policy")
+	}
+	return err
+}
+
+func mentionsReview(msg string) bool {
+	low := strings.ToLower(msg)
+	for _, marker := range []string{
+		"needs approval",
+		"insufficient approval",
+		"review required",
+		"requires review",
+		"awaiting review",
+		"approval required",
+		"required pull request reviews",
+		"approving review",     // GitHub: "at least 1 approving review is required"
+		"approving reviews",    // GitHub: "approving reviews are required"
+		"reviewers with write", // GitHub: "...required by reviewers with write access"
+	} {
+		if strings.Contains(low, marker) {
+			return true
+		}
+	}
+	return false
 }

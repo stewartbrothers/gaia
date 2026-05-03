@@ -1,0 +1,49 @@
+description: |
+  `gaia pr view 42 --format pretty` exercises prettyPRView with
+  body, labels, and CI summary blocks.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/pulls/42
+    status: 200
+    body: |
+      {
+        "number": 42, "title": "make it better", "state": "open",
+        "user": {"login": "alice"},
+        "head": {"ref": "feature/x", "sha": "deadbeef", "repo": {"full_name": "o/r"}},
+        "base": {"ref": "main",      "sha": "cafebabe", "repo": {"full_name": "o/r"}},
+        "merged": false,
+        "labels": [{"id": 1, "name": "feature"}],
+        "body": "describe the change",
+        "mergeable": true,
+        "created_at": "2026-04-01T00:00:00Z",
+        "updated_at": "2026-04-02T00:00:00Z"
+      }
+  - method: GET
+    path: /repos/o/r/commits/deadbeef/status
+    status: 200
+    body: |
+      {
+        "state": "success",
+        "statuses": [
+          {"state": "success", "context": "build"}
+        ]
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - --format
+      - pretty
+      - pr
+      - view
+      - "42"
+      - --with-ci
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

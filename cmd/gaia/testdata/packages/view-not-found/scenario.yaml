@@ -1,0 +1,26 @@
+description: |
+  `gaia packages view` against a non-existent version → exit code 3.
+
+mocks:
+  - method: GET
+    path: /packages/Gerwood/generic/myapp/9.9.9
+    status: 404
+    body: |
+      {"message": "Not Found"}
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - Gerwood/gaia
+      - packages
+      - view
+      - --owner
+      - Gerwood
+      - generic/myapp/9.9.9
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 3

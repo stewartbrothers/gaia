@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "data": {
+    "id": 12,
+    "tag_name": "v1.0.0",
+    "name": "First major",
+    "body": "shipped at last",
+    "draft": false,
+    "prerelease": true,
+    "author": {
+      "login": "alice"
+    },
+    "target_commitish": "main",
+    "created_at": "2026-04-15T00:00:00Z",
+    "published_at": "2026-04-15T00:00:00Z"
+  }
+}

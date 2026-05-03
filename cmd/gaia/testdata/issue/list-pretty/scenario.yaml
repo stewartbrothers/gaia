@@ -1,0 +1,33 @@
+description: |
+  `gaia issue list --format pretty` exercises prettyIssueList.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/issues
+    status: 200
+    body: |
+      [
+        {
+          "number": 1, "title": "first thing", "state": "open",
+          "user": {"login": "alice"},
+          "labels": [{"id": 1, "name": "bug"}],
+          "created_at": "2026-04-01T00:00:00Z",
+          "updated_at": "2026-04-02T00:00:00Z"
+        }
+      ]
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - --format
+      - pretty
+      - issue
+      - list
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

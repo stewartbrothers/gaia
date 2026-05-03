@@ -1,0 +1,28 @@
+description: |
+  `gaia label list --format pretty` exercises prettyLabelList.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/labels
+    status: 200
+    body: |
+      [
+        {"id": 1, "name": "bug",     "color": "ff0000", "description": "broken"},
+        {"id": 2, "name": "feature", "color": "",       "description": ""}
+      ]
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - --format
+      - pretty
+      - label
+      - list
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

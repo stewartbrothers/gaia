@@ -1,0 +1,54 @@
+description: |
+  `gaia issue view 42 --with-comments 5` fans out: one GET on the
+  issue, then one GET on /comments with limit=5. Comments are inlined
+  in the rendered issue.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/issues/42
+    status: 200
+    body: |
+      {
+        "number": 42, "title": "answer", "state": "open",
+        "user": {"login": "alice"},
+        "body": "discuss",
+        "created_at": "2026-04-01T00:00:00Z",
+        "updated_at": "2026-04-02T00:00:00Z"
+      }
+  - method: GET
+    path: /repos/o/r/issues/42/comments
+    status: 200
+    body: |
+      [
+        {
+          "id": 1,
+          "user": {"login": "bob"},
+          "body": "lgtm",
+          "created_at": "2026-04-03T00:00:00Z",
+          "updated_at": "2026-04-03T00:00:00Z"
+        },
+        {
+          "id": 2,
+          "user": {"login": "carol"},
+          "body": "ship it",
+          "created_at": "2026-04-04T00:00:00Z",
+          "updated_at": "2026-04-04T00:00:00Z"
+        }
+      ]
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - issue
+      - view
+      - "42"
+      - --with-comments
+      - "5"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

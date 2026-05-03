@@ -14,7 +14,7 @@ import (
 func newPRCmd(flags *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pr",
-		Short: "List and view pull requests",
+		Short: "List, view, write, merge, and wait on pull requests",
 	}
 	cmd.AddCommand(newPRListCmd(flags))
 	cmd.AddCommand(newPRViewCmd(flags))
@@ -28,6 +28,7 @@ func newPRCmd(flags *globalFlags) *cobra.Command {
 	cmd.AddCommand(newPRMergeCmd(flags))
 	cmd.AddCommand(newPRReviewCmd(flags))
 	cmd.AddCommand(newPRCheckoutCmd(flags))
+	cmd.AddCommand(newPRCIWaitCmd(flags))
 	return cmd
 }
 

@@ -1,0 +1,35 @@
+description: |
+  `gaia issue list --limit 1` returns one item so Page.Truncated is
+  true and the envelope carries `_truncated: true` + a next cursor.
+  Pins the pagination contract documented in docs/output-format.md.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/issues
+    status: 200
+    body: |
+      [
+        {
+          "number": 1, "title": "first thing", "state": "open",
+          "user": {"login": "alice"},
+          "created_at": "2026-04-01T00:00:00Z",
+          "updated_at": "2026-04-02T00:00:00Z"
+        }
+      ]
+
+stages:
+  - description: gaia issue list --limit 1
+    args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - --limit
+      - "1"
+      - issue
+      - list
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

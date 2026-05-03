@@ -36,10 +36,25 @@ type BranchRef struct {
 // CISummary is the rolled-up CI status across all checks for a PR's
 // head commit. State takes one of "success", "pending", "failure",
 // "error", "neutral".
+//
+// Checks, when populated, lists the individual check name + state
+// pairs that compose the rollup. Populated by `gaia pr ci-wait` so
+// chains can apply name-based flakiness heuristics; unpopulated by
+// the default `gaia pr view --with-ci` path because most consumers
+// only need the rollup. Always omitempty.
 type CISummary struct {
-	State      string `json:"state"`
-	Total      int    `json:"total"`
-	Successful int    `json:"successful"`
-	Failed     int    `json:"failed"`
-	Pending    int    `json:"pending"`
+	State      string      `json:"state"`
+	Total      int         `json:"total"`
+	Successful int         `json:"successful"`
+	Failed     int         `json:"failed"`
+	Pending    int         `json:"pending"`
+	Checks     []CheckItem `json:"checks,omitempty"`
+}
+
+// CheckItem is one individual CI check on a PR's head commit. Name
+// is the upstream-reported context/check-name; State takes the same
+// vocabulary as CISummary.State for the single check.
+type CheckItem struct {
+	Name  string `json:"name"`
+	State string `json:"state"`
 }

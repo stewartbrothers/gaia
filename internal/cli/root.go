@@ -79,6 +79,7 @@ auth setup.`,
 	root.AddCommand(newChainCmd(flags))
 	root.AddCommand(newPackagesCmd(flags))
 	root.AddCommand(newWikiCmd(flags))
+	root.AddCommand(newWebhookCmd(flags))
 
 	return root
 }

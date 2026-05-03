@@ -1,0 +1,38 @@
+description: |
+  `gaia label create --name --color --description` POSTs to /labels.
+
+mocks:
+  - method: POST
+    path: /repos/o/r/labels
+    status: 201
+    body: |
+      {
+        "id": 9,
+        "name": "release",
+        "color": "0033cc",
+        "description": "release-blocking"
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - label
+      - create
+      - --name
+      - release
+      - --color
+      - "0033cc"
+      - --description
+      - "release-blocking"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: POST
+      path: /repos/o/r/labels
+      body_contains: '"name":"release"'

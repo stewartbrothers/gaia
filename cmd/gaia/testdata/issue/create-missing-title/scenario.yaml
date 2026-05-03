@@ -1,0 +1,19 @@
+description: |
+  `gaia issue create` with no --title returns Usage(2) before any
+  network call. Pins the local-validation gate.
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - http://unused
+      - --repo
+      - o/r
+      - issue
+      - create
+      - --body
+      - "no title here"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 2

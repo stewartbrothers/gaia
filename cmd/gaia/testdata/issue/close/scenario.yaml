@@ -1,0 +1,34 @@
+description: |
+  `gaia issue close 42` PATCHes state=closed.
+
+mocks:
+  - method: PATCH
+    path: /repos/o/r/issues/42
+    status: 200
+    body: |
+      {
+        "number": 42, "title": "answer", "state": "closed",
+        "user": {"login": "alice"},
+        "created_at": "2026-04-01T00:00:00Z",
+        "updated_at": "2026-04-05T00:00:00Z",
+        "closed_at": "2026-04-05T00:00:00Z"
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - issue
+      - close
+      - "42"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: PATCH
+      path: /repos/o/r/issues/42
+      body_contains: '"state":"closed"'

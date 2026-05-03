@@ -3,11 +3,10 @@ package chain
 import "github.com/stewartbrothers/gaia/core/exitcode"
 
 // MapExitCode classifies a step's exit code into the chain
-// yield-condition vocabulary. The first 5 conditions
-// (auth_error, not_found, rate_limited, timeout, unknown_error)
-// map directly from gaia's exitcode package; the rest
-// (check_failed, merge_conflict, ...) require gaia commands to
-// emit structured exits and ship in later phases.
+// yield-condition vocabulary. Every gaia exit code from
+// `core/exitcode` is mapped; anything unrecognized falls back to
+// `unknown_error` so default retry / `yield_on: [unknown_error]`
+// catches it.
 //
 // timeout is special: it isn't an exit code, it's "the runner
 // killed the step because timeout: expired." Callers detect that
@@ -43,6 +42,16 @@ func MapExitCode(exit int) YieldCondition {
 		// "network" condition would be useful but doesn't match the
 		// existing alt-design vocabulary; revisit if there's demand.
 		return YieldUnknownError
+	case exitcode.MergeConflict:
+		return YieldMergeConflict
+	case exitcode.ReviewRequired:
+		return YieldReviewRequired
+	case exitcode.PolicyViolation:
+		return YieldPolicyViolation
+	case exitcode.CheckFailed:
+		return YieldCheckFailed
+	case exitcode.CheckFlaky:
+		return YieldCheckFlaky
 	default:
 		return YieldUnknownError
 	}

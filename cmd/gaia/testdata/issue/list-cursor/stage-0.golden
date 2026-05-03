@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "data": [
+    {
+      "number": 1,
+      "title": "first thing",
+      "state": "open",
+      "author": {
+        "login": "alice"
+      },
+      "created_at": "2026-04-01T00:00:00Z",
+      "updated_at": "2026-04-02T00:00:00Z"
+    }
+  ],
+  "_truncated": true,
+  "_next_cursor": "2"
+}

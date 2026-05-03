@@ -82,6 +82,25 @@ Gerwood/gaia, PR #75 with no comments)
 | | | | |
 | `gaia wiki search needle` (10 pages, 2 hits)       | ~500    | ~125    | **0.04×**    |
 | 1 list + 10 raw GETs (agent's WebFetch loop)       | ~13 000 | ~3 250  | 1×           |
+| | | | |
+| `gaia webhook list` (3 hooks, est.)                | ~600    | ~150    | **~0.30×**   |
+| `gaia --fields id,active,events webhook list`      | ~180    | ~45     | **~0.09×**   |
+| `curl /hooks?limit=3` (Forgejo, 3 hooks)           | ~2 000  | ~500    | 1×           |
+| | | | |
+| `gaia webhook view 7` (1 hook, trimmed)            | ~280    | ~70     | **~0.40×**   |
+| `curl /hooks/7` (Forgejo full hook record)         | ~700    | ~175    | 1×           |
+| | | | |
+| `gaia webhook deliveries 7` (30 deliveries)        | ~3 000  | ~750    | **~0.06×**   |
+| `curl /hooks/7/deliveries?limit=30` (with bodies)  | ~50 000 | ~12 500 | 1×           |
+| | | | |
+| `gaia webhook deliveries 7 --get 101` (full body)  | ~600    | ~150    | **~0.40×**   |
+| `curl /hooks/7/deliveries/101`                     | ~1 500  | ~375    | 1×           |
+| | | | |
+| `gaia webhook redeliver 7 101`                     | ~50     | ~13     | n/a          |
+| `curl -X POST /hooks/7/deliveries/101`             | 0       | 0       | (204)        |
+| | | | |
+| `gaia webhook test 7`                              | ~50     | ~13     | n/a          |
+| `curl -X POST /hooks/7/tests`                      | 0       | 0       | (204)        |
 
 > Wiki rows are estimated against a typical 10-page wiki with ~1KB
 > markdown bodies. The Forgejo API wraps page bodies in
@@ -129,6 +148,15 @@ Gerwood/gaia, PR #75 with no comments)
   `WikiPage` carries `content_base64`, `html_url`, `sub_url`, and a
   full commit author/commiter object; gaia drops everything except
   `title`, `path`, decoded `body`, short SHA, and `updated_at`.
+- **webhook deliveries list**: ~16× smaller than raw curl. Raw
+  forge responses inline every delivery's full request + response
+  bodies — for a `push` event with full commit list this is
+  routinely 1.5-5 KB *per delivery*. gaia's list shape carries
+  only the summary (id, event, status_code, duration_ms,
+  delivered_at, redelivery flag); fetch one detail with
+  `gaia webhook deliveries <id> --get N` when you actually need
+  the body. This is the headline win for #85: dashboards that
+  show 30 recent deliveries to an agent become tractable.
 
 ### Packages (#107, estimated)
 

@@ -4,15 +4,24 @@
 the *kind* of failure without parsing stderr. The full table is below;
 the constants live in `core/exitcode`.
 
-| Code | Constant     | Meaning                                          |
-|------|--------------|--------------------------------------------------|
-| 0    | `OK`         | Operation succeeded.                             |
-| 1    | `Generic`    | Unexpected failure; check stderr for detail.     |
-| 2    | `Usage`      | The request shape was wrong (400, 422, bad flag).|
-| 3    | `NotFound`   | The named issue / PR / repo does not exist.      |
-| 4    | `Auth`       | Auth missing or rejected (401, 403).             |
-| 5    | `RateLimit`  | Rate-limited by the upstream (429).              |
-| 6    | `Network`    | Transient infrastructure failure (408, 5xx, dial).|
+| Code | Constant          | Meaning                                          |
+|------|-------------------|--------------------------------------------------|
+| 0    | `OK`              | Operation succeeded.                             |
+| 1    | `Generic`         | Unexpected failure; check stderr for detail.     |
+| 2    | `Usage`           | The request shape was wrong (400, 422, bad flag).|
+| 3    | `NotFound`        | The named issue / PR / repo does not exist.     |
+| 4    | `Auth`            | Auth missing or rejected (401, 403).             |
+| 5    | `RateLimit`       | Rate-limited by the upstream (429).              |
+| 6    | `Network`         | Transient infrastructure failure (408, 5xx, dial).|
+| 7    | `MergeConflict`   | PR merge blocked by 409 conflict (head diverged).|
+| 8    | `ReviewRequired`  | Branch protection requires reviews not yet present. |
+| 9    | `PolicyViolation` | Branch protection blocked the op for another reason (e.g. missing required status check). |
+| 10   | `CheckFailed`     | `gaia pr ci-wait` saw a non-flaky CI check fail. |
+| 11   | `CheckFlaky`      | `gaia pr ci-wait` timed out while pending OR saw only flaky/retryable failures. |
+
+Codes 7–11 ship with chain Phase B-3 (#112). They let chain `yield_on:`
+/ `abort_on:` route on merge / CI / policy outcomes via a structured
+condition vocabulary — see `docs/chain.md` for the mapping.
 
 ## Why these specific codes
 

@@ -1,0 +1,38 @@
+description: |
+  `gaia wiki search welcome --format pretty` exercises
+  prettyWikiSearch with snippets.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/wiki/pages
+    status: 200
+    body: |
+      [
+        {"title": "Home",  "sub_url": "Home"}
+      ]
+  - method: GET
+    path: /repos/o/r/wiki/page/Home
+    status: 200
+    body: |
+      {
+        "title": "Home",
+        "sub_url": "Home",
+        "content_base64": "V2VsY29tZSB0byB0aGUgd2lraS4="
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - --format
+      - pretty
+      - wiki
+      - search
+      - welcome
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

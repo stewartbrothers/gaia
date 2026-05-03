@@ -259,3 +259,57 @@ type SearchWikiOptions struct {
 	MaxPages     int
 	SnippetWidth int
 }
+
+// --- Webhooks (Phase 4 / #85) ---------------------------------------
+
+// ListWebhooksOptions paginates ListWebhooks. Forgejo paginates by
+// `page` + `limit`; GitHub by `page` + `per_page`. The provider
+// layer translates these from the unified Limit/Cursor pair.
+type ListWebhooksOptions struct {
+	Limit  int
+	Cursor string
+}
+
+// CreateWebhookOptions configures CreateWebhook. URL, ContentType,
+// and Events are required by both forges. Secret is HMAC-signed
+// into each delivery's `X-{Forgejo,Hub}-Signature-256` header;
+// passing it here is the only way to set it (the read shape
+// redacts it). Active defaults to true on both forges when the
+// caller leaves it unset; set Active=false for a "draft" hook
+// that can be enabled later via EditWebhook.
+//
+// ContentType takes "json" or "form" — the same two values both
+// forges accept. The forge-specific JSON shape (Forgejo's flat
+// `config_url`/`config_content_type` vs. GitHub's nested
+// `config.url`/`config.content_type`) is built by each provider
+// at the wire boundary; callers see the unified shape.
+type CreateWebhookOptions struct {
+	URL         string   `json:"url"`
+	ContentType string   `json:"content_type"`
+	Secret      string   `json:"secret,omitempty"`
+	Events      []string `json:"events"`
+	Active      bool     `json:"active"`
+}
+
+// EditWebhookOptions configures EditWebhook. Empty string fields
+// are dropped (no-change). AddEvents and RemoveEvents apply
+// incrementally on top of the current event list — gaia issues a
+// pre-fetch GET, computes the union/difference, and PATCHes the
+// merged set so callers don't have to fetch-and-replace
+// themselves. Active is *bool because false is a meaningful
+// distinct state from "no change".
+type EditWebhookOptions struct {
+	URL          string   `json:"-"`
+	ContentType  string   `json:"-"`
+	Secret       string   `json:"-"`
+	AddEvents    []string `json:"-"`
+	RemoveEvents []string `json:"-"`
+	Active       *bool    `json:"-"`
+}
+
+// ListDeliveriesOptions paginates ListWebhookDeliveries. Same shape
+// as ListWebhooksOptions; both forges paginate the same way.
+type ListDeliveriesOptions struct {
+	Limit  int
+	Cursor string
+}

@@ -44,10 +44,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -75,30 +79,95 @@ type scenario struct {
 	// ${chainfile} token in their args.
 	ChainYAML string `yaml:"chain_yaml,omitempty"`
 
+	// SavedChains, when non-empty, is written to
+	// ${tempdir}/.config/gaia/chains/<name>.yaml before stages run.
+	// Lets a scenario exercise saved-chain resolution
+	// (`gaia chain run <name>`) without mocking the filesystem.
+	// Phase B-3 / #112.
+	SavedChains map[string]string `yaml:"saved_chains,omitempty"`
+
+	// Mocks, when non-empty, drives an in-process HTTP fake forge
+	// server. The harness starts an httptest.NewServer that
+	// dispatches requests to the first matching rule (by
+	// method+path, in order). Stages reference the server via the
+	// ${apiURL} token in their args. Empty means no fake forge is
+	// started (chain scenarios don't need one).
+	Mocks []mockRule `yaml:"mocks,omitempty"`
+
 	// Stages run sequentially. Each one produces a golden file
 	// named "stage-N.golden" by default (override per-stage with
 	// stage.golden).
 	Stages []stage `yaml:"stages"`
 }
 
+// mockRule is one entry in the fake forge's dispatch table. Rules
+// are matched in order; the first method+path match wins. The body
+// is taken from `body` (inline JSON/text) or `body_file` (path
+// relative to the scenario directory) — `body_file` lets large
+// fixtures live in their own file without bloating scenario.yaml.
+//
+// `query` is an optional exact-match on the URL's RawQuery, useful
+// when a list-style endpoint is exercised twice with different
+// filter combinations.
+type mockRule struct {
+	Method   string `yaml:"method"`
+	Path     string `yaml:"path"`
+	Query    string `yaml:"query,omitempty"`
+	Status   int    `yaml:"status,omitempty"`
+	Body     string `yaml:"body,omitempty"`
+	BodyFile string `yaml:"body_file,omitempty"`
+	// ContentType overrides the default `application/json`. Mostly
+	// used by diff fixtures that ship `text/plain`.
+	ContentType string `yaml:"content_type,omitempty"`
+}
+
 // stage is one gaia invocation within a scenario.
 //
 // Argv tokens supported:
 //
-//	${tempdir}    — scenario tempdir (HOME also points here).
-//	${chainfile}  — path to the written ChainYAML.
-//	${stateDir}   — XDG_STATE_HOME for the scenario.
+//	${tempdir}     — scenario tempdir (HOME also points here).
+//	${chainfile}   — path to the written ChainYAML.
+//	${stateDir}    — XDG_STATE_HOME for the scenario.
+//	${scenarioDir} — absolute path to the scenario's testdata
+//	                 directory (so fixture files committed alongside
+//	                 scenario.yaml can be referenced as
+//	                 ${scenarioDir}/assets/foo.tar.gz).
+//	${apiURL}      — base URL of the in-process fake forge server
+//	                 (only present when scenario.Mocks is set).
 //	${token:N}    — resume_token mined from stage N's stdout
 //	                envelope. Lets a "resume" stage reference
 //	                what a prior "run" stage yielded.
 type stage struct {
 	Args     []string          `yaml:"args"`
 	Env      map[string]string `yaml:"env,omitempty"`
+	Stdin    string            `yaml:"stdin,omitempty"`
 	ExitCode int               `yaml:"exit_code,omitempty"`
 	Golden   string            `yaml:"golden,omitempty"`
 
+	// AssertRequest, when set, captures the most recently
+	// dispatched fake-forge request and asserts on it. method/path
+	// must match exactly; body_contains is a substring check on
+	// the recorded request body.
+	AssertRequest *requestAssertion `yaml:"assert_request,omitempty"`
+
 	// Description: docs-only.
 	Description string `yaml:"description,omitempty"`
+}
+
+// requestAssertion describes what a stage expects the fake forge to
+// have received as the most-recent request. Substring assertions
+// (body_contains) keep goldens stable across map-iteration order in
+// JSON bodies; exact assertions (method/path/query) catch routing
+// regressions.
+type requestAssertion struct {
+	Method        string `yaml:"method,omitempty"`
+	Path          string `yaml:"path,omitempty"`
+	Query         string `yaml:"query,omitempty"`
+	BodyContains  string `yaml:"body_contains,omitempty"`
+	BodyEquals    string `yaml:"body_equals,omitempty"`
+	HeaderName    string `yaml:"header_name,omitempty"`
+	HeaderEquals  string `yaml:"header_equals,omitempty"`
+	HeaderHasAuth bool   `yaml:"header_has_auth,omitempty"`
 }
 
 // TestGoldenScenarios walks testdata/, loading each scenario.yaml
@@ -167,12 +236,49 @@ func runScenario(t *testing.T, dir string) {
 			t.Fatalf("write chain yaml: %v", err)
 		}
 	}
+	// Saved chains land at the global location
+	// (XDG_CONFIG_HOME/gaia/chains/<name>.yaml — XDG_CONFIG_HOME is
+	// pinned to ${tempdir}/config below). The chain CLI also probes
+	// project-local .gaia/chains/ but the harness chdirs to a non-
+	// git tempdir so that layer is silently skipped — exactly the
+	// "global fallback" path. Phase B-3 / #112.
+	if len(sc.SavedChains) > 0 {
+		// chainResolveOptions in internal/cli/chain.go uses
+		// os.UserHomeDir() for the global lookup, which honors HOME
+		// (already pinned to tempDir below). So the layout we need
+		// is ${HOME}/.config/gaia/chains/<name>.yaml.
+		savedDir := filepath.Join(tempDir, ".config", "gaia", "chains")
+		if err := os.MkdirAll(savedDir, 0o700); err != nil {
+			t.Fatalf("mkdir saved chains: %v", err)
+		}
+		for name, body := range sc.SavedChains {
+			fname := name
+			if !strings.HasSuffix(fname, ".yaml") && !strings.HasSuffix(fname, ".yml") {
+				fname += ".yaml"
+			}
+			if err := os.WriteFile(filepath.Join(savedDir, fname), []byte(body), 0o600); err != nil {
+				t.Fatalf("write saved chain %q: %v", name, err)
+			}
+		}
+	}
 
 	// Pin a clean env: HOME → tempdir (no surprise config),
 	// XDG_STATE_HOME → per-scenario state dir.
 	t.Setenv("HOME", tempDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tempDir, "config"))
 	t.Setenv("XDG_STATE_HOME", stateDir)
+	// Clear inherited tokens so the test environment is pristine —
+	// otherwise a developer with FORGEJO_TOKEN set inherits it,
+	// which leaks into write-path goldens (capturing tokens that
+	// aren't part of the scenario). Each forge-touching scenario
+	// sets FORGEJO_TOKEN explicitly via stage.env.
+	for _, k := range []string{
+		"FORGEJO_TOKEN", "FORGEJO_API_URL",
+		"GITEA_TOKEN", "GITHUB_TOKEN", "GH_TOKEN",
+		"GAIA_PROFILE", "GAIA_PROVIDER",
+	} {
+		t.Setenv(k, "")
+	}
 
 	// chdir to a directory that's NOT a git repo so config
 	// auto-detection doesn't pull in the dev's actual project.
@@ -186,11 +292,23 @@ func runScenario(t *testing.T, dir string) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(cwd) })
 
+	// Optional fake forge — only started when the scenario
+	// declares mocks.
+	var (
+		fakeForge *fakeForge
+		apiURL    string
+	)
+	if len(sc.Mocks) > 0 {
+		fakeForge = newFakeForge(t, absScenarioDir, sc.Mocks)
+		apiURL = fakeForge.URL()
+		t.Cleanup(fakeForge.Close)
+	}
+
 	// Stage outputs accumulate so ${token:N} references work.
 	stageOuts := make([]string, len(sc.Stages))
 
 	for i, st := range sc.Stages {
-		stageOuts[i] = runStage(t, absScenarioDir, i, st, sc, tempDir, stateDir, chainFile, stageOuts)
+		stageOuts[i] = runStage(t, absScenarioDir, i, st, sc, tempDir, stateDir, chainFile, apiURL, fakeForge, stageOuts)
 	}
 }
 
@@ -203,7 +321,8 @@ func runStage(
 	index int,
 	st stage,
 	sc scenario,
-	tempDir, stateDir, chainFile string,
+	tempDir, stateDir, chainFile, apiURL string,
+	forge *fakeForge,
 	prior []string,
 ) string {
 	t.Helper()
@@ -214,6 +333,10 @@ func runStage(
 			s = strings.ReplaceAll(s, "${tempdir}", tempDir)
 			s = strings.ReplaceAll(s, "${chainfile}", chainFile)
 			s = strings.ReplaceAll(s, "${stateDir}", stateDir)
+			s = strings.ReplaceAll(s, "${scenarioDir}", scenarioDir)
+			if apiURL != "" {
+				s = strings.ReplaceAll(s, "${apiURL}", apiURL)
+			}
 			// ${token:N} — resume_token from stage N.
 			for j := 0; j < index; j++ {
 				placeholder := fmt.Sprintf("${token:%d}", j)
@@ -241,6 +364,9 @@ func runStage(
 		root.SetOut(&stdout)
 		root.SetErr(&stderr)
 		root.SetArgs(args)
+		if st.Stdin != "" {
+			root.SetIn(strings.NewReader(st.Stdin))
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -252,6 +378,13 @@ func runStage(
 				gotExit, st.ExitCode, stderr.String(), stdout.String())
 		}
 
+		if st.AssertRequest != nil {
+			if forge == nil {
+				t.Fatal("stage has assert_request but scenario declares no mocks")
+			}
+			assertRequest(t, forge, st.AssertRequest)
+		}
+
 		goldenName := st.Golden
 		if goldenName == "" {
 			goldenName = stageName + ".golden"
@@ -259,6 +392,13 @@ func runStage(
 		goldenPath := filepath.Join(scenarioDir, goldenName)
 
 		got := normalize(stdout.String(), tempDir, stateDir, chainFile)
+		if apiURL != "" {
+			got = strings.ReplaceAll(got, apiURL, "<APIURL>")
+		}
+		// Scenario-dir paths can leak through `gaia release publish`'s
+		// `assets[].path` field (an absolute filesystem path). Normalize
+		// the prefix so the golden stays committable.
+		got = strings.ReplaceAll(got, scenarioDir, "<SCENARIODIR>")
 		if *updateGolden {
 			if err := os.WriteFile(goldenPath, []byte(got), 0o644); err != nil {
 				t.Fatalf("update golden %s: %v", goldenPath, err)
@@ -328,3 +468,155 @@ var (
 	listTokenRE = regexp.MustCompile(`"token":\s*"[0-9a-f]{32}"`)
 	modTimeRE   = regexp.MustCompile(`"mod_time":\s*"[^"]+"`)
 )
+
+// fakeForge is the in-process HTTP server that stands in for a real
+// Forgejo/Gitea API. The dispatch table is the per-scenario list of
+// mockRule entries: the first method+path (and, optionally, query)
+// match returns its body. Unmatched requests get 404 with a JSON
+// `{"message": "no mock for METHOD PATH"}` so the test failure
+// surface points at the missing rule, not at the gaia error.
+//
+// All requests are recorded for assert_request to inspect.
+type fakeForge struct {
+	srv      *httptest.Server
+	rules    []mockRule
+	scenario string
+
+	mu       sync.Mutex
+	requests []recordedRequest
+}
+
+// recordedRequest captures one inbound request to the fake forge for
+// assert_request to read back.
+type recordedRequest struct {
+	Method string
+	Path   string
+	Query  string
+	Body   []byte
+	Header http.Header
+}
+
+func newFakeForge(t *testing.T, scenarioDir string, rules []mockRule) *fakeForge {
+	t.Helper()
+	f := &fakeForge{rules: rules, scenario: scenarioDir}
+	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
+	return f
+}
+
+func (f *fakeForge) URL() string { return f.srv.URL }
+func (f *fakeForge) Close()      { f.srv.Close() }
+func (f *fakeForge) Requests() []recordedRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]recordedRequest, len(f.requests))
+	copy(out, f.requests)
+	return out
+}
+
+// LastRequest returns the most recent recorded request, or the zero
+// value if none. assert_request uses it to validate write payloads.
+func (f *fakeForge) LastRequest() recordedRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.requests) == 0 {
+		return recordedRequest{}
+	}
+	return f.requests[len(f.requests)-1]
+}
+
+func (f *fakeForge) serve(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(r.Body)
+	_ = r.Body.Close()
+
+	f.mu.Lock()
+	f.requests = append(f.requests, recordedRequest{
+		Method: r.Method,
+		Path:   r.URL.Path,
+		Query:  r.URL.RawQuery,
+		Body:   body,
+		Header: r.Header.Clone(),
+	})
+	f.mu.Unlock()
+
+	for _, rule := range f.rules {
+		if !ruleMatches(rule, r) {
+			continue
+		}
+		ct := rule.ContentType
+		if ct == "" {
+			ct = "application/json"
+		}
+		w.Header().Set("Content-Type", ct)
+		status := rule.Status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		w.WriteHeader(status)
+		respBody, err := f.ruleBody(rule)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write(respBody)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	_, _ = fmt.Fprintf(w, `{"message":"no mock for %s %s"}`, r.Method, r.URL.Path)
+}
+
+func ruleMatches(rule mockRule, r *http.Request) bool {
+	if rule.Method != "" && !strings.EqualFold(rule.Method, r.Method) {
+		return false
+	}
+	if rule.Path != r.URL.Path {
+		return false
+	}
+	if rule.Query != "" && rule.Query != r.URL.RawQuery {
+		return false
+	}
+	return true
+}
+
+func (f *fakeForge) ruleBody(rule mockRule) ([]byte, error) {
+	if rule.Body != "" {
+		return []byte(rule.Body), nil
+	}
+	if rule.BodyFile != "" {
+		p := filepath.Join(f.scenario, rule.BodyFile)
+		return os.ReadFile(p)
+	}
+	return nil, nil
+}
+
+// assertRequest evaluates a stage's AssertRequest against the
+// fake-forge's most-recent recorded request.
+func assertRequest(t *testing.T, f *fakeForge, a *requestAssertion) {
+	t.Helper()
+	got := f.LastRequest()
+	if a.Method != "" && !strings.EqualFold(got.Method, a.Method) {
+		t.Errorf("assert_request.method: got %q want %q", got.Method, a.Method)
+	}
+	if a.Path != "" && got.Path != a.Path {
+		t.Errorf("assert_request.path: got %q want %q", got.Path, a.Path)
+	}
+	if a.Query != "" && got.Query != a.Query {
+		t.Errorf("assert_request.query: got %q want %q", got.Query, a.Query)
+	}
+	if a.BodyContains != "" && !strings.Contains(string(got.Body), a.BodyContains) {
+		t.Errorf("assert_request.body_contains %q not in body: %s", a.BodyContains, string(got.Body))
+	}
+	if a.BodyEquals != "" && strings.TrimSpace(string(got.Body)) != strings.TrimSpace(a.BodyEquals) {
+		t.Errorf("assert_request.body_equals: got %q want %q", string(got.Body), a.BodyEquals)
+	}
+	if a.HeaderName != "" {
+		if h := got.Header.Get(a.HeaderName); h != a.HeaderEquals {
+			t.Errorf("assert_request.header[%s]: got %q want %q", a.HeaderName, h, a.HeaderEquals)
+		}
+	}
+	if a.HeaderHasAuth {
+		if got.Header.Get("Authorization") == "" {
+			t.Errorf("assert_request.header_has_auth: Authorization header missing; got headers %v", got.Header)
+		}
+	}
+}

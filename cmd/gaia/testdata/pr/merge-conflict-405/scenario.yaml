@@ -1,0 +1,27 @@
+description: |
+  Merge fails with 405 — PR isn't mergeable. Forgejo body "PR is not
+  mergeable" sniffs to merge_conflict per the structured-exit table
+  (#112 Phase B-3) → exit code 9 (MergeConflict). Pins the body-sniff
+  → structured-exit mapping.
+
+mocks:
+  - method: POST
+    path: /repos/o/r/pulls/42/merge
+    status: 405
+    body: |
+      {"message": "PR is not mergeable"}
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - pr
+      - merge
+      - "42"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 9

@@ -121,19 +121,60 @@ func TestMergePullRequestDefaultsToMerge(t *testing.T) {
 	}
 }
 
-func TestMergePullRequestNotMergeable(t *testing.T) {
+// TestMergePullRequestConflict verifies a 409 response surfaces as
+// exitcode.MergeConflict so chains can yield on `merge_conflict`.
+func TestMergePullRequestConflict(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(405)
+		w.WriteHeader(409)
+		_, _ = w.Write([]byte(`{"message":"head ref has diverged"}`))
 	}))
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
 	err := p.MergePullRequest(context.Background(), "o", "r", 7, provider.MergePullRequestOptions{})
 	if err == nil {
-		t.Fatal("expected error on 405 (not mergeable)")
+		t.Fatal("expected error on 409 (conflict)")
 	}
-	// 405 isn't in the FromHTTP map; defaults to Generic.
-	if got := exitcode.Of(err); got != exitcode.Generic {
-		t.Errorf("405 → exit code: got %d", got)
+	if got := exitcode.Of(err); got != exitcode.MergeConflict {
+		t.Errorf("409 → exit code: got %d, want MergeConflict (%d)", got, exitcode.MergeConflict)
+	}
+}
+
+// TestMergePullRequestReviewRequired verifies a 405 response with a
+// review-related body surfaces as exitcode.ReviewRequired.
+func TestMergePullRequestReviewRequired(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(405)
+		_, _ = w.Write([]byte(`{"message":"Insufficient approvals — needs approval from CODEOWNERS"}`))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	err := p.MergePullRequest(context.Background(), "o", "r", 7, provider.MergePullRequestOptions{})
+	if err == nil {
+		t.Fatal("expected error on 405")
+	}
+	if got := exitcode.Of(err); got != exitcode.ReviewRequired {
+		t.Errorf("405+review → exit code: got %d, want ReviewRequired (%d)", got, exitcode.ReviewRequired)
+	}
+}
+
+// TestMergePullRequestPolicyViolation verifies a 405 with a non-review
+// reason (failed required checks, locked branch, etc.) surfaces as
+// exitcode.PolicyViolation.
+func TestMergePullRequestPolicyViolation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(405)
+		_, _ = w.Write([]byte(`{"message":"Required status check 'ci/build' has not succeeded"}`))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	err := p.MergePullRequest(context.Background(), "o", "r", 7, provider.MergePullRequestOptions{})
+	if err == nil {
+		t.Fatal("expected error on 405")
+	}
+	if got := exitcode.Of(err); got != exitcode.PolicyViolation {
+		t.Errorf("405+policy → exit code: got %d, want PolicyViolation (%d)", got, exitcode.PolicyViolation)
 	}
 }

@@ -1,0 +1,29 @@
+description: |
+  `gaia packages delete --owner Gerwood generic/myapp/1.0.0 --confirm`
+  → DELETE /packages/Gerwood/generic/myapp/1.0.0.
+
+mocks:
+  - method: DELETE
+    path: /packages/Gerwood/generic/myapp/1.0.0
+    status: 204
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - Gerwood/gaia
+      - packages
+      - delete
+      - --owner
+      - Gerwood
+      - generic/myapp/1.0.0
+      - --confirm
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: DELETE
+      path: /packages/Gerwood/generic/myapp/1.0.0

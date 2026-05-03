@@ -50,6 +50,7 @@ type apiCheckRuns struct {
 }
 
 type apiCheckRun struct {
+	Name       string `json:"name"`       // human-readable check name
 	Status     string `json:"status"`     // queued | in_progress | completed
 	Conclusion string `json:"conclusion"` // success | failure | timed_out | ...
 }
@@ -95,19 +96,28 @@ func (a *apiPullRequest) toType() types.PullRequest {
 func (c *apiCheckRuns) toCISummary() *types.CISummary {
 	out := &types.CISummary{Total: c.TotalCount}
 	for _, r := range c.CheckRuns {
+		var checkState string
 		if r.Status != "completed" {
 			out.Pending++
-			continue
+			checkState = "pending"
+		} else {
+			switch r.Conclusion {
+			case "success":
+				out.Successful++
+				checkState = "success"
+			case "failure", "timed_out", "cancelled", "action_required", "stale":
+				out.Failed++
+				checkState = r.Conclusion
+			case "skipped", "neutral":
+				out.Successful++ // treat skip/neutral as not-failing for the rollup
+				checkState = r.Conclusion
+			default:
+				out.Pending++ // unknown/null
+				checkState = "pending"
+			}
 		}
-		switch r.Conclusion {
-		case "success":
-			out.Successful++
-		case "failure", "timed_out", "cancelled", "action_required", "stale":
-			out.Failed++
-		case "skipped", "neutral":
-			out.Successful++ // treat skip/neutral as not-failing for the rollup
-		default:
-			out.Pending++ // unknown/null
+		if r.Name != "" {
+			out.Checks = append(out.Checks, types.CheckItem{Name: r.Name, State: checkState})
 		}
 	}
 	switch {

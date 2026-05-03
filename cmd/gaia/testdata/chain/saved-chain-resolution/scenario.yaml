@@ -1,0 +1,21 @@
+description: |
+  `gaia chain run <name>` resolves to the saved chain at
+  ${HOME}/.config/gaia/chains/<name>.yaml when no project-local
+  override is present. Exercises Phase B-3's saved-chain lookup
+  without mocking the filesystem.
+
+saved_chains:
+  hello-saved: |
+    name: hello-saved
+    description: A trivial saved chain — the test is the resolution path.
+    steps:
+      - id: greet
+        run: echo hello from saved chain
+
+stages:
+  - description: gaia chain run hello-saved (resolves to ~/.config/gaia/chains/hello-saved.yaml)
+    args:
+      - chain
+      - run
+      - hello-saved
+    exit_code: 0

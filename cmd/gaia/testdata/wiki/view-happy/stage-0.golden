@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "data": {
+    "title": "Home",
+    "path": "Home",
+    "body": "# Home\n\nWelcome to the wiki.\n",
+    "last_commit": "abc1234",
+    "updated_at": "2026-04-01T00:00:00Z"
+  }
+}

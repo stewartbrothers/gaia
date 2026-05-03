@@ -44,19 +44,23 @@ func DefaultGlobalPath() (string, error) {
 	return filepath.Join(home, ".config", "gaia", "credentials.yaml"), nil
 }
 
-// ProjectRoot walks up from dir looking for a `.git` directory.
+// ProjectRoot walks up from dir looking for a `.git` entry.
 // Returns the absolute path of the first ancestor containing one, or
 // "" when dir isn't inside a git repo.
+//
+// Both `.git/` directories (regular checkouts) and `.git` files
+// (linked worktrees / submodules — git stores a `gitdir: …` pointer
+// instead of an embedded directory) count. Treating only the
+// directory shape as a project root would silently break linked
+// worktrees, which gaia itself uses heavily for parallel chains.
 func ProjectRoot(dir string) string {
 	d, err := filepath.Abs(dir)
 	if err != nil {
 		return ""
 	}
 	for {
-		if info, err := os.Stat(filepath.Join(d, ".git")); err == nil {
-			if info.IsDir() {
-				return d
-			}
+		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
+			return d
 		}
 		parent := filepath.Dir(d)
 		if parent == d {

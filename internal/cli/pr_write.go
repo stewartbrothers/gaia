@@ -222,7 +222,17 @@ func newPRMergeCmd(flags *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "merge <number>",
 		Short: "Merge a pull request",
-		Args:  cobra.ExactArgs(1),
+		Long: `Merge a pull request via the configured provider.
+
+Exits 0 on success. Failures map to structured exit codes so
+chains can route on them via yield_on / abort_on:
+
+  7   MergeConflict   — head ref diverged (HTTP 409)
+  8   ReviewRequired  — branch protection needs more approvals (HTTP 405 + review-related body)
+  9   PolicyViolation — branch protection blocked the merge for another reason
+  3   NotFound        — PR or repo does not exist
+  4   Auth            — credentials missing or rejected`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			n, err := parseIssueNumber(args[0])
 			if err != nil {

@@ -20,7 +20,11 @@ burning tokens on the bloat that comes with raw REST responses.
 ## Install
 
 ```bash
-# Download a tagged release for your platform (replace TAG + PLATFORM):
+# Homebrew (macOS + Linux):
+brew tap Gerwood/gaia https://github.com/stewartbrothers/gaia
+brew install gaia
+
+# Or download a tagged release for your platform (replace TAG + PLATFORM):
 TAG=v0.1.0 PLATFORM=linux_x86_64
 curl -fsSLO "https://github.com/stewartbrothers/gaia/releases/download/${TAG}/gaia_${TAG}_${PLATFORM}.tar.gz"
 tar -xzf "gaia_${TAG}_${PLATFORM}.tar.gz"
@@ -130,6 +134,23 @@ make cover              # with per-function summary
 make lint               # golangci-lint
 make release-snapshot   # local goreleaser dry-run → dist/
 ```
+
+## Mirror
+
+The canonical repo lives on a self-hosted Forgejo instance at
+[`github.com/stewartbrothers/gaia`](https://github.com/stewartbrothers/gaia).
+A public, read-only mirror is maintained at
+[`github.com/stewartbrothers/gaia`](https://github.com/stewartbrothers/gaia) for
+discoverability.
+
+- **Issues, PRs, releases** — open on the Forgejo instance. The
+  GitHub mirror does not accept patches.
+- **Code browsing, `go install`, drive-by reading** — either side
+  works.
+- **Tags + main** mirror across to GitHub automatically (see
+  [`docs/mirroring.md`](docs/mirroring.md) for the operator runbook).
+  Release artifacts are attached to the Forgejo release; the Homebrew
+  tap (#49) consumes them directly.
 
 ## License
 

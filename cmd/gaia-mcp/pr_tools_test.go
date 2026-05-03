@@ -221,3 +221,164 @@ func TestPRReviewBadInlineFormat(t *testing.T) {
 		t.Errorf("expected error for bad inline shape")
 	}
 }
+
+// --- B-3 / #112: gaia_pr_ci_wait MCP tool ---
+
+// makeMCPCIStatus builds a Forgejo /commits/{sha}/status payload for
+// the CI-wait MCP tool tests.
+func makeMCPCIStatus(rollup string, items []map[string]string) map[string]any {
+	statuses := make([]map[string]any, 0, len(items))
+	for _, it := range items {
+		statuses = append(statuses, map[string]any{
+			"state":   it["state"],
+			"context": it["name"],
+		})
+	}
+	return map[string]any{"state": rollup, "statuses": statuses}
+}
+
+func TestPRCIWaitToolSuccess(t *testing.T) {
+	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/pulls/7"):
+			_ = json.NewEncoder(w).Encode(makeMCPPRJSON(7, "open"))
+		case strings.HasSuffix(r.URL.Path, "/status"):
+			_ = json.NewEncoder(w).Encode(makeMCPCIStatus("success",
+				[]map[string]string{{"name": "ci/build", "state": "success"}}))
+		default:
+			t.Errorf("unexpected path: %q", r.URL.Path)
+		}
+	})
+	pinBuilder(t, p)
+
+	res, err := callTool(context.Background(), handlePRCIWait, map[string]any{
+		"repo": "o/r", "number": float64(7),
+		"timeout": "1s", "interval": "10ms",
+	})
+	if err != nil || res.IsError {
+		t.Fatalf("err=%v res=%s", err, resultText(t, res))
+	}
+	d := envelopeData(t, res)
+	if d["outcome"] != "success" {
+		t.Errorf("outcome: got %v want success", d["outcome"])
+	}
+	if d["exit_code"].(float64) != 0 {
+		t.Errorf("exit_code: got %v want 0", d["exit_code"])
+	}
+}
+
+func TestPRCIWaitToolCheckFailed(t *testing.T) {
+	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/pulls/7"):
+			_ = json.NewEncoder(w).Encode(makeMCPPRJSON(7, "open"))
+		case strings.HasSuffix(r.URL.Path, "/status"):
+			_ = json.NewEncoder(w).Encode(makeMCPCIStatus("failure",
+				[]map[string]string{
+					{"name": "ci/build", "state": "success"},
+					{"name": "ci/test", "state": "failure"},
+				}))
+		default:
+			t.Errorf("unexpected path: %q", r.URL.Path)
+		}
+	})
+	pinBuilder(t, p)
+
+	res, err := callTool(context.Background(), handlePRCIWait, map[string]any{
+		"repo": "o/r", "number": float64(7),
+		"timeout": "1s", "interval": "10ms",
+	})
+	if err != nil || res.IsError {
+		t.Fatalf("err=%v res=%s", err, resultText(t, res))
+	}
+	d := envelopeData(t, res)
+	if d["outcome"] != "check_failed" {
+		t.Errorf("outcome: got %v want check_failed", d["outcome"])
+	}
+	if d["exit_code"].(float64) != 10 {
+		t.Errorf("exit_code: got %v want 10", d["exit_code"])
+	}
+}
+
+func TestPRCIWaitToolCheckFlakyOnTimeout(t *testing.T) {
+	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/pulls/7"):
+			_ = json.NewEncoder(w).Encode(makeMCPPRJSON(7, "open"))
+		case strings.HasSuffix(r.URL.Path, "/status"):
+			_ = json.NewEncoder(w).Encode(makeMCPCIStatus("pending",
+				[]map[string]string{{"name": "ci/build", "state": "pending"}}))
+		default:
+			t.Errorf("unexpected path: %q", r.URL.Path)
+		}
+	})
+	pinBuilder(t, p)
+
+	res, err := callTool(context.Background(), handlePRCIWait, map[string]any{
+		"repo": "o/r", "number": float64(7),
+		"timeout": "30ms", "interval": "10ms",
+	})
+	if err != nil || res.IsError {
+		t.Fatalf("err=%v res=%s", err, resultText(t, res))
+	}
+	d := envelopeData(t, res)
+	if d["outcome"] != "check_flaky" {
+		t.Errorf("outcome: got %v want check_flaky", d["outcome"])
+	}
+	if d["exit_code"].(float64) != 11 {
+		t.Errorf("exit_code: got %v want 11", d["exit_code"])
+	}
+}
+
+func TestPRCIWaitToolFlakyMarkers(t *testing.T) {
+	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/pulls/7"):
+			_ = json.NewEncoder(w).Encode(makeMCPPRJSON(7, "open"))
+		case strings.HasSuffix(r.URL.Path, "/status"):
+			_ = json.NewEncoder(w).Encode(makeMCPCIStatus("failure",
+				[]map[string]string{{"name": "e2e-canary", "state": "failure"}}))
+		default:
+			t.Errorf("unexpected path: %q", r.URL.Path)
+		}
+	})
+	pinBuilder(t, p)
+
+	// Without marker → CheckFailed.
+	res, _ := callTool(context.Background(), handlePRCIWait, map[string]any{
+		"repo": "o/r", "number": float64(7),
+		"timeout": "1s", "interval": "10ms",
+	})
+	d := envelopeData(t, res)
+	if d["outcome"] != "check_failed" {
+		t.Errorf("baseline: got %v want check_failed", d["outcome"])
+	}
+
+	// With "canary" added → CheckFlaky.
+	res, _ = callTool(context.Background(), handlePRCIWait, map[string]any{
+		"repo": "o/r", "number": float64(7),
+		"timeout": "1s", "interval": "10ms",
+		"flaky_markers": []any{"canary"},
+	})
+	d = envelopeData(t, res)
+	if d["outcome"] != "check_flaky" {
+		t.Errorf("with marker: got %v want check_flaky", d["outcome"])
+	}
+}
+
+func TestPRCIWaitToolMissingNumber(t *testing.T) {
+	res, _ := callTool(context.Background(), handlePRCIWait, map[string]any{"repo": "o/r"})
+	if !res.IsError {
+		t.Errorf("expected error when number missing")
+	}
+}
+
+func TestPRCIWaitToolBadDuration(t *testing.T) {
+	res, _ := callTool(context.Background(), handlePRCIWait, map[string]any{
+		"repo": "o/r", "number": float64(7),
+		"timeout": "not-a-duration",
+	})
+	if !res.IsError {
+		t.Errorf("expected error on bad timeout")
+	}
+}

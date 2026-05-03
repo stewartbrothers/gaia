@@ -1,0 +1,27 @@
+description: |
+  `gaia issue view 99` against an issue that doesn't exist —
+  upstream 404 maps to exit code 3 (NotFound) per
+  docs/exit-codes.md. stdout stays empty; the gaia error message
+  goes to stderr and is captured by the cmd/gaia/main.go shim.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/issues/99
+    status: 404
+    body: |
+      {"message": "Not Found"}
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - issue
+      - view
+      - "99"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 3

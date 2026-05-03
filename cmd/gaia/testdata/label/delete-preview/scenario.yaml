@@ -1,0 +1,18 @@
+description: |
+  `gaia label delete bug` without --confirm prints the preview and
+  makes no API call.
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - http://unused
+      - --repo
+      - o/r
+      - label
+      - delete
+      - bug
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

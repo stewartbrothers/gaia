@@ -179,20 +179,20 @@ tight when scripting):
 - Labels: `list | create | edit | delete`
 - Releases: `list | view | create | edit | delete`
 - Search: `gaia search <query>`
+- Webhooks: `list | view | create | edit | delete | deliveries | redeliver | test`
 
 For read paths, gaia is consistently smaller (often 5–25×, sometimes
 ~400× with `--fields`) than the raw API response — see
 `docs/dogfood-comparison.md` for the per-command numbers.
 
 **Falling back to curl is acceptable only for operations gaia cannot do
-yet** — currently:
+yet.** As of #85 there are NO known gaps — webhook config (the
+last "must use curl" item) is now a first-class subcommand.
 
-- **Webhook config** (#85, #44): create/list/edit/delete repo webhooks,
-  fetch delivery history, redeliver. Filed as Phase 4 work.
-
-That's it. PR creation, issue creation, comment posting, label
-management, and release management all have first-class gaia commands
-now — using curl for those is a regression to be flagged in review.
+PR creation, issue creation, comment posting, label management,
+release management, and webhook config all have first-class gaia
+commands — using curl for any of these is a regression to be
+flagged in review.
 
 When you DO need curl for a real gap, append a line to the usage log
 at `.gaia-usage.jsonl` (repo-adjacent, gitignored) with

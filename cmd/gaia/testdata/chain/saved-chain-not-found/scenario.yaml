@@ -1,0 +1,11 @@
+description: |
+  `gaia chain run <unknown>` returns a usage error with the resolution
+  attempts listed. The CLI exit is 2 (Usage). Phase B-3 / #112.
+
+stages:
+  - description: gaia chain run nonexistent → exit 2 (Usage), stdout empty
+    args:
+      - chain
+      - run
+      - nonexistent-chain-name
+    exit_code: 2
