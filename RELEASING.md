@@ -139,7 +139,7 @@ Either path triggers the `.forgejo/workflows/release.yml` workflow.
    the commit graph and refuses to release from a feature-branch
    tag. Caught early so the goreleaser run doesn't burn 5 minutes
    on artifacts that can't ship.
-3. `actions/setup-go@v5` with Go 1.23.
+3. `actions/setup-go@v5` with Go 1.25.
 4. Shell-installs `goreleaser/v2@v2.4.5` (third-party actions
    don't mirror to code.forgejo.org, so we install via `go install`).
 5. Runs `goreleaser release --clean --skip=publish`. The `brews:`

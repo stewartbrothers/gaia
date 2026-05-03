@@ -36,7 +36,7 @@ If none of those apply, stay on stdio.
 docker build -t gaia-mcp:local .
 ```
 
-The build is multi-stage: `golang:1.23-alpine` builds both
+The build is multi-stage: `golang:1.25-alpine` builds both
 binaries, `alpine:3.20` runs them. Final image is ~23 MB. Both
 `gaia` and `gaia-mcp` are on the runtime PATH so you can
 `docker exec` for ad-hoc operations.

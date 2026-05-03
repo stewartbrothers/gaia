@@ -30,7 +30,7 @@ curl -fsSLO "https://github.com/stewartbrothers/gaia/releases/download/${TAG}/ga
 tar -xzf "gaia_${TAG}_${PLATFORM}.tar.gz"
 sudo install gaia gaia-mcp /usr/local/bin/
 
-# Or via go install (Go 1.23+):
+# Or via go install (Go 1.25+):
 go install github.com/stewartbrothers/gaia/cmd/gaia@latest
 go install github.com/stewartbrothers/gaia/cmd/gaia-mcp@latest
 

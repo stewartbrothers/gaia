@@ -17,6 +17,18 @@ reserved for breaking changes only.
   wire-shape ordering that pre-#146 callers relied on for canonical
   serialisation / hash-keyed caching.
 
+### Changed
+
+- `github.com/mark3labs/mcp-go` bumped from v0.32.0 to v0.50.0 (#138).
+  Closes a 10-month / 18-version stale-dependency window; mcp-go v0.50.x
+  carries hardening of its streamable-HTTP transport and accumulated
+  bug fixes that the old pin would have shipped as zero-days for any
+  embargoed advisory landing in the gap. Side effect: mcp-go v0.50.x
+  requires Go ≥ 1.25.5, so gaia's go.mod floor moved from 1.23 to 1.25.
+  CI workflows, the Dockerfile build base, and the install / release
+  docs all bumped together. Drop-in API compat — no source-level
+  adjustments to gaia-mcp were needed.
+
 ### Security
 
 - Chain runner: substituted variable values are now shell-quoted

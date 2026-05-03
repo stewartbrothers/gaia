@@ -76,7 +76,9 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          # Match CI's go-version. mcp-go v0.50.x (#138) bumped the
+          # floor to 1.25.5; bump CI + release together.
+          go-version: '1.25'
           cache: true
 
       # Pinned to a specific version for reproducible builds. Bump
