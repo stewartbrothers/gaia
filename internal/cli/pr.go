@@ -62,6 +62,17 @@ func newPRListCmd(flags *globalFlags) *cobra.Command {
 				Limit:  flags.Limit,
 				Cursor: flags.Cursor,
 			}
+			if flags.Format == "ndjson" {
+				return renderListStreaming(cmd, flags, func(cursor string) ([]any, *provider.Page, error) {
+					ppo := po
+					ppo.Cursor = cursor
+					prs, page, err := p.ListPullRequests(cmd.Context(), owner, repo, ppo)
+					if err != nil {
+						return nil, nil, err
+					}
+					return toAnySlice(prs), page, nil
+				})
+			}
 			prs, page, err := p.ListPullRequests(cmd.Context(), owner, repo, po)
 			if err != nil {
 				return err

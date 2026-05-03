@@ -136,25 +136,29 @@ type PageFetcher func(cursor string) (items []any, page *provider.Page, err erro
 // without invoking fetch again. That's the broken-pipe path agents use
 // to bound their reads (`gaia issue list --format ndjson | head -1`).
 //
-// Falls through to renderEnvelope when --format is not ndjson — the
-// helper is the single entry point a list command's RunE calls.
+// When --format is not "ndjson", renderListStreaming fetches one page
+// and forwards through renderEnvelope. This branch exists so a list
+// command can call ONE function regardless of format choice; the
+// non-streaming branch matches today's wire shape (one combined
+// envelope) so existing JSON/pretty goldens stay green.
 //
-// The non-streaming path collects every page and renders one combined
-// envelope, which preserves the existing JSON wire shape for
-// --format json and --format pretty consumers. (We could short-circuit
-// after the first page for parity with the old behaviour, but pagination
-// loops only matter once a caller passes a cursor — and the existing
-// list commands don't auto-page either, so a single fetch is what the
-// non-streaming branch actually does.)
-func renderListStreaming(cmd *cobra.Command, flags *globalFlags, fetch PageFetcher, pretty prettyFunc) error {
+// The non-streaming branch hands renderEnvelope a []any (the same
+// shape the streaming branch consumes); per-command pretty renderers
+// that want a typed slice should branch on flags.Format themselves
+// rather than going through this helper. See newIssueListCmd for the
+// canonical pattern: typed renderEnvelope on the json/pretty path,
+// renderListStreaming-with-fetcher on the ndjson path.
+func renderListStreaming(cmd *cobra.Command, flags *globalFlags, fetch PageFetcher) error {
 	if flags.Format != "ndjson" {
-		// Non-streaming path: fetch one page (matches existing
-		// per-command behaviour) and hand off to renderEnvelope.
+		// Defensive: callers route to renderEnvelope directly for
+		// json/pretty so they can preserve the typed-slice contract
+		// pretty renderers depend on. If a caller sends a non-ndjson
+		// format here anyway we still produce a valid envelope.
 		items, page, err := fetch(flags.Cursor)
 		if err != nil {
 			return err
 		}
-		return renderEnvelope(cmd, flags, items, page, pretty)
+		return renderEnvelope(cmd, flags, items, page, nil)
 	}
 
 	sw := envelope.NewStreamWriter(cmd.OutOrStdout())
@@ -209,6 +213,18 @@ func renderListStreaming(cmd *cobra.Command, flags *globalFlags, fetch PageFetch
 	return nil
 }
 
+// toAnySlice is a tiny helper for list commands that have a typed
+// slice ([]types.Issue, []types.PullRequest, ...) and need an []any
+// for PageFetcher's contract. Generics-free is unfortunately the
+// shape that fits cobra's flag-callback contract cleanest.
+func toAnySlice[T any](xs []T) []any {
+	out := make([]any, len(xs))
+	for i := range xs {
+		out[i] = xs[i]
+	}
+	return out
+}
+
 // renderListStreamingForTest is a cobra-free entry point used by the
 // export_test shim so cli_test can drive the streaming helper directly.
 // Constructs a minimal *cobra.Command with the supplied writer as
@@ -217,7 +233,7 @@ func renderListStreamingForTest(format, cursor string, fetch PageFetcher, w io.W
 	cmd := &cobra.Command{}
 	cmd.SetOut(w)
 	flags := &globalFlags{Format: format, Cursor: cursor}
-	return renderListStreaming(cmd, flags, fetch, nil)
+	return renderListStreaming(cmd, flags, fetch)
 }
 
 // renderEnvelopeRejectsNDJSONForTest exercises the single-resource

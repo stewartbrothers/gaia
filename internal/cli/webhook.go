@@ -48,6 +48,18 @@ func newWebhookListCmd(flags *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if flags.Format == "ndjson" {
+				return renderListStreaming(cmd, flags, func(cursor string) ([]any, *provider.Page, error) {
+					hooks, page, err := p.ListWebhooks(cmd.Context(), owner, repo, provider.ListWebhooksOptions{
+						Limit:  flags.Limit,
+						Cursor: cursor,
+					})
+					if err != nil {
+						return nil, nil, err
+					}
+					return toAnySlice(hooks), page, nil
+				})
+			}
 			hooks, page, err := p.ListWebhooks(cmd.Context(), owner, repo, provider.ListWebhooksOptions{
 				Limit:  flags.Limit,
 				Cursor: flags.Cursor,
@@ -326,6 +338,18 @@ request/response payload via:
 					return err
 				}
 				return renderEnvelope(cmd, flags, detail, nil, prettyDeliveryDetail)
+			}
+			if flags.Format == "ndjson" {
+				return renderListStreaming(cmd, flags, func(cursor string) ([]any, *provider.Page, error) {
+					deliveries, page, err := p.ListWebhookDeliveries(cmd.Context(), owner, repo, id, provider.ListDeliveriesOptions{
+						Limit:  flags.Limit,
+						Cursor: cursor,
+					})
+					if err != nil {
+						return nil, nil, err
+					}
+					return toAnySlice(deliveries), page, nil
+				})
 			}
 			deliveries, page, err := p.ListWebhookDeliveries(cmd.Context(), owner, repo, id, provider.ListDeliveriesOptions{
 				Limit:  flags.Limit,
