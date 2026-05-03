@@ -88,15 +88,39 @@ func (p *Provider) DeletePackage(ctx context.Context, owner, pkgType, name, vers
 	return p.client.Delete(ctx, packagePath(owner, pkgType, name, version))
 }
 
-// UploadPackage is wired up here as a stub returning an exit-coded
-// "not implemented" error so the contract from #122 lands without
-// committing to the wire shape in the same commit. The real
-// generic-package PUT impl lands in the next commit; keeping this
-// stub here for one commit means every other commit in this PR
-// stays green even when checked out individually.
-func (p *Provider) UploadPackage(_ context.Context, _, _, _, _ string, _ provider.UploadPackageOptions, _ io.Reader) error {
-	return exitcode.Errorf(exitcode.Generic,
-		"forgejo UploadPackage stub — real implementation lands in the next commit of #122")
+// UploadPackage publishes one artifact to a package version. The
+// generic-package endpoint takes the bytes as the request body — no
+// multipart, no JSON wrapper. Path:
+//
+//	PUT /packages/{owner}/generic/{name}/{version}/{file}
+//
+// We only ship "generic" in #122 because the other registries (npm,
+// maven, container, ...) have per-protocol publish flows that don't
+// share the generic endpoint's shape — npm publish wants the full
+// package tarball plus version metadata, maven wants per-classifier
+// uploads, container wants the Docker registry v2 dance. Each gets
+// its own follow-up; the contract here keeps that scope explicit by
+// rejecting non-generic kinds at the boundary instead of attempting
+// a 404'd PUT.
+func (p *Provider) UploadPackage(ctx context.Context, owner, pkgType, name, version string, opts provider.UploadPackageOptions, body io.Reader) error {
+	if pkgType != "generic" {
+		return exitcode.Errorf(exitcode.Usage,
+			"forgejo upload only supports pkgType=generic in #122 (got %q); other registries tracked as follow-ups", pkgType)
+	}
+	if opts.FileName == "" {
+		return exitcode.Errorf(exitcode.Usage, "FileName is required for generic-package upload")
+	}
+	contentType := opts.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	path := fmt.Sprintf("/packages/%s/generic/%s/%s/%s",
+		url.PathEscape(owner),
+		url.PathEscape(name),
+		url.PathEscape(version),
+		url.PathEscape(opts.FileName),
+	)
+	return p.client.PutBinary(ctx, path, contentType, body)
 }
 
 // packagePath builds `/packages/{owner}/{type}/{name}/{version}` with
