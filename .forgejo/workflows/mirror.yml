@@ -1,0 +1,85 @@
+name: Mirror to GitHub
+
+# Mirrors `main` and every `v*` tag from the canonical Forgejo repo
+# to the public read-only mirror at github.com/stewartbrothers/gaia.
+#
+# Setup (one-time): see docs/mirroring.md. The TL;DR is that an SSH
+# deploy key with write access lives on the GitHub side, and the
+# matching private key is stored on this repo as the
+# GITHUB_MIRROR_SSH_KEY secret.
+#
+# This workflow is intentionally **safe to merge before the secret is
+# configured** — the push step gates on the secret being non-empty
+# and exits 0 with a "skipped" log line if it isn't. That way the
+# workflow file lands first, and the operator can flip the secret on
+# without needing another commit.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need full history + every tag so the mirror push doesn't
+          # ship a shallow clone. Tags drive the per-release mirror.
+          fetch-depth: 0
+
+      - name: Check whether mirror secret is configured
+        id: gate
+        env:
+          MIRROR_KEY: ${{ secrets.GITHUB_MIRROR_SSH_KEY }}
+        run: |
+          if [ -z "${MIRROR_KEY:-}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::GITHUB_MIRROR_SSH_KEY not configured — mirror push skipped."
+            echo "::notice::See docs/mirroring.md to enable automated mirroring."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure SSH for github.com
+        if: steps.gate.outputs.configured == 'true'
+        env:
+          MIRROR_KEY: ${{ secrets.GITHUB_MIRROR_SSH_KEY }}
+        run: |
+          set -eu
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          # Write key with restrictive perms (ssh refuses to use a
+          # 0644 key file). Using printf because echo eats any leading
+          # `-----BEGIN ...` line interpretation in some shells.
+          printf '%s\n' "$MIRROR_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # Pin github.com's SSH host key. Using ssh-keyscan once
+          # would be acceptable too, but the static fingerprint is
+          # less prone to a spoofed-DNS first-run attack.
+          cat >> ~/.ssh/known_hosts <<'EOF'
+          github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+          github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=
+          github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=
+          EOF
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Add github remote
+        if: steps.gate.outputs.configured == 'true'
+        run: |
+          set -eu
+          # Mirror destination is fixed; if the GitHub repo lives
+          # under a different org, change it here AND in
+          # docs/mirroring.md + scripts/mirror-to-github.sh.
+          if ! git remote get-url github >/dev/null 2>&1; then
+            git remote add github git@github.com:Gerwood/gaia.git
+          fi
+
+      - name: Push main + v* tags
+        if: steps.gate.outputs.configured == 'true'
+        run: |
+          set -eu
+          ./scripts/mirror-to-github.sh
