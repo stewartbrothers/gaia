@@ -73,7 +73,7 @@ func prettyPRComments(w io.Writer, data any) error {
 			header += fmt.Sprintf(" %s:%d", c.Path, c.Line)
 		}
 		_, _ = fmt.Fprintln(w, header)
-		_, _ = fmt.Fprintln(w, c.Body)
+		writeExternal(w, c.Body)
 	}
 	return nil
 }

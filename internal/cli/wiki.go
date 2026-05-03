@@ -224,7 +224,8 @@ func prettyWikiView(w io.Writer, data any) error {
 		_, _ = fmt.Fprintf(w, "  Updated:     %s\n", page.UpdatedAt.Format("2006-01-02 15:04"))
 	}
 	if page.Body != "" {
-		_, _ = fmt.Fprintf(w, "\n%s\n", page.Body)
+		_, _ = fmt.Fprintln(w)
+		writeExternal(w, page.Body)
 	}
 	return nil
 }
