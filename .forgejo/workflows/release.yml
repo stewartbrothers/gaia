@@ -32,6 +32,10 @@ name: Release
 # (`gaia release publish` no-ops on existing releases) and the
 # mirror push (git push converges on canonical state).
 
+# CI actions pinned by commit SHA — bump the SHA and the version
+# comment together when updating. See .forgejo/workflows/ci.yml's
+# header for the rationale. (#140 part 2.)
+
 on:
   push:
     tags:
@@ -47,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
         with:
           # goreleaser's git-based changelog needs the full history
           # to walk commits since the previous tag.
@@ -74,9 +78,11 @@ jobs:
           fi
           echo "::notice::Tag $TAG resolves to commit $tag_sha on main — proceeding."
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
         with:
-          go-version: '1.23'
+          # Match CI's go-version. mcp-go v0.50.x (#138) bumped the
+          # floor to 1.25.5; bump CI + release together.
+          go-version: '1.25'
           cache: true
 
       # Pinned to a specific version for reproducible builds. Bump

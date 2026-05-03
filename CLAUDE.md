@@ -9,7 +9,7 @@ GitHub. The roadmap and active work live in the repo's issue tracker.
 - **Module path:** `github.com/stewartbrothers/gaia`
 - **Binaries:** `gaia` (CLI), `gaia-mcp` (MCP server). Both built from
   `cmd/gaia` and `cmd/gaia-mcp` respectively, sharing logic via `core/`.
-- **Go version:** 1.23+
+- **Go version:** 1.25+
 
 ## Workflow rules
 

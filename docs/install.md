@@ -123,7 +123,7 @@ prod incident reproduces against the same build.
 
 ## `go install`
 
-For developers who have Go 1.23+ on PATH:
+For developers who have Go 1.25+ on PATH:
 
 ```bash
 go install github.com/stewartbrothers/gaia/cmd/gaia@latest

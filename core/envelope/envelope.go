@@ -114,6 +114,11 @@ func (e *Envelope) WithMeta(key string, value any) *Envelope {
 // would convert tagged structs to plain map[string]any and the
 // MarshalJSON-time walker would have no struct shape left to find
 // the tag on.
+//
+// Order preservation (#148): the round-trip parses into an
+// orderedTree that retains object-key insertion order so the
+// projected wire shape stays in struct-declaration order rather
+// than collapsing to alphabetical via map[string]any.
 func (e *Envelope) Project(spec string) error {
 	fs := ParseFields(spec)
 	if len(fs) == 0 {
@@ -124,10 +129,10 @@ func (e *Envelope) Project(spec string) error {
 	if err != nil {
 		return fmt.Errorf("envelope: marshal data for projection: %w", err)
 	}
-	var tree any
-	if err := json.Unmarshal(raw, &tree); err != nil {
+	tree, err := decodeOrdered(raw)
+	if err != nil {
 		return fmt.Errorf("envelope: unmarshal data for projection: %w", err)
 	}
-	e.Data = fs.Apply(tree)
+	e.Data = fs.ApplyOrdered(tree)
 	return nil
 }
