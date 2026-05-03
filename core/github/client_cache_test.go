@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,12 +13,12 @@ import (
 	"github.com/stewartbrothers/gaia/core/github"
 )
 
-func openCache(t *testing.T) *cache.Cache {
+// openCache builds a per-test in-memory cache. After #158 the GitHub
+// test binary no longer compiles the SQLite driver — Memory{} gives
+// identical behaviour for the conditional-GET / TTL semantics.
+func openCache(t *testing.T) *cache.Memory {
 	t.Helper()
-	c, err := cache.Open(filepath.Join(t.TempDir(), "gh-cache.db"))
-	if err != nil {
-		t.Fatalf("cache.Open: %v", err)
-	}
+	c := cache.NewMemory()
 	t.Cleanup(func() { _ = c.Close() })
 	return c
 }

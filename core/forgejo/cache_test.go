@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,13 +14,13 @@ import (
 	"github.com/stewartbrothers/gaia/core/forgejo"
 )
 
-// openCache builds a per-test cache (one DB file under t.TempDir).
-func openCache(t *testing.T) *cache.Cache {
+// openCache builds a per-test in-memory cache. After #158 these
+// tests no longer compile the SQLite driver — Memory{} satisfies
+// the same [cache.Cache] interface and gives identical behaviour
+// for the conditional-GET / TTL semantics these tests pin.
+func openCache(t *testing.T) *cache.Memory {
 	t.Helper()
-	c, err := cache.Open(filepath.Join(t.TempDir(), "client-cache.db"))
-	if err != nil {
-		t.Fatalf("cache.Open: %v", err)
-	}
+	c := cache.NewMemory()
 	t.Cleanup(func() { _ = c.Close() })
 	return c
 }

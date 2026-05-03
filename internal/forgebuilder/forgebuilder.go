@@ -18,6 +18,7 @@ import (
 
 	"github.com/stewartbrothers/gaia/core/auth"
 	"github.com/stewartbrothers/gaia/core/cache"
+	"github.com/stewartbrothers/gaia/core/cache/sqlite"
 	"github.com/stewartbrothers/gaia/core/config"
 	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/forgejo"
@@ -141,11 +142,15 @@ func Build(ov Override) (provider.Provider, *Info, error) {
 	//
 	// Config knob (`cache.enabled: false` in ~/.config/gaia/config.yaml)
 	// also bypasses the cache, same as the per-call --no-cache flag.
+	//
+	// forgebuilder is the entry point that wires `core/cache/sqlite`
+	// — the SQLite driver compile cost lands here, not in the
+	// downstream provider packages (#158).
 	cacheOff := ov.NoCache || !config.CacheEnabled(cfg.Cache)
-	var ch *cache.Cache
+	var ch cache.Cache
 	if !cacheOff {
 		if path, perr := cache.PathFor(resolved.Provider, resolved.APIURL); perr == nil {
-			if c, oerr := cache.Open(path); oerr == nil {
+			if c, oerr := sqlite.Open(path); oerr == nil {
 				ch = c
 			}
 		}

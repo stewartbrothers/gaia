@@ -45,7 +45,12 @@ type Client struct {
 	// requests; on a fresh hit the upstream call is skipped entirely.
 	// nil disables caching for this client (used in tests, or when
 	// the global `cache.enabled: false` config knob is set).
-	cache *cache.Cache
+	//
+	// Typed as the [cache.Cache] interface (not the concrete SQLite
+	// type) so this package doesn't compile `modernc.org/sqlite` —
+	// see #158. Production callers pass in a *sqlite.Store via
+	// internal/forgebuilder; tests pass in a *cache.Memory.
+	cache cache.Cache
 }
 
 // Options configure a Client. BaseURL and Token are required; other
@@ -66,8 +71,10 @@ type Options struct {
 	// the single retry on 5xx. Defaults to 500ms.
 	RetryWait time.Duration
 	// Cache, when non-nil, plugs the read cache into GetCached calls.
-	// Leave nil to disable caching for this client.
-	Cache *cache.Cache
+	// Leave nil to disable caching for this client. Any [cache.Cache]
+	// implementation works — production wires `core/cache/sqlite`,
+	// tests use [cache.Memory].
+	Cache cache.Cache
 }
 
 // New constructs a Client. Trailing slashes on BaseURL are normalized.
