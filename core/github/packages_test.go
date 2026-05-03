@@ -413,12 +413,25 @@ func TestDeletePackageAuth(t *testing.T) {
 	}
 }
 
-// TestUploadPackageStillUnimplemented pins that PR 1 leaves the upload
-// hook as a NotImplemented stub for PR 2 to replace.
-func TestUploadPackageStillUnimplemented(t *testing.T) {
+// TestUploadPackageNotImplemented pins the documented "not
+// implemented" error from the GitHub upload stub. GitHub Packages
+// publish flows are per-registry (npm publish, GHCR Docker v2 push,
+// ...) and don't fold into one provider method; a follow-up issue
+// covers per-kind dispatch. Until then, the error message is the
+// contract — agents grep for "not implemented" + the pkgType to
+// route around the gap.
+func TestUploadPackageNotImplemented(t *testing.T) {
 	p := github.NewProvider(github.Options{BaseURL: "https://example", Token: "X"})
-	// The interface method doesn't exist yet (PR 2 adds it), so
-	// nothing to call here — this test reminds future agents that
-	// PR 2 is where that method appears.
-	_ = p
+	err := p.UploadPackage(
+		context.Background(),
+		"o", "container", "n", "v",
+		provider.UploadPackageOptions{FileName: "f"},
+		strings.NewReader("data"),
+	)
+	if err == nil {
+		t.Fatal("UploadPackage should error on GitHub")
+	}
+	if !strings.Contains(err.Error(), "not implemented") {
+		t.Errorf("error: %q must mention 'not implemented'", err.Error())
+	}
 }
