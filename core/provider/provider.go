@@ -135,4 +135,23 @@ type Provider interface {
 	// reusable Reader (the underlying file handle, not a one-shot
 	// buffer) so retries don't fail.
 	UploadReleaseAsset(ctx context.Context, owner, repo string, releaseID int64, name, contentType string, body io.Reader) error
+
+	// --- Packages (Phase 4 / #107) -----------------------------------
+	//
+	// Packages are scoped to a user/org, NOT to a repo — Forgejo's
+	// endpoints all live under `/packages/{owner}` regardless of which
+	// repo (if any) the package was published from. The CLI/MCP
+	// surfaces use `--owner` instead of `--repo` for that reason.
+
+	// ListPackages returns packages matching opts under the given
+	// owner. Forgejo paginates these.
+	ListPackages(ctx context.Context, owner string, opts ListPackagesOptions) ([]types.Package, *Page, error)
+
+	// GetPackage fetches one package version. (pkgType, name, version)
+	// uniquely identifies a package on Forgejo; GitHub keys per-registry
+	// differently.
+	GetPackage(ctx context.Context, owner, pkgType, name, version string) (*types.Package, error)
+
+	// DeletePackage removes one package version. 204 is success.
+	DeletePackage(ctx context.Context, owner, pkgType, name, version string) error
 }

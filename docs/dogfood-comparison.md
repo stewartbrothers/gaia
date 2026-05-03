@@ -60,6 +60,16 @@ Gerwood/gaia, PR #75 with no comments)
 | | | | |
 | `gaia release view v2.79.0` (cli/cli)              | 2 958   | 739     | **0.06×**    |
 | `curl /releases/tags/v2.79.0` (cli/cli)            | 48 555  | 12 138  | 1×           |
+| | | | |
+| `gaia packages list --owner X` (#107, est., 1 pkg) | ~140    | ~35     | **~0.10×**   |
+| `gaia --fields type,name,version packages list`    | ~80     | ~20     | **~0.06×**   |
+| `curl /packages/X?limit=1` (Forgejo)               | ~1 350  | ~338    | 1×           |
+| | | | |
+| `gaia packages view <type>/<name>/<v>` (#107, est) | ~150    | ~38     | **~0.11×**   |
+| `curl /packages/X/<type>/<name>/<v>` (Forgejo)     | ~1 350  | ~338    | 1×           |
+| | | | |
+| `gaia packages delete <spec> --confirm` (#107)     | ~50     | ~13     | n/a          |
+| `curl -X DELETE /packages/X/<t>/<n>/<v>`           | 0       | 0       | (204)        |
 
 ## Takeaways
 
@@ -88,6 +98,26 @@ Gerwood/gaia, PR #75 with no comments)
 - **pr view**: 2.5× smaller than raw curl (and 1.7× smaller than
   `tea`). `--with-ci` adds an extra round-trip server-side but only
   ~3% to the response size.
+
+### Packages (#107, estimated)
+
+The packages numbers are estimates rather than measured baselines:
+the live forge currently has no published packages, so a real
+side-by-side run isn't possible yet. Numbers are derived from the
+Forgejo OpenAPI package record shape vs. `types.Package`:
+
+- A raw Forgejo package record carries `id`, `owner` (full user
+  object — login, full_name, email, avatar_url, language,
+  last_login, html_url, ...), `repository` (similar bloat),
+  `creator` (same), `html_url`, `type`, `name`, `version`,
+  `created_at`. ~1 350 bytes per record on a typical user.
+- gaia's trimmed `types.Package` is `{type, name, version, owner,
+  created_at, size?}` — roughly 130 bytes per record. Owner is
+  rendered as the login string, never a nested object.
+
+The ratio is consistent with `release` and `issue` paths (~10×
+smaller default; ~0.06× with `--fields type,name,version`). When
+real packages land we'll re-measure and replace these estimates.
 
 ### Honest losses
 

@@ -132,6 +132,15 @@ func (*noopProvider) DeleteRelease(_ context.Context, _, _, _ string) error {
 func (*noopProvider) UploadReleaseAsset(_ context.Context, _, _ string, _ int64, _, _ string, _ io.Reader) error {
 	return errNotImplemented
 }
+func (*noopProvider) ListPackages(_ context.Context, _ string, _ provider.ListPackagesOptions) ([]types.Package, *provider.Page, error) {
+	return nil, nil, errNotImplemented
+}
+func (*noopProvider) GetPackage(_ context.Context, _, _, _, _ string) (*types.Package, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) DeletePackage(_ context.Context, _, _, _, _ string) error {
+	return errNotImplemented
+}
 
 // Reference time.Time so an unused-import check never fires while tests
 // scaffold up. Removed once a real test uses it.

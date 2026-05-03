@@ -75,6 +75,7 @@ auth setup.`,
 	root.AddCommand(newLabelCmd(flags))
 	root.AddCommand(newReleaseCmd(flags))
 	root.AddCommand(newChainCmd(flags))
+	root.AddCommand(newPackagesCmd(flags))
 
 	return root
 }
