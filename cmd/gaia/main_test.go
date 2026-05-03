@@ -192,7 +192,7 @@ func runScenario(t *testing.T, dir string) {
 		for name, body := range sc.SavedChains {
 			fname := name
 			if !strings.HasSuffix(fname, ".yaml") && !strings.HasSuffix(fname, ".yml") {
-				fname = fname + ".yaml"
+				fname += ".yaml"
 			}
 			if err := os.WriteFile(filepath.Join(savedDir, fname), []byte(body), 0o600); err != nil {
 				t.Fatalf("write saved chain %q: %v", name, err)

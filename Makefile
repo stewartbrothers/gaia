@@ -9,7 +9,7 @@ LDFLAGS := -X 'github.com/stewartbrothers/gaia/internal/version.Version=$(VERSIO
 COVER_PROFILE := coverage.out
 COVER_HTML    := coverage.html
 
-.PHONY: all build build-gaia build-mcp test test-race cover cover-html vet fmt lint tidy clean release-snapshot release-check
+.PHONY: all build build-gaia build-mcp test test-race cover cover-html vet fmt lint tidy clean release-snapshot release-check dogfood-chain
 
 all: build
 
@@ -74,3 +74,19 @@ release-snapshot:
 	@PATH="$(GOBIN):$$PATH" command -v goreleaser >/dev/null 2>&1 || { \
 	  echo "goreleaser not found — install with: go install github.com/goreleaser/goreleaser/v2@v2.4.5"; exit 1; }
 	@PATH="$(GOBIN):$$PATH" goreleaser release --snapshot --clean --skip=publish
+
+# Chain dogfood: prints the byte/token comparison of running the
+# canned `pr-create-and-land` chain vs. the equivalent multi-call
+# agent flow. Doesn't gate CI; the script does enforce a 50%
+# reduction floor (override via DOGFOOD_THRESHOLD) so a regression
+# trips loudly if anyone runs it locally. See
+# docs/chain-dogfood-comparison.md for the methodology.
+#
+# Usage:
+#   make dogfood-chain                                   # offline
+#   PR_NUMBER=75 DOGFOOD_LIVE=1 make dogfood-chain       # against live forge
+#   DOGFOOD_THRESHOLD=70 make dogfood-chain              # tighter gate
+#
+# Phase B-3 / #112.
+dogfood-chain: build-gaia
+	@./scripts/dogfood-chain.sh

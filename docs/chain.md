@@ -7,19 +7,34 @@ one `gaia chain run` call returning the final state in a single
 envelope.
 
 **Currently shipping:** linear chains (Phase A) + yield/resume with
-disk-backed state (Phase B-1). Linear-only — no parallel, no
-for-each, no chain composition yet. See
+disk-backed state (Phase B-1) + per-step timeout/retry +
+default_yield_on + cleanup: + `--decision modify` (Phase B-2) +
+saved chains under `.gaia/chains/<name>.yaml` + the canned
+`pr-create-and-land` chain + structured exits on
+`gaia pr ci-wait` / `gaia pr merge` (Phase B-3). Linear-only — no
+parallel, no for-each, no chain composition yet. See
 [`#112`](https://github.com/stewartbrothers/gaia/issues/112)
 for the broader design + phasing.
 
 ## Subcommands
 
 ```
-gaia chain run --chain-file FILE [flags]    # start a chain
+gaia chain run <name>                       # start a saved chain
+gaia chain run --chain-file FILE [flags]    # start a chain from a path
 gaia chain resume <token> [--decision …]    # pick up a yielded chain
 gaia chain list                             # show yielded chains
 gaia chain abort <token>                    # discard a yielded chain
 ```
+
+`gaia chain run <name>` resolves `<name>` in this order (first hit wins):
+
+  1. Literal path — `<name>` contains a `/` or ends in `.yaml`/`.yml`
+  2. Project saved chain — `${ProjectRoot}/.gaia/chains/<name>.yaml`
+  3. Global saved chain — `~/.config/gaia/chains/<name>.yaml`
+
+`--chain-file <path>` is the explicit form: always a path, bypasses
+the saved-chain lookup. When both `--chain-file` and a positional
+argument are supplied, `--chain-file` wins.
 
 ## Quick example
 
@@ -293,11 +308,11 @@ free text):
 | `rate_limited` | exit code 5 (`exitcode.RateLimit`) |
 | `timeout` | step exceeded its `timeout:` (Phase B-2) |
 | `unknown_error` | exit code 1 or any unmapped non-zero |
-| `check_failed` | non-flaky CI failure (Phase B-3+) |
-| `check_flaky` | flaky CI failure (Phase B-3+) |
-| `merge_conflict` | gaia pr merge 409 (Phase B-3+) |
-| `review_required` | branch protection blocked merge (Phase B-3+) |
-| `policy_violation` | other policy block (Phase B-3+) |
+| `check_failed` | exit code 10 (`exitcode.CheckFailed`) — non-flaky CI failure |
+| `check_flaky` | exit code 11 (`exitcode.CheckFlaky`) — flaky CI failure or ci-wait timeout |
+| `merge_conflict` | exit code 7 (`exitcode.MergeConflict`) — gaia pr merge 409 |
+| `review_required` | exit code 8 (`exitcode.ReviewRequired`) — branch protection: missing approvals |
+| `policy_violation` | exit code 9 (`exitcode.PolicyViolation`) — branch protection: other block |
 
 ### Step grammar additions
 
@@ -509,12 +524,98 @@ The modified vars are persisted to the resumed state so a re-yield
 preserves them — an agent that fixes a value once doesn't have to
 re-pass it on every retry.
 
+## Saved chains (Phase B-3)
+
+```
+.gaia/chains/<name>.yaml          # project-local — committable
+~/.config/gaia/chains/<name>.yaml # global, per-user
+```
+
+Run by name:
+
+```bash
+gaia chain run pr-create-and-land --var title=… --var body=… --var head=…
+```
+
+The project-local layer is the "team agreed on this chain, ship
+it with the repo" path; the global layer is "every project on
+this laptop should be able to call ship-prod-tag." Resolution is
+project → global, so a project file shadows the global one when
+both exist.
+
+### Canned chain: `pr-create-and-land`
+
+Shipped at `.gaia/chains/pr-create-and-land.yaml`. Opens a PR,
+waits for CI to settle, merges. Routing:
+
+| Step          | Yield on                                      | Abort on        |
+|---------------|-----------------------------------------------|-----------------|
+| `open`        | (default failure → `pr-create-failed`)        | —               |
+| `wait-checks` | `rate_limited`, `check_flaky`, `timeout`      | `check_failed`  |
+| `merge`       | `merge_conflict`, `review_required`, `rate_limited` | —         |
+
+`check_failed` is intentionally `abort_on:` rather than `yield_on:` —
+a real test break should never silently retry. `check_flaky` /
+`merge_conflict` / `review_required` → yield lets the agent re-trigger
+CI / push a rebase / wait for an approval and resume.
+
+Token-budget evidence — see
+[`docs/chain-dogfood-comparison.md`](./chain-dogfood-comparison.md).
+Short version: the chain envelope is ~1/3 the bytes of the equivalent
+`gaia pr create` → poll → `gaia pr merge` agent flow.
+
+## `gaia pr ci-wait` (Phase B-3)
+
+```bash
+gaia pr ci-wait <number> [--timeout 30m] [--interval 10s] [--flaky-marker LABEL]
+```
+
+Polls the PR's commit-status endpoint until checks settle or
+`--timeout` expires. Designed for chain consumption — exits with
+structured codes the chain runtime maps to yield/abort conditions:
+
+| Exit | Constant     | Condition         | Typical chain placement       |
+|------|--------------|-------------------|-------------------------------|
+| 0    | OK           | —                 | success                       |
+| 10   | CheckFailed  | `check_failed`    | `abort_on: [check_failed]`    |
+| 11   | CheckFlaky   | `check_flaky`     | `yield_on: [check_flaky]`     |
+
+Flakiness classifier: a check name matching `flaky` / `attempt N` /
+`retry` / `rerun` (case-insensitive) is "flaky"; everything else is
+"hard." `--flaky-marker` adds operator-specified substrings.
+**Mixed flaky+real failures classify as `CheckFailed`** — we never
+silently demote a real failure.
+
+Caveats:
+
+- The flakiness regex is a heuristic. A team that names checks
+  `tests-attempt-1` (intending to mean "first attempt of one") would
+  trip it; rename or add `--flaky-marker` to expand the matcher
+  rather than working around it.
+- We don't currently track per-check history across polls (so the
+  "pending → failure → success" recovery heuristic mentioned in the
+  alt-design doc isn't implemented). The retry-marker name pattern
+  catches the common case; complex flakiness needs a follow-up.
+
+## `gaia pr merge` structured exits (Phase B-3)
+
+`gaia pr merge` now classifies the upstream's "can't merge today"
+responses into chain-routable codes:
+
+| HTTP        | Body cue                          | Exit | Chain condition    |
+|-------------|-----------------------------------|------|--------------------|
+| 409         | (any)                             | 7    | `merge_conflict`   |
+| 405         | mentions reviews / approvals      | 8    | `review_required`  |
+| 405         | other (failed checks, lock, etc.) | 9    | `policy_violation` |
+
+The 405 vs review/policy split is inherently a body-text sniff because
+both Forgejo and GitHub return the same status for "needs approvals"
+and "needs passing checks." Marker lists in the provider source are
+intentionally narrow on the review side — false positives would push
+`abort_on: [policy_violation]` to never fire when it should.
+
 ## Limitations (current)
 
-- **Saved chains** in `.gaia/chains/<name>.yaml` (Phase B-3): today
-  every invocation passes `--chain-file <path>`.
-- **`pr-create-and-land` canned chain** (Phase B-3): not yet
-  shipped at `.gaia/chains/`.
 - **Parallel steps + for_each** (Phase C): no parallel fan-out
   for "5 comments at once" patterns.
 - **Named chain composition** (Phase C): one chain calling
