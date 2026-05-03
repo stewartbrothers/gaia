@@ -75,6 +75,13 @@ type scenario struct {
 	// ${chainfile} token in their args.
 	ChainYAML string `yaml:"chain_yaml,omitempty"`
 
+	// SavedChains, when non-empty, is written to
+	// ${tempdir}/.config/gaia/chains/<name>.yaml before stages run.
+	// Lets a scenario exercise saved-chain resolution
+	// (`gaia chain run <name>`) without mocking the filesystem.
+	// Phase B-3 / #112.
+	SavedChains map[string]string `yaml:"saved_chains,omitempty"`
+
 	// Stages run sequentially. Each one produces a golden file
 	// named "stage-N.golden" by default (override per-stage with
 	// stage.golden).
@@ -165,6 +172,31 @@ func runScenario(t *testing.T, dir string) {
 	if sc.ChainYAML != "" {
 		if err := os.WriteFile(chainFile, []byte(sc.ChainYAML), 0o600); err != nil {
 			t.Fatalf("write chain yaml: %v", err)
+		}
+	}
+	// Saved chains land at the global location
+	// (XDG_CONFIG_HOME/gaia/chains/<name>.yaml — XDG_CONFIG_HOME is
+	// pinned to ${tempdir}/config below). The chain CLI also probes
+	// project-local .gaia/chains/ but the harness chdirs to a non-
+	// git tempdir so that layer is silently skipped — exactly the
+	// "global fallback" path. Phase B-3 / #112.
+	if len(sc.SavedChains) > 0 {
+		// chainResolveOptions in internal/cli/chain.go uses
+		// os.UserHomeDir() for the global lookup, which honors HOME
+		// (already pinned to tempDir below). So the layout we need
+		// is ${HOME}/.config/gaia/chains/<name>.yaml.
+		savedDir := filepath.Join(tempDir, ".config", "gaia", "chains")
+		if err := os.MkdirAll(savedDir, 0o700); err != nil {
+			t.Fatalf("mkdir saved chains: %v", err)
+		}
+		for name, body := range sc.SavedChains {
+			fname := name
+			if !strings.HasSuffix(fname, ".yaml") && !strings.HasSuffix(fname, ".yml") {
+				fname = fname + ".yaml"
+			}
+			if err := os.WriteFile(filepath.Join(savedDir, fname), []byte(body), 0o600); err != nil {
+				t.Fatalf("write saved chain %q: %v", name, err)
+			}
 		}
 	}
 
