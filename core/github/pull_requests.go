@@ -173,7 +173,9 @@ func (p *Provider) ListPullRequests(ctx context.Context, owner, repo string, opt
 // issues, same as Forgejo).
 func (p *Provider) GetPullRequest(ctx context.Context, owner, repo string, n int, opts provider.GetPullRequestOptions) (*types.PullRequest, error) {
 	var raw apiPullRequest
-	if err := p.client.Get(ctx, fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, n), &raw); err != nil {
+	prPath := fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, n)
+	prKey := cacheKey(kindPR, owner, repo, itoa(n))
+	if err := p.client.GetCached(ctx, prPath, &raw, prKey, CacheTTLSingle); err != nil {
 		return nil, err
 	}
 	out := raw.toType()

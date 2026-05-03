@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stewartbrothers/gaia/core/cache"
 	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/internal/version"
 )
@@ -39,6 +40,12 @@ type Client struct {
 	userAgent  string
 	httpClient *http.Client
 	retryWait  time.Duration
+	// cache is the optional read cache. When non-nil, GetCached and
+	// (in future) GetListCached consult it before issuing upstream
+	// requests; on a fresh hit the upstream call is skipped entirely.
+	// nil disables caching for this client (used in tests, or when
+	// the global `cache.enabled: false` config knob is set).
+	cache *cache.Cache
 }
 
 // Options configure a Client. BaseURL and Token are required; other
@@ -58,6 +65,9 @@ type Options struct {
 	// RetryWait is the backoff between the first failed attempt and
 	// the single retry on 5xx. Defaults to 500ms.
 	RetryWait time.Duration
+	// Cache, when non-nil, plugs the read cache into GetCached calls.
+	// Leave nil to disable caching for this client.
+	Cache *cache.Cache
 }
 
 // New constructs a Client. Trailing slashes on BaseURL are normalized.
@@ -80,6 +90,7 @@ func New(opts Options) *Client {
 		userAgent:  ua,
 		httpClient: httpClient,
 		retryWait:  rw,
+		cache:      opts.Cache,
 	}
 }
 

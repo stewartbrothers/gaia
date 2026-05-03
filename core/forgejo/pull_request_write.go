@@ -18,6 +18,7 @@ func (p *Provider) CreatePullRequest(ctx context.Context, owner, repo string, op
 	if err := p.client.Post(ctx, path, opts, &raw); err != nil {
 		return nil, err
 	}
+	p.client.cache.Invalidator().AfterCreate(ctx, kindPR, owner, repo)
 	out := raw.toType()
 	return &out, nil
 }
@@ -30,6 +31,7 @@ func (p *Provider) EditPullRequest(ctx context.Context, owner, repo string, n in
 	if err := p.client.Patch(ctx, path, opts, &raw); err != nil {
 		return nil, err
 	}
+	p.client.cache.Invalidator().AfterObjectMutation(ctx, kindPR, owner, repo, itoa(n))
 	out := raw.toType()
 	return &out, nil
 }
@@ -62,6 +64,10 @@ func (p *Provider) MergePullRequest(ctx context.Context, owner, repo string, n i
 	}
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/merge", owner, repo, n)
 	err := p.client.Post(ctx, path, opts, nil)
+	if err == nil {
+		// Merge changes state from open→merged; flush PR row + lists (#42).
+		p.client.cache.Invalidator().AfterObjectMutation(ctx, kindPR, owner, repo, itoa(n))
+	}
 	return classifyMergeError(err)
 }
 

@@ -60,6 +60,7 @@ func (p *Provider) CreateIssue(ctx context.Context, owner, repo string, opts pro
 	if err := p.client.Post(ctx, fmt.Sprintf("/repos/%s/%s/issues", owner, repo), body, &raw); err != nil {
 		return nil, err
 	}
+	p.client.cache.Invalidator().AfterCreate(ctx, kindIssue, owner, repo)
 	out := raw.toType()
 	return &out, nil
 }
@@ -78,6 +79,7 @@ func (p *Provider) EditIssue(ctx context.Context, owner, repo string, n int, opt
 	if err := p.client.Patch(ctx, fmt.Sprintf("/repos/%s/%s/issues/%d", owner, repo, n), body, &raw); err != nil {
 		return nil, err
 	}
+	p.client.cache.Invalidator().AfterObjectMutation(ctx, kindIssue, owner, repo, itoa(n))
 	out := raw.toType()
 	return &out, nil
 }

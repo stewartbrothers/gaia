@@ -129,9 +129,15 @@ func (p *Provider) ListIssues(ctx context.Context, owner, repo string, opts prov
 
 // GetIssue returns a single issue. WithComments inlines that many
 // recent comments (mirrors Forgejo's behavior).
+//
+// Routes through GetCached: a fresh row short-circuits the upstream
+// call; a stale row triggers a conditional GET against GitHub's
+// strong ETag (#42).
 func (p *Provider) GetIssue(ctx context.Context, owner, repo string, n int, opts provider.GetIssueOptions) (*types.Issue, error) {
 	var raw apiIssue
-	if err := p.client.Get(ctx, fmt.Sprintf("/repos/%s/%s/issues/%d", owner, repo, n), &raw); err != nil {
+	path := fmt.Sprintf("/repos/%s/%s/issues/%d", owner, repo, n)
+	key := cacheKey(kindIssue, owner, repo, itoa(n))
+	if err := p.client.GetCached(ctx, path, &raw, key, CacheTTLSingle); err != nil {
 		return nil, err
 	}
 	out := raw.toType()

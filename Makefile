@@ -9,7 +9,7 @@ LDFLAGS := -X 'github.com/stewartbrothers/gaia/internal/version.Version=$(VERSIO
 COVER_PROFILE := coverage.out
 COVER_HTML    := coverage.html
 
-.PHONY: all build build-gaia build-mcp test test-race cover cover-html vet fmt lint tidy clean release-snapshot release-check dogfood-chain
+.PHONY: all build build-gaia build-mcp test test-race cover cover-html vet fmt lint tidy clean release-snapshot release-check dogfood-chain cache-bench
 
 all: build
 
@@ -91,3 +91,10 @@ release-snapshot:
 # Phase B-3 / #112.
 dogfood-chain: build-gaia
 	@./scripts/dogfood-chain.sh
+
+# Cache benchmark — runs an issue-view loop with the SQLite read
+# cache enabled vs. bypassed, prints latency + upstream-call counts.
+# Default is offline (in-process httptest server); set CACHE_BENCH_LIVE=1
+# to hit the configured forge instead. Phase 4 / #42.
+cache-bench:
+	@./scripts/cache-bench.sh

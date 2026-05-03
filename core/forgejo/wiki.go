@@ -202,6 +202,8 @@ func (p *Provider) EditWikiPage(ctx context.Context, owner, repo, slug, body str
 		if err := p.client.Post(ctx, path, wireBody, &raw); err != nil {
 			return nil, err
 		}
+		// New page may show up in any wiki list query.
+		p.client.cache.Invalidator().AfterCreate(ctx, kindWiki, owner, repo)
 		out, derr := raw.toType()
 		if derr != nil {
 			return nil, derr
@@ -217,6 +219,7 @@ func (p *Provider) EditWikiPage(ctx context.Context, owner, repo, slug, body str
 	if err := p.client.Patch(ctx, path, wireBody, &raw); err != nil {
 		return nil, err
 	}
+	p.client.cache.Invalidator().AfterObjectMutation(ctx, kindWiki, owner, repo, slug)
 	out, derr := raw.toType()
 	if derr != nil {
 		return nil, derr
@@ -228,7 +231,11 @@ func (p *Provider) EditWikiPage(ctx context.Context, owner, repo, slug, body str
 // success.
 func (p *Provider) DeleteWikiPage(ctx context.Context, owner, repo, slug string) error {
 	path := fmt.Sprintf("/repos/%s/%s/wiki/page/%s", owner, repo, url.PathEscape(slug))
-	return p.client.Delete(ctx, path)
+	if err := p.client.Delete(ctx, path); err != nil {
+		return err
+	}
+	p.client.cache.Invalidator().AfterDelete(ctx, kindWiki, owner, repo, slug)
+	return nil
 }
 
 // SearchWikiPages performs a client-side title + body match across

@@ -119,10 +119,15 @@ func (p *Provider) ListIssues(ctx context.Context, owner, repo string, opts prov
 
 // GetIssue returns a single issue. If opts.WithComments > 0 the most
 // recent N comments are fetched and inlined.
+//
+// Routes through GetCached: a fresh cache row short-circuits the
+// upstream call entirely; a stale row triggers a conditional GET
+// with If-None-Match / If-Modified-Since (#42).
 func (p *Provider) GetIssue(ctx context.Context, owner, repo string, n int, opts provider.GetIssueOptions) (*types.Issue, error) {
 	var raw apiIssue
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d", owner, repo, n)
-	if err := p.client.Get(ctx, path, &raw); err != nil {
+	key := cacheKey(kindIssue, owner, repo, itoa(n))
+	if err := p.client.GetCached(ctx, path, &raw, key, CacheTTLSingle); err != nil {
 		return nil, err
 	}
 	out := raw.toType()
