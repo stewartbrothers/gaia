@@ -173,12 +173,11 @@ func Resume(ctx context.Context, token, decision string, opts RunOptions) (*Resu
 	executeSteps(ctx, &state.Chain, state.Chain.Steps, state.YieldedAtStep, scope, res, opts, state.Vars)
 	res.DurationMs = time.Since(chainStart).Milliseconds()
 
-	// On terminal status (success/failure/aborted), remove the state
-	// file. On a fresh yield, executeSteps already wrote a new state
-	// file with the new token.
-	if res.Status != StatusYielded {
-		_ = DeleteState(opts.StateDir, token)
-	}
+	// Always remove the OLD state file. If the chain yielded again,
+	// executeSteps wrote a fresh state file with a NEW token (the new
+	// canonical resume target). The old token represents stale state
+	// and would otherwise leak into `gaia chain list`.
+	_ = DeleteState(opts.StateDir, token)
 	return res, nil
 }
 

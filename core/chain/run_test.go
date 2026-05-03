@@ -441,3 +441,50 @@ func TestResumeMissingTokenErrors(t *testing.T) {
 		t.Error("expected error for missing token")
 	}
 }
+
+func TestResumeYieldsAgainCleansOldStateFile(t *testing.T) {
+	// If a chain yields, gets resumed, and yields AGAIN (e.g.,
+	// transient outage still ongoing), the old token's state file
+	// must be cleaned up — otherwise `gaia chain list` accumulates
+	// stale tokens forever.
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name: "still-broken",
+		Steps: []chain.Step{
+			{
+				ID:      "stuck",
+				Run:     "exit 5",
+				YieldOn: []chain.YieldCondition{chain.YieldRateLimited},
+			},
+		},
+	}
+	res1, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if res1.Status != chain.StatusYielded {
+		t.Fatalf("first run: %s", res1.Status)
+	}
+	oldToken := res1.ResumeToken
+
+	res2, _ := chain.Resume(context.Background(), oldToken, "continue", chain.RunOptions{StateDir: dir})
+	if res2.Status != chain.StatusYielded {
+		t.Fatalf("resume: %s", res2.Status)
+	}
+	newToken := res2.ResumeToken
+	if newToken == oldToken {
+		t.Error("resume should issue a fresh token on re-yield")
+	}
+
+	// Old token's state file must be gone.
+	if _, err := os.Stat(filepath.Join(dir, oldToken+".yaml")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("old state file should be cleaned up; got err %v", err)
+	}
+	// New token's state file must exist.
+	if _, err := os.Stat(filepath.Join(dir, newToken+".yaml")); err != nil {
+		t.Errorf("new state file missing: %v", err)
+	}
+
+	// chain list should show exactly one entry (the new one).
+	infos, _ := chain.ListStates(dir)
+	if len(infos) != 1 || infos[0].Token != newToken {
+		t.Errorf("list: %+v", infos)
+	}
+}
