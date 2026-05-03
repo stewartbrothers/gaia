@@ -4,10 +4,10 @@ import (
 	"context"
 )
 
-// Invalidator is a thin convenience wrapper around a *Cache that
+// Invalidator is a thin convenience wrapper around a [Cache] that
 // centralises the "what to evict on each mutation" decisions. The
-// helpers here are intentionally tolerant of a nil receiver: every
-// provider's write method can call `c.Invalidator(...).EditIssue(...)`
+// helpers here are intentionally tolerant of a nil cache: every
+// provider's write method can call `cache.NewInvalidator(c).EditIssue(...)`
 // even when caching is off, and the invocation is a no-op.
 //
 // Eviction policy (see #42):
@@ -19,13 +19,25 @@ import (
 //     list_index rows; there's no pre-existing object row to drop.
 //   - Delete mutations (DeleteRelease, DeleteWebhook) evict both
 //     the object and the list_index rows.
+//
+// # Note (#158)
+//
+// In #152 this struct held a *Cache (the SQLite-backed concrete type
+// at the time). After #158 it holds the [Cache] interface so the
+// downstream provider packages don't pull the SQLite driver into
+// their test binaries.
 type Invalidator struct {
-	cache *Cache
+	cache Cache
 }
 
-// Invalidator returns an Invalidator backed by c. nil c is fine;
-// every method is a no-op in that case.
-func (c *Cache) Invalidator() *Invalidator {
+// NewInvalidator returns an Invalidator backed by c. nil c is fine;
+// every method is a no-op in that case. Use:
+//
+//	cache.NewInvalidator(p.client.cache).AfterCreate(ctx, ...)
+//
+// from provider write paths. The helper centralises the "is the
+// cache nil?" check so call sites stay short.
+func NewInvalidator(c Cache) *Invalidator {
 	return &Invalidator{cache: c}
 }
 

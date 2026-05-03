@@ -19,7 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/stewartbrothers/gaia/core/cache"
+	"github.com/stewartbrothers/gaia/core/cache/sqlite"
 	"github.com/stewartbrothers/gaia/core/forgejo"
 	"github.com/stewartbrothers/gaia/core/provider"
 )
@@ -57,9 +57,9 @@ func main() {
 	// Cache mode.
 	cachePath := filepath.Join(os.TempDir(), fmt.Sprintf("cache-bench-%d.db", time.Now().UnixNano()))
 	defer func() { _ = os.Remove(cachePath) }()
-	c, err := cache.Open(cachePath)
+	c, err := sqlite.Open(cachePath)
 	if err != nil {
-		fail("cache.Open: %v", err)
+		fail("sqlite.Open: %v", err)
 	}
 	defer func() { _ = c.Close() }()
 

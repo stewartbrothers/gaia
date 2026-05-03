@@ -1,4 +1,4 @@
-package cache
+package sqlite
 
 // schemaStatements lists every CREATE-style DDL the cache file needs.
 // Every statement is idempotent — pure CREATE IF NOT EXISTS — so they
@@ -34,9 +34,9 @@ var schemaStatements = []string{
 }
 
 // applySchema runs every DDL on the open DB. Returns the first error.
-func (c *Cache) applySchema() error {
+func (s *Store) applySchema() error {
 	for _, stmt := range schemaStatements {
-		if _, err := c.db.Exec(stmt); err != nil {
+		if _, err := s.db.Exec(stmt); err != nil {
 			return err
 		}
 	}

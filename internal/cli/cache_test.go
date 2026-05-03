@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/stewartbrothers/gaia/core/cache"
+	"github.com/stewartbrothers/gaia/core/cache/sqlite"
 	"github.com/stewartbrothers/gaia/internal/cli"
 )
 
@@ -28,7 +29,7 @@ func TestCacheNukeRemovesAllCacheFiles(t *testing.T) {
 	dbA := filepath.Join(gaiaCache, "forgejo", "host-a.db")
 	dbB := filepath.Join(gaiaCache, "github", "api.github.com.db")
 	for _, p := range []string{dbA, dbB} {
-		c, err := cache.Open(p)
+		c, err := sqlite.Open(p)
 		if err != nil {
 			t.Fatalf("seed cache %s: %v", p, err)
 		}
@@ -70,7 +71,7 @@ func TestCacheNukeProviderFilter(t *testing.T) {
 	dbF := filepath.Join(gaiaCache, "forgejo", "host-a.db")
 	dbG := filepath.Join(gaiaCache, "github", "api.github.com.db")
 	for _, p := range []string{dbF, dbG} {
-		c, _ := cache.Open(p)
+		c, _ := sqlite.Open(p)
 		_ = c.Store(context.Background(), cache.Entry{
 			Key:       cache.Key{Kind: "issue", Owner: "o", Repo: "r", ID: "1"},
 			FetchedAt: time.Now(), TTL: time.Minute, Payload: []byte(`{}`),
