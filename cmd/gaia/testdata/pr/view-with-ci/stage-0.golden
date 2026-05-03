@@ -23,7 +23,17 @@
       "total": 2,
       "successful": 2,
       "failed": 0,
-      "pending": 0
+      "pending": 0,
+      "checks": [
+        {
+          "name": "build",
+          "state": "success"
+        },
+        {
+          "name": "test",
+          "state": "success"
+        }
+      ]
     }
   }
 }

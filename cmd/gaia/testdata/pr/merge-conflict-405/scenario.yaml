@@ -1,7 +1,8 @@
 description: |
-  Merge fails with 405 — PR isn't mergeable. exit code 1 (Generic).
-  Pins the error mapping; mergeability is the canonical PR-write
-  failure mode.
+  Merge fails with 405 — PR isn't mergeable. Forgejo body "PR is not
+  mergeable" sniffs to merge_conflict per the structured-exit table
+  (#112 Phase B-3) → exit code 9 (MergeConflict). Pins the body-sniff
+  → structured-exit mapping.
 
 mocks:
   - method: POST
@@ -23,4 +24,4 @@ stages:
       - "42"
     env:
       FORGEJO_TOKEN: TEST
-    exit_code: 1
+    exit_code: 9
