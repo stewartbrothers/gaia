@@ -215,26 +215,87 @@ func TestSearchWikiPagesNoMatch(t *testing.T) {
 	}
 }
 
-// EditWikiPage / DeleteWikiPage tests land in the next commit on this
-// stack alongside the real implementation. The current commit only
-// scaffolds the read paths through the clone cache.
-
-func TestEditWikiPageReturnsPlaceholderUntilNextCommit(t *testing.T) {
-	bare := initBareWiki(t, map[string]string{"Home.md": "body"})
+func TestEditWikiPageCreatesIfMissing(t *testing.T) {
+	bare := initBareWiki(t, map[string]string{"Existing.md": "old"})
 	p := newWikiTestProvider(t, bare)
-	_, err := p.EditWikiPage(context.Background(), "o", "r", "Home", "x")
-	if err == nil || !strings.Contains(err.Error(), "#120") {
-		t.Errorf("expected a #120-marked placeholder error; got %v", err)
+	got, err := p.EditWikiPage(context.Background(), "o", "r", "NewPage", "fresh body")
+	if err != nil {
+		t.Fatalf("EditWikiPage: %v", err)
+	}
+	if got.Body != "fresh body" {
+		t.Errorf("body: %q", got.Body)
+	}
+	if got.Path != "NewPage" {
+		t.Errorf("path: %q", got.Path)
+	}
+	// Verify the bare repo received the new commit.
+	logOut := captureGit(t, bare, "log", "--format=%s", "master")
+	if !strings.Contains(logOut, "NewPage") {
+		t.Errorf("upstream log should mention NewPage; got %q", logOut)
 	}
 }
 
-func TestDeleteWikiPageReturnsPlaceholderUntilNextCommit(t *testing.T) {
-	bare := initBareWiki(t, map[string]string{"Home.md": "body"})
+func TestEditWikiPageUpdatesExisting(t *testing.T) {
+	bare := initBareWiki(t, map[string]string{"Home.md": "old body"})
 	p := newWikiTestProvider(t, bare)
-	err := p.DeleteWikiPage(context.Background(), "o", "r", "Home")
-	if err == nil || !strings.Contains(err.Error(), "#120") {
-		t.Errorf("expected a #120-marked placeholder error; got %v", err)
+	got, err := p.EditWikiPage(context.Background(), "o", "r", "Home", "new body")
+	if err != nil {
+		t.Fatalf("EditWikiPage: %v", err)
 	}
+	if got.Body != "new body" {
+		t.Errorf("body: %q", got.Body)
+	}
+	// Re-read via Get to verify it persisted upstream — clone fresh
+	// from the bare repo to bypass the in-test cache.
+	tmp := t.TempDir()
+	mustGit(t, tmp, "git", "clone", bare, "verify")
+	body, err := os.ReadFile(filepath.Join(tmp, "verify", "Home.md"))
+	if err != nil {
+		t.Fatalf("read verify: %v", err)
+	}
+	if string(body) != "new body" {
+		t.Errorf("upstream body: %q", body)
+	}
+}
+
+func TestDeleteWikiPageRemovesFile(t *testing.T) {
+	bare := initBareWiki(t, map[string]string{
+		"Home.md":  "stay",
+		"Stale.md": "go away",
+	})
+	p := newWikiTestProvider(t, bare)
+	if err := p.DeleteWikiPage(context.Background(), "o", "r", "Stale"); err != nil {
+		t.Fatalf("DeleteWikiPage: %v", err)
+	}
+	// Verify upstream no longer has Stale.md.
+	tmp := t.TempDir()
+	mustGit(t, tmp, "git", "clone", bare, "verify")
+	if _, err := os.Stat(filepath.Join(tmp, "verify", "Stale.md")); !os.IsNotExist(err) {
+		t.Errorf("Stale.md should be gone upstream: err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "verify", "Home.md")); err != nil {
+		t.Errorf("Home.md should still exist: %v", err)
+	}
+}
+
+func TestDeleteWikiPageNotFound(t *testing.T) {
+	bare := initBareWiki(t, map[string]string{"Home.md": "stay"})
+	p := newWikiTestProvider(t, bare)
+	err := p.DeleteWikiPage(context.Background(), "o", "r", "Missing")
+	if got := exitcode.Of(err); got != exitcode.NotFound {
+		t.Errorf("got code %d, want NotFound; err=%v", got, err)
+	}
+}
+
+func captureGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func sliceHasStr(haystack []string, want string) bool {

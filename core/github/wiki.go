@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -184,19 +185,75 @@ func (p *Provider) SearchWikiPages(ctx context.Context, owner, repo, query strin
 	return hits, nil
 }
 
-// EditWikiPage and DeleteWikiPage land in the next commit on top of
-// the read paths. They share the same cache machinery, but the
-// commit/push sequence is enough additional surface that splitting
-// them out keeps the per-commit diff small enough to review in one
-// pass. Until that lands, both return a clear "not yet" error so an
-// operator running this commit's binary fails fast.
-func (p *Provider) EditWikiPage(_ context.Context, _, _, _, _ string) (*types.WikiPage, error) {
-	return nil, exitcode.Errorf(exitcode.Generic, "GitHub wiki edit lands in the next commit on this stack (#120)")
+// EditWikiPage upserts a page: writes `{slug}.md` (creating the file
+// if absent) with body, then commits + pushes. The cache is refreshed
+// before the write so we don't accidentally overwrite an upstream
+// change.
+func (p *Provider) EditWikiPage(ctx context.Context, owner, repo, slug, body string) (*types.WikiPage, error) {
+	cache, err := p.wikicache()
+	if err != nil {
+		return nil, err
+	}
+	dir, err := cache.ensureClone(ctx, owner, repo, p.wikiRemote(owner, repo))
+	if err != nil {
+		return nil, err
+	}
+	// Force-refresh-on-write: callers expect their edit to land on top
+	// of the latest upstream state, not on top of a 5-min-stale cache.
+	if err := cache.refresh(ctx, dir); err != nil {
+		return nil, err
+	}
+
+	// Resolve the existing file (preserves `.markdown` extension if a
+	// caller is editing one); fall back to `.md` for new pages.
+	target, _ := resolveWikiFile(dir, slug)
+	if target == "" {
+		target = filepath.Join(dir, slug+".md")
+	}
+	if err := os.WriteFile(target, []byte(body), 0o600); err != nil {
+		return nil, exitcode.Wrap(err, exitcode.Generic, "write wiki page")
+	}
+
+	msg := fmt.Sprintf("Edit %s via gaia", slug)
+	if err := cache.commitAndPush(ctx, dir, msg); err != nil {
+		return nil, err
+	}
+
+	page := &types.WikiPage{
+		Title: slug,
+		Path:  slug,
+		Body:  body,
+	}
+	if sha, when, ok := wikiFileLastCommit(ctx, dir, filepath.Base(target)); ok {
+		page.LastCommit = sha
+		page.UpdatedAt = when
+	}
+	return page, nil
 }
 
-// DeleteWikiPage is wired in the next commit. See EditWikiPage above.
-func (p *Provider) DeleteWikiPage(_ context.Context, _, _, _ string) error {
-	return exitcode.Errorf(exitcode.Generic, "GitHub wiki delete lands in the next commit on this stack (#120)")
+// DeleteWikiPage removes the page file then commits + pushes. Missing
+// slugs map to exitcode.NotFound (no commit issued).
+func (p *Provider) DeleteWikiPage(ctx context.Context, owner, repo, slug string) error {
+	cache, err := p.wikicache()
+	if err != nil {
+		return err
+	}
+	dir, err := cache.ensureClone(ctx, owner, repo, p.wikiRemote(owner, repo))
+	if err != nil {
+		return err
+	}
+	if err := cache.refresh(ctx, dir); err != nil {
+		return err
+	}
+	target, err := resolveWikiFile(dir, slug)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(target); err != nil {
+		return exitcode.Wrap(err, exitcode.Generic, "remove wiki page")
+	}
+	msg := fmt.Sprintf("Delete %s via gaia", slug)
+	return cache.commitAndPush(ctx, dir, msg)
 }
 
 // scanWikiDir walks dir non-recursively (wikis are flat) and returns
