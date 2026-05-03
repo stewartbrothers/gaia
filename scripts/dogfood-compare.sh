@@ -127,5 +127,23 @@ run "gaia --fields kind,number,title,repo" \
 run "curl /repos/o/r/issues?q="  curl -sS -H "Authorization: token $TOKEN" "$API/repos/$REPO/issues?q=$SEARCH_QUERY&limit=30"
 echo
 
-echo "Tip: re-run with REPO=, PR_NUMBER=, SEARCH_QUERY= overrides for"
-echo "different baselines. Numbers go into docs/dogfood-comparison.md."
+# Wiki rows are skipped when the repo has no wiki content yet
+# (Forgejo returns 404 on the pages endpoint for empty wikis). Set
+# WIKI_PATH= and WIKI_QUERY= when running against a wiki-bearing
+# repo to populate these rows in docs/dogfood-comparison.md.
+WIKI_PATH="${WIKI_PATH:-}"
+WIKI_QUERY="${WIKI_QUERY:-}"
+if [ -n "$WIKI_PATH" ]; then
+  echo "=== wiki list / view / search ($WIKI_PATH) ==="
+  run "gaia wiki list"             $GAIA_BIN --provider forgejo --api-url "$API" --repo "$REPO" wiki list
+  run "curl /wiki/pages"           curl -sS -H "Authorization: token $TOKEN" "$API/repos/$REPO/wiki/pages?limit=30"
+  run "gaia wiki view $WIKI_PATH"  $GAIA_BIN --provider forgejo --api-url "$API" --repo "$REPO" wiki view "$WIKI_PATH"
+  run "curl /wiki/page/$WIKI_PATH" curl -sS -H "Authorization: token $TOKEN" "$API/repos/$REPO/wiki/page/$WIKI_PATH"
+  if [ -n "$WIKI_QUERY" ]; then
+    run "gaia wiki search"         $GAIA_BIN --provider forgejo --api-url "$API" --repo "$REPO" wiki search "$WIKI_QUERY"
+  fi
+  echo
+fi
+
+echo "Tip: re-run with REPO=, PR_NUMBER=, SEARCH_QUERY=, WIKI_PATH=, WIKI_QUERY="
+echo "overrides for different baselines. Numbers go into docs/dogfood-comparison.md."
