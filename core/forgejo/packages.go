@@ -3,10 +3,12 @@ package forgejo
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"strconv"
 	"time"
 
+	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/core/types"
 )
@@ -84,6 +86,41 @@ func (p *Provider) GetPackage(ctx context.Context, owner, pkgType, name, version
 // success status; the client treats any 2xx as success.
 func (p *Provider) DeletePackage(ctx context.Context, owner, pkgType, name, version string) error {
 	return p.client.Delete(ctx, packagePath(owner, pkgType, name, version))
+}
+
+// UploadPackage publishes one artifact to a package version. The
+// generic-package endpoint takes the bytes as the request body — no
+// multipart, no JSON wrapper. Path:
+//
+//	PUT /packages/{owner}/generic/{name}/{version}/{file}
+//
+// We only ship "generic" in #122 because the other registries (npm,
+// maven, container, ...) have per-protocol publish flows that don't
+// share the generic endpoint's shape — npm publish wants the full
+// package tarball plus version metadata, maven wants per-classifier
+// uploads, container wants the Docker registry v2 dance. Each gets
+// its own follow-up; the contract here keeps that scope explicit by
+// rejecting non-generic kinds at the boundary instead of attempting
+// a 404'd PUT.
+func (p *Provider) UploadPackage(ctx context.Context, owner, pkgType, name, version string, opts provider.UploadPackageOptions, body io.Reader) error {
+	if pkgType != "generic" {
+		return exitcode.Errorf(exitcode.Usage,
+			"forgejo upload only supports pkgType=generic in #122 (got %q); other registries tracked as follow-ups", pkgType)
+	}
+	if opts.FileName == "" {
+		return exitcode.Errorf(exitcode.Usage, "FileName is required for generic-package upload")
+	}
+	contentType := opts.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	path := fmt.Sprintf("/packages/%s/generic/%s/%s/%s",
+		url.PathEscape(owner),
+		url.PathEscape(name),
+		url.PathEscape(version),
+		url.PathEscape(opts.FileName),
+	)
+	return p.client.PutBinary(ctx, path, contentType, body)
 }
 
 // packagePath builds `/packages/{owner}/{type}/{name}/{version}` with

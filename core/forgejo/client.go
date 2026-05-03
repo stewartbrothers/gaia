@@ -192,6 +192,41 @@ func (c *Client) PostMultipart(ctx context.Context, path, contentType string, bo
 	return nil
 }
 
+// PutBinary issues a PUT with the body streamed as the request body
+// (no multipart, no JSON wrapper). Used by Forgejo's generic-package
+// upload endpoint, which expects the artifact bytes directly. Returns
+// nil on any 2xx status (Forgejo returns 201 Created on first upload
+// and 409 Conflict if the file already exists at that
+// owner/name/version/file path). Streams `body` so large artifacts
+// don't load into memory.
+func (c *Client) PutBinary(ctx context.Context, path, contentType string, body io.Reader) error {
+	urlStr := c.buildURL(path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, urlStr, body)
+	if err != nil {
+		return exitcode.Wrap(err, exitcode.Generic, fmt.Sprintf("build PUT %s", path))
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "token "+c.token)
+	}
+	req.Header.Set("Accept", "application/json")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("User-Agent", c.userAgent)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return exitcode.Wrap(scrubError(err, c.token), exitcode.Network, fmt.Sprintf("PUT %s", path))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return c.statusError(resp, http.MethodPut, path)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return nil
+}
+
 // GetRaw issues a GET and returns the response body as bytes. Used
 // for endpoints that return non-JSON payloads (notably `.diff`). The
 // Accept header is set to `*/*`.
