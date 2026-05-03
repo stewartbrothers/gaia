@@ -22,5 +22,6 @@ func buildForgejoProvider(flags *globalFlags) (provider.Provider, *providerInfo,
 		Profile:  flags.Profile,
 		Provider: flags.Provider,
 		APIURL:   flags.APIURL,
+		NoCache:  flags.NoCache,
 	})
 }

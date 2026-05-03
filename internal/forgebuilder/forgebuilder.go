@@ -17,6 +17,7 @@ import (
 	"sort"
 
 	"github.com/stewartbrothers/gaia/core/auth"
+	"github.com/stewartbrothers/gaia/core/cache"
 	"github.com/stewartbrothers/gaia/core/config"
 	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/forgejo"
@@ -35,6 +36,11 @@ type Override struct {
 	Provider string
 	APIURL   string
 	Token    string
+	// NoCache, when true, disables the local read cache for the
+	// constructed provider regardless of what the global config says.
+	// Used by `gaia --no-cache <cmd>` to force a fresh upstream read
+	// for one invocation. (#42)
+	NoCache bool
 }
 
 // Info carries the metadata callers display alongside provider
@@ -128,6 +134,19 @@ func Build(ov Override) (provider.Provider, *Info, error) {
 		APIURL:   resolved.APIURL,
 	}
 
+	// Cache: opened lazily so a missing cache dir or a permission
+	// error here doesn't block the read path. Errors degrade silently
+	// to "no cache" — the provider still works, just without the
+	// caching layer. (#42)
+	var ch *cache.Cache
+	if !ov.NoCache {
+		if path, perr := cache.PathFor(resolved.Provider, resolved.APIURL); perr == nil {
+			if c, oerr := cache.Open(path); oerr == nil {
+				ch = c
+			}
+		}
+	}
+
 	switch resolved.Provider {
 	case "forgejo":
 		if resolved.APIURL == "" {
@@ -137,6 +156,7 @@ func Build(ov Override) (provider.Provider, *Info, error) {
 		return forgejo.NewProvider(forgejo.Options{
 			BaseURL: resolved.APIURL,
 			Token:   resolved.Token,
+			Cache:   ch,
 		}), info, nil
 	case "github":
 		// Empty BaseURL means "use api.github.com"; github.New
@@ -148,6 +168,7 @@ func Build(ov Override) (provider.Provider, *Info, error) {
 		return github.NewProvider(github.Options{
 			BaseURL: resolved.APIURL,
 			Token:   resolved.Token,
+			Cache:   ch,
 		}), info, nil
 	default:
 		return nil, nil, exitcode.Errorf(exitcode.Usage,
