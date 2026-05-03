@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "data": {
+    "chain": "yield-then-abort",
+    "status": "aborted",
+    "steps": [
+      {
+        "id": "stop",
+        "run": "exit 5",
+        "status": "yielded",
+        "exit_code": 5,
+        "duration_ms": 0
+      }
+    ],
+    "abort_reason": "rate_limited"
+  }
+}

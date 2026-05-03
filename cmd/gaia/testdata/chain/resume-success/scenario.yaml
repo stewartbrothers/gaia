@@ -1,0 +1,42 @@
+description: |
+  Chain yields, then resume picks up and runs to completion. The
+  yielded step's exit-cause is removed for resume (`true` is run
+  instead of `exit 5`) by relying on a chain that yields once and
+  the same step exit succeeds on resume.
+
+  We achieve this via a sentinel file: the first invocation creates
+  it (and exits 5 → yields), the second invocation sees it and
+  echoes "resumed". The chain script substitutes ${tempdir} so the
+  sentinel path is per-scenario.
+
+chain_yaml: |
+  name: yield-then-resume
+  vars:
+    sentinel:
+      required: true
+  steps:
+    - id: first
+      run: echo first
+    - id: maybe-yield
+      run: 'if [ ! -f "${sentinel}" ]; then touch "${sentinel}"; exit 5; fi; echo recovered'
+      yield_on:
+        - rate_limited
+    - id: tail
+      run: echo done
+
+stages:
+  - description: gaia chain run — yields on first attempt
+    args:
+      - chain
+      - run
+      - --chain-file
+      - ${chainfile}
+      - --var
+      - sentinel=${tempdir}/sentinel
+    exit_code: 0
+  - description: gaia chain resume — picks up, runs to completion
+    args:
+      - chain
+      - resume
+      - ${token:0}
+    exit_code: 0

@@ -1,0 +1,30 @@
+description: |
+  Chain yields on rate_limited, then `gaia chain list` shows the
+  yielded chain. Exercises emitYield + state save + ListStates +
+  prettyChainList rendering (json branch).
+
+chain_yaml: |
+  name: yield-then-list
+  steps:
+    - id: first
+      run: echo first
+    - id: rate-limited
+      run: exit 5
+      yield_on:
+        - rate_limited
+    - id: never
+      run: echo never reached
+
+stages:
+  - description: gaia chain run — yields with token, exit 0
+    args:
+      - chain
+      - run
+      - --chain-file
+      - ${chainfile}
+    exit_code: 0
+  - description: gaia chain list — shows the yielded chain
+    args:
+      - chain
+      - list
+    exit_code: 0

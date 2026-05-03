@@ -1,0 +1,27 @@
+description: |
+  Chain yields, then operator aborts it with `gaia chain abort`.
+  Exercises the resume("abort") branch + DeleteState + the
+  StatusAborted result envelope.
+
+chain_yaml: |
+  name: yield-then-abort
+  steps:
+    - id: stop
+      run: exit 5
+      yield_on:
+        - rate_limited
+
+stages:
+  - description: gaia chain run — yields
+    args:
+      - chain
+      - run
+      - --chain-file
+      - ${chainfile}
+    exit_code: 0
+  - description: gaia chain abort <token> — discards the yielded chain
+    args:
+      - chain
+      - abort
+      - ${token:0}
+    exit_code: 0
