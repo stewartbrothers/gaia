@@ -90,17 +90,47 @@ jobs:
       - name: Install goreleaser
         run: go install github.com/goreleaser/goreleaser/v2@v2.4.5
 
+      # Decide upfront whether the goreleaser run should attempt the
+      # Homebrew formula push. The `brews:` block in .goreleaser.yml
+      # references `{{ .Env.GORELEASER_TAP_DEPLOY_KEY }}` — when that
+      # secret is unset, goreleaser substitutes empty, tries to use
+      # an empty SSH key, and fails the entire release run before
+      # the actual artifact upload step. Skipping the homebrew
+      # phase when the secret is absent keeps the release-publish
+      # path resilient: operators can ship the binaries first and
+      # add the tap-deploy key later.
+      - name: Check whether Homebrew tap secret is configured
+        id: brew_gate
+        env:
+          TAP_KEY: ${{ secrets.GORELEASER_TAP_DEPLOY_KEY }}
+        run: |
+          if [ -z "${TAP_KEY:-}" ]; then
+            echo "skip=homebrew," >> "$GITHUB_OUTPUT"
+            echo "::notice::GORELEASER_TAP_DEPLOY_KEY not configured — skipping Homebrew formula bump for ${{ github.ref_name }}."
+          else
+            echo "skip=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run goreleaser
         env:
           # `brews:` (#49) writes a commit bumping Formula/gaia.rb
           # to the new tag's url + sha256. Needs an SSH deploy key
-          # with write:repository on this repo. Operator setup is
-          # documented in RELEASING.md.
+          # with write:repository on this repo. When the secret is
+          # absent, the brew_gate step above appends `homebrew` to
+          # the skip list so this step still completes successfully
+          # — the tap bump can be done by hand later. Operator setup
+          # is documented in RELEASING.md.
           GORELEASER_TAP_DEPLOY_KEY: ${{ secrets.GORELEASER_TAP_DEPLOY_KEY }}
         run: |
           set -euo pipefail
           export PATH="$(go env GOPATH)/bin:$PATH"
-          if ! goreleaser release --clean --skip=publish 2> goreleaser.stderr; then
+          # Always skip publish (gaia release publish handles upload).
+          # Conditionally also skip homebrew when the tap secret is
+          # absent — see brew_gate step.
+          skip_list="publish,${{ steps.brew_gate.outputs.skip }}"
+          # Trim trailing comma if no extra skips.
+          skip_list="${skip_list%,}"
+          if ! goreleaser release --clean --skip="$skip_list" 2> goreleaser.stderr; then
             echo "::error::goreleaser failed — see stderr below."
             sed 's/^/::error::  /' goreleaser.stderr
             exit 1
