@@ -2,49 +2,49 @@
   "schema_version": "1.0",
   "data": [
     {
+      "number": 7,
+      "title": {
+        "_trust": "external",
+        "_value": "first feature"
+      },
+      "state": "open",
       "author": {
         "login": "alice"
+      },
+      "head": {
+        "ref": "feature/x",
+        "sha": "deadbeef"
       },
       "base": {
         "ref": "main",
         "sha": "cafebabe"
       },
-      "created_at": "2026-04-01T00:00:00Z",
       "draft": false,
-      "head": {
-        "ref": "feature/x",
-        "sha": "deadbeef"
-      },
-      "number": 7,
-      "state": "open",
-      "title": {
-        "_trust": "external",
-        "_value": "first feature"
-      },
+      "created_at": "2026-04-01T00:00:00Z",
       "updated_at": "2026-04-02T00:00:00Z"
     },
     {
+      "number": 8,
+      "title": {
+        "_trust": "external",
+        "_value": "second"
+      },
+      "state": "merged",
       "author": {
         "login": "bob"
+      },
+      "head": {
+        "ref": "feature/y",
+        "sha": "11111111"
       },
       "base": {
         "ref": "main",
         "sha": "22222222"
       },
-      "created_at": "2026-04-03T00:00:00Z",
       "draft": false,
-      "head": {
-        "ref": "feature/y",
-        "sha": "11111111"
-      },
-      "merged_at": "2026-04-04T00:00:00Z",
-      "number": 8,
-      "state": "merged",
-      "title": {
-        "_trust": "external",
-        "_value": "second"
-      },
-      "updated_at": "2026-04-04T00:00:00Z"
+      "created_at": "2026-04-03T00:00:00Z",
+      "updated_at": "2026-04-04T00:00:00Z",
+      "merged_at": "2026-04-04T00:00:00Z"
     }
   ]
 }

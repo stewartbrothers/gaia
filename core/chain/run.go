@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -631,8 +632,24 @@ func copyAnyMap(in map[string]any) map[string]any {
 // and any unexpected runtime error (process couldn't be started,
 // etc.). A normal non-zero exit is reported via the exit code; runErr
 // stays nil.
+//
+// Security: the child process inherits a *scrubbed* env, not the
+// gaia process's full env. Only the small allowlist in
+// scrubbedChildEnv() (PATH, HOME, USER, LANG, LC_ALL, TERM) makes
+// it through. Forge tokens (GITEA_TOKEN, FORGEJO_TOKEN, GH_TOKEN,
+// GITHUB_TOKEN), cloud creds (AWS_*, GCP_*, AZURE_*), and any other
+// operator-scope secrets that happen to be in the parent env are
+// stripped.
+//
+// Why: combined with #135 (now fixed) the alternative was an
+// attacker-controlled chain step that does `env | exfiltrate ...`
+// reading the operator's PAT directly out of its own environment.
+// Now even a hostile step (or one constructed via a future
+// shell-injection regression) sees only the allowlist. (#140
+// part 4.)
 func execShell(ctx context.Context, cmd string) (stdout, stderr string, exitCode int, err error) {
 	c := exec.CommandContext(ctx, "sh", "-c", cmd)
+	c.Env = scrubbedChildEnv()
 	var outBuf, errBuf bytes.Buffer
 	c.Stdout = &outBuf
 	c.Stderr = &errBuf
@@ -647,6 +664,55 @@ func execShell(ctx context.Context, cmd string) (stdout, stderr string, exitCode
 		return stdout, stderr, -1, runErr
 	}
 	return stdout, stderr, 0, nil
+}
+
+// allowedChildEnvKeys is the strict allowlist of env vars passed
+// through to chain step children. The principle is "if removing it
+// breaks chain steps that don't need secrets, allow it; otherwise
+// drop". Specifically:
+//
+//   - PATH: chain steps need to find binaries (gaia, env, sh
+//     builtins, etc.). Without PATH the shell can't even invoke
+//     `env` to read the rest, so chains break immediately.
+//   - HOME: `gaia` itself reads ~/.config/gaia/credentials.yaml
+//     when invoked from a chain step; without HOME the gaia
+//     subprocess loses its credential resolution path.
+//   - USER / LOGNAME: tools that build paths or commit metadata
+//     (`git`, etc.) read these. Inert from a secrets-leak
+//     standpoint — the username isn't a secret.
+//   - LANG / LC_ALL: locale. Some tools (sort, awk, gettext-aware
+//     CLIs) misbehave or change output format without a locale.
+//   - TERM: terminal type. CLIs that emit colour respect TERM;
+//     dropping it sometimes flips them into a verbose ANSI-escape
+//     fallback that pollutes captures.
+//
+// Forge tokens, cloud creds, and arbitrary operator vars are NOT
+// on the list. If a chain author legitimately needs a secret in a
+// step, the right path is a per-step env declaration on the chain
+// schema (Phase 4) — not silent inheritance.
+var allowedChildEnvKeys = []string{
+	"PATH",
+	"HOME",
+	"USER",
+	"LOGNAME",
+	"LANG",
+	"LC_ALL",
+	"TERM",
+}
+
+// scrubbedChildEnv returns the env slice (in `KEY=VALUE` shape that
+// exec.Cmd.Env wants) that chain step children should inherit. Only
+// keys in allowedChildEnvKeys with a non-empty value are included;
+// everything else is stripped. Nil/empty result is allowed — the
+// child runs with literally no env, which is the safest fallback.
+func scrubbedChildEnv() []string {
+	out := make([]string, 0, len(allowedChildEnvKeys))
+	for _, k := range allowedChildEnvKeys {
+		if v, ok := os.LookupEnv(k); ok {
+			out = append(out, k+"="+v)
+		}
+	}
+	return out
 }
 
 // decodeCapture parses stdout as JSON, returning the envelope's

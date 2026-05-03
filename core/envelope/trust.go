@@ -1,6 +1,7 @@
 package envelope
 
 import (
+	"bytes"
 	"encoding/json"
 	"reflect"
 	"strings"
@@ -43,6 +44,148 @@ func (e External) MarshalJSON() ([]byte, error) {
 		Value: string(e),
 	})
 }
+
+// orderedField is a single key/value entry in an orderedObject. We
+// keep the key + value as separate fields rather than a 2-element
+// tuple so MarshalJSON can encode them with the standard library's
+// per-value marshaler (which honours each value's own
+// json.Marshaler if it implements one — e.g. External).
+type orderedField struct {
+	Key   string
+	Value any
+}
+
+// orderedObject is a JSON object whose keys emerge in insertion
+// order. Used by the trust walker (#148) so struct-declaration order
+// survives the rewrite into a `{"_trust":..., "_value":...}` shape;
+// `map[string]any` would otherwise be sorted alphabetically by
+// encoding/json.
+//
+// The wire shape is identical to a regular JSON object — consumers
+// see `{"k1":v1,"k2":v2}` exactly as they would from a struct.
+type orderedObject struct {
+	Fields []orderedField
+}
+
+// MarshalJSON emits the object with fields in the order they were
+// appended. Each value is delegated to encoding/json so any nested
+// value's own MarshalJSON (e.g. External) is honoured.
+func (o orderedObject) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	for i, f := range o.Fields {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		// Encode the key as a JSON string. json.Marshal handles
+		// escaping; we never see hostile keys here (they're Go
+		// struct field names / json-tag names / map keys we
+		// stringified ourselves) but using json.Marshal keeps the
+		// invariant locally provable.
+		kb, err := json.Marshal(f.Key)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(kb)
+		buf.WriteByte(':')
+		vb, err := json.Marshal(f.Value)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(vb)
+	}
+	buf.WriteByte('}')
+	return buf.Bytes(), nil
+}
+
+// decodeOrdered parses raw JSON into an orderedObject /
+// []any / scalar tree where every object preserves the input
+// byte order of its keys. Used by Project (#148) so projection
+// doesn't collapse declaration-ordered output back to
+// alphabetical via map[string]any.
+func decodeOrdered(raw []byte) (any, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	v, err := decodeOrderedValue(dec)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// decodeOrderedValue reads one JSON value from dec. Objects become
+// orderedObject; arrays become []any; scalars are returned as
+// produced by json.Decoder (with UseNumber so numeric precision is
+// preserved).
+func decodeOrderedValue(dec *json.Decoder) (any, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	return decodeOrderedFromToken(dec, tok)
+}
+
+// decodeOrderedFromToken continues parsing after the caller has
+// already consumed one token (typically the opening delim). Lets us
+// distinguish '{' / '[' / scalar without re-reading the stream.
+func decodeOrderedFromToken(dec *json.Decoder, tok json.Token) (any, error) {
+	delim, ok := tok.(json.Delim)
+	if !ok {
+		// Scalar (string, json.Number, bool, nil).
+		return tok, nil
+	}
+	switch delim {
+	case '{':
+		obj := orderedObject{}
+		for dec.More() {
+			keyTok, err := dec.Token()
+			if err != nil {
+				return nil, err
+			}
+			key, isStr := keyTok.(string)
+			if !isStr {
+				return nil, errOrderedKeyNotString
+			}
+			val, err := decodeOrderedValue(dec)
+			if err != nil {
+				return nil, err
+			}
+			obj.Fields = append(obj.Fields, orderedField{Key: key, Value: val})
+		}
+		// Consume closing '}'.
+		if _, err := dec.Token(); err != nil {
+			return nil, err
+		}
+		return obj, nil
+	case '[':
+		var arr []any
+		for dec.More() {
+			val, err := decodeOrderedValue(dec)
+			if err != nil {
+				return nil, err
+			}
+			arr = append(arr, val)
+		}
+		// Consume closing ']'.
+		if _, err := dec.Token(); err != nil {
+			return nil, err
+		}
+		return arr, nil
+	}
+	return tok, nil
+}
+
+// errOrderedKeyNotString is the canned error decodeOrderedFromToken
+// returns when an object key token isn't a string. Defined as a
+// var rather than created inline so callers can compare against it
+// in tests if needed.
+var errOrderedKeyNotString = jsonOrderedDecodeError("ordered decode: object key is not a string")
+
+// jsonOrderedDecodeError is a tiny error type so we don't pull in
+// fmt for a single error string. Keeps the file self-contained.
+type jsonOrderedDecodeError string
+
+func (e jsonOrderedDecodeError) Error() string { return string(e) }
 
 // trustTagName is the struct-tag key we read for trust annotations.
 // The full tag spelling is `gaia:"trust=external"`.
@@ -89,8 +232,14 @@ func applyTrustTagsValue(rv reflect.Value) reflect.Value {
 		return applyTrustTagsValue(rv.Elem())
 
 	case reflect.Struct:
-		out := make(map[string]any, rv.NumField())
 		t := rv.Type()
+		// Build an orderedObject so fields emerge in
+		// struct-declaration order on the wire (#148). The previous
+		// `map[string]any` path produced alphabetical order via
+		// encoding/json's map handling, which broke canonical-JSON /
+		// hash-keyed cache consumers that depended on the historical
+		// declaration order.
+		out := orderedObject{Fields: make([]orderedField, 0, rv.NumField())}
 		anyExternal := false
 		for i := 0; i < rv.NumField(); i++ {
 			ft := t.Field(i)
@@ -107,13 +256,13 @@ func applyTrustTagsValue(rv reflect.Value) reflect.Value {
 			}
 			gaiaTag := ft.Tag.Get(trustTagName)
 			if gaiaTag == trustTagExternal && fv.Kind() == reflect.String {
-				out[jsonName] = External(fv.String())
+				out.Fields = append(out.Fields, orderedField{Key: jsonName, Value: External(fv.String())})
 				anyExternal = true
 				continue
 			}
 			// Recurse into nested values so an Issue.Comments[].Body
 			// field gets tagged correctly too.
-			out[jsonName] = applyTrustTagsValue(fv).Interface()
+			out.Fields = append(out.Fields, orderedField{Key: jsonName, Value: applyTrustTagsValue(fv).Interface()})
 		}
 		// If no field on this struct (or its descendants seen by the
 		// rewrite) needed tagging, return the original value verbatim

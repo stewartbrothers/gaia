@@ -2,44 +2,44 @@
   "schema_version": "1.0",
   "data": [
     {
-      "author": {
-        "login": "alice"
+      "id": 9,
+      "tag_name": "v0.2.0",
+      "name": {
+        "_trust": "external",
+        "_value": "v0.2.0"
       },
       "body": {
         "_trust": "external",
         "_value": "fixes + small features"
       },
-      "created_at": "2026-04-10T00:00:00Z",
       "draft": false,
-      "id": 9,
-      "name": {
-        "_trust": "external",
-        "_value": "v0.2.0"
-      },
       "prerelease": false,
-      "published_at": "2026-04-10T00:00:00Z",
-      "tag_name": "v0.2.0",
-      "target_commitish": "main"
-    },
-    {
       "author": {
         "login": "alice"
+      },
+      "target_commitish": "main",
+      "created_at": "2026-04-10T00:00:00Z",
+      "published_at": "2026-04-10T00:00:00Z"
+    },
+    {
+      "id": 8,
+      "tag_name": "v0.1.0",
+      "name": {
+        "_trust": "external",
+        "_value": "first"
       },
       "body": {
         "_trust": "external",
         "_value": "first release"
       },
-      "created_at": "2026-04-01T00:00:00Z",
       "draft": false,
-      "id": 8,
-      "name": {
-        "_trust": "external",
-        "_value": "first"
-      },
       "prerelease": true,
-      "published_at": "2026-04-01T00:00:00Z",
-      "tag_name": "v0.1.0",
-      "target_commitish": "main"
+      "author": {
+        "login": "alice"
+      },
+      "target_commitish": "main",
+      "created_at": "2026-04-01T00:00:00Z",
+      "published_at": "2026-04-01T00:00:00Z"
     }
   ]
 }

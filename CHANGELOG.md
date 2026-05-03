@@ -12,6 +12,58 @@ reserved for breaking changes only.
 
 ### Security
 
+- Chain runner: child processes run with a scrubbed env, not the
+  gaia process's full env (#140 part 4). Allowlist:
+  `PATH, HOME, USER, LOGNAME, LANG, LC_ALL, TERM`. Forge tokens
+  (`GITEA_TOKEN`, `FORGEJO_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`),
+  cloud credentials (`AWS_*`, `GCP_*`, `AZURE_*`), and any other
+  operator-scope vars are stripped. Combined with the shell-quoting
+  from #135, this closes the "hostile forge response →
+  shell-injection → `env` reads my forge token" exfiltration path
+  even if a future shell-injection regression sneaks past review.
+  See `docs/chain.md` "Security: env scrubbing" for the rationale
+  and the design contract.
+- CI now runs `govulncheck ./...` on every PR and push to `main`
+  (#140 part 3). Known CVEs in transitive deps that touch reachable
+  code paths gate the merge, surfacing the same risk class that the
+  stale mcp-go pin in #138 represented — but on every PR rather
+  than via ad-hoc audit. Initial pass: clean against the Go 1.25.9
+  stdlib + current deps; the floor was bumped from 1.25.5 (mcp-go's
+  required minimum) to 1.25.9 via a `toolchain` directive to clear
+  7 stdlib CVEs the older patch carried.
+- CI third-party actions pinned by commit SHA, with the version as
+  a trailing comment (#140 part 2). A compromised actions/* org
+  can no longer push a malicious update under a tag we already
+  trust. Applied across `.forgejo/workflows/*.yml` and
+  `.github/workflows/ci.yml`. See each workflow header for the
+  bump discipline.
+- `SECURITY.md` added at the repo root (#140 part 1). Documents
+  threat model, reporting channel
+  (`aidev@stewartbrothers.com.au`), and 7-day-ack / 30–90-day-fix
+  timeline. Public projects on Forgejo / GitHub now expose the
+  "Report a vulnerability" link.
+
+### Fixed
+
+- Trust-tagged JSON output now preserves struct-declaration field order
+  (was alphabetical since #146). Closes #148; restores the historical
+  wire-shape ordering that pre-#146 callers relied on for canonical
+  serialisation / hash-keyed caching.
+
+### Changed
+
+- `github.com/mark3labs/mcp-go` bumped from v0.32.0 to v0.50.0 (#138).
+  Closes a 10-month / 18-version stale-dependency window; mcp-go v0.50.x
+  carries hardening of its streamable-HTTP transport and accumulated
+  bug fixes that the old pin would have shipped as zero-days for any
+  embargoed advisory landing in the gap. Side effect: mcp-go v0.50.x
+  requires Go ≥ 1.25.5, so gaia's go.mod floor moved from 1.23 to 1.25.
+  CI workflows, the Dockerfile build base, and the install / release
+  docs all bumped together. Drop-in API compat — no source-level
+  adjustments to gaia-mcp were needed.
+
+### Security
+
 - Chain runner: substituted variable values are now shell-quoted
   before insertion into the run command (#135). Hostile vars /
   captures can no longer inject shell metacharacters. Existing
@@ -56,12 +108,15 @@ reserved for breaking changes only.
   update their decode shapes — see the in-tree test pattern in
   `internal/cli/issue_test.go` (`trustExternal` helper).
 - The marshal walker that applies the trust tag emits objects via a
-  reflection pass, which means `data.*` field order in JSON output
-  is now alphabetical rather than struct-declaration order. Object
-  keys in JSON are unordered per RFC 8259, so consumers that key by
-  name still work; only consumers that rely on byte-identical
-  serialisation (canonical JSON for signing, deterministic caching
-  by hash) need to re-baseline.
+  reflection pass. Initially this changed `data.*` field order from
+  struct-declaration order to alphabetical (object keys in JSON are
+  unordered per RFC 8259, so consumers that key by name still work);
+  consumers that rely on byte-identical serialisation needed to
+  re-baseline. **Resolved in #148** — the walker now preserves
+  struct-declaration order via an ordered-object marshaler, so the
+  historical wire ordering is back. This second drift is the final
+  one; consumers that re-baselined for the alphabetical interim
+  should re-baseline once more against declaration order.
 
 Tracking issues for upcoming work:
 - **Phase 4** (#4): SQLite cache (#42), indexed search (#43), webhook

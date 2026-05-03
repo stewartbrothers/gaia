@@ -13,6 +13,10 @@ name: Mirror to GitHub
 # and exits 0 with a "skipped" log line if it isn't. That way the
 # workflow file lands first, and the operator can flip the secret on
 # without needing another commit.
+#
+# CI actions pinned by commit SHA — bump the SHA and the version
+# comment together when updating. See .forgejo/workflows/ci.yml's
+# header for the rationale. (#140 part 2.)
 
 on:
   push:
@@ -25,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
         with:
           # Need full history + every tag so the mirror push doesn't
           # ship a shallow clone. Tags drive the per-release mirror.

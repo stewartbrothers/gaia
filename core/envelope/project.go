@@ -69,3 +69,42 @@ func (fs FieldSpec) Apply(v any) any {
 		return v
 	}
 }
+
+// ApplyOrdered is the order-preserving counterpart of Apply, used by
+// Envelope.Project (#148). Operates on the orderedObject /
+// []any / scalar tree produced by decodeOrdered. Keeps each object's
+// keys in the order they appeared on the wire (which the trust
+// walker emits in struct-declaration order).
+//
+// Iteration order: we walk the input object's fields in their input
+// order and emit a matching output entry only when the spec includes
+// that key. This preserves the input order rather than the spec's
+// dictionary-iteration order.
+func (fs FieldSpec) ApplyOrdered(v any) any {
+	if len(fs) == 0 {
+		return v
+	}
+	switch x := v.(type) {
+	case orderedObject:
+		out := orderedObject{Fields: make([]orderedField, 0, len(fs))}
+		for _, f := range x.Fields {
+			sub, want := fs[f.Key]
+			if !want {
+				continue
+			}
+			out.Fields = append(out.Fields, orderedField{
+				Key:   f.Key,
+				Value: sub.ApplyOrdered(f.Value),
+			})
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = fs.ApplyOrdered(e)
+		}
+		return out
+	default:
+		return v
+	}
+}

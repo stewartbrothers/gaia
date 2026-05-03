@@ -83,6 +83,10 @@ func TestWithMetaSetsKey(t *testing.T) {
 }
 
 func TestEnvelopeProjectAppliesFieldsToData(t *testing.T) {
+	// The post-#148 Project produces an order-preserving tree
+	// (orderedObject), not a map[string]any. We assert against the
+	// final wire shape — that's what callers consume — instead of
+	// poking at the internal Go type.
 	in := map[string]any{
 		"number": 42,
 		"title":  "hello",
@@ -92,19 +96,19 @@ func TestEnvelopeProjectAppliesFieldsToData(t *testing.T) {
 	if err := e.Project("number,author.login"); err != nil {
 		t.Fatalf("project: %v", err)
 	}
-	got, ok := e.Data.(map[string]any)
-	if !ok {
-		t.Fatalf("data type after project: %T", e.Data)
+	b, err := json.Marshal(e)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
 	}
-	if _, has := got["title"]; has {
-		t.Errorf("title should have been dropped; got %+v", got)
+	wire := string(b)
+	if strings.Contains(wire, `"title"`) {
+		t.Errorf("title should have been dropped; wire=%s", wire)
 	}
-	author, ok := got["author"].(map[string]any)
-	if !ok {
-		t.Fatalf("author should remain a map; got %T", got["author"])
+	if !strings.Contains(wire, `"login":"alice"`) {
+		t.Errorf("author.login should have survived; wire=%s", wire)
 	}
-	if _, has := author["extra"]; has {
-		t.Errorf("author.extra should have been dropped; got %+v", author)
+	if strings.Contains(wire, `"extra"`) {
+		t.Errorf("author.extra should have been dropped; wire=%s", wire)
 	}
 }
 

@@ -955,3 +955,83 @@ func TestResumeYieldsAgainCleansOldStateFile(t *testing.T) {
 		t.Errorf("list: %+v", infos)
 	}
 }
+
+// TestRunChildEnvScrubbed pins the #140 part 4 fix: a chain step
+// must not inherit token-bearing env vars from the parent gaia
+// process. A hostile chain step that runs `env | grep TOKEN` (or
+// any equivalent exfiltration) would otherwise read the operator's
+// forge PAT directly out of its own environment — combining with
+// the shell-injection surface in #135 to give an attacker a
+// one-step path from a hostile forge response to
+// "have the operator's GITEA_TOKEN."
+//
+// The fix: build a scrubbed env for child processes that includes
+// only PATH / HOME / USER / LANG / LC_ALL / TERM. Anything else
+// (including all forge tokens and AWS/GCP credentials that
+// commonly live in operator envs) is dropped.
+func TestRunChildEnvScrubbed(t *testing.T) {
+	// Set the same set of token env-vars an operator would carry.
+	// t.Setenv resets at end of test, so we don't pollute later tests.
+	for k, v := range map[string]string{
+		"GITEA_TOKEN":     "secret-gitea-token",
+		"FORGEJO_TOKEN":   "secret-forgejo-token",
+		"GH_TOKEN":        "secret-gh-token",
+		"GITHUB_TOKEN":    "secret-github-token",
+		"AWS_ACCESS_KEY":  "AKIA-secret-aws-key",
+		"AWS_SECRET":      "secret-aws-shh",
+		"GAIA_RANDOM_VAR": "should-also-be-stripped",
+	} {
+		t.Setenv(k, v)
+	}
+
+	c := &chain.Chain{
+		Name: "envdump",
+		Steps: []chain.Step{
+			// `env` lists every env var the child sees. Any token
+			// name that appears in stdout means the scrub failed.
+			{ID: "dump", Run: "env"},
+		},
+	}
+	res, err := chain.Run(context.Background(), c, nil, chain.RunOptions{
+		// Bigger output cap so the env dump isn't truncated mid-test.
+		MaxOutputBytes: 16 * 1024,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != chain.StatusSuccess {
+		t.Fatalf("status: %s, failure: %+v", res.Status, res.Failure)
+	}
+	stdout := res.Steps[0].Stdout
+
+	// None of these names should appear in the child's env.
+	bannedKeys := []string{
+		"GITEA_TOKEN", "FORGEJO_TOKEN", "GH_TOKEN", "GITHUB_TOKEN",
+		"AWS_ACCESS_KEY", "AWS_SECRET", "GAIA_RANDOM_VAR",
+	}
+	for _, k := range bannedKeys {
+		if strings.Contains(stdout, k+"=") {
+			t.Errorf("scrubbed env still contains %q — token would leak to a hostile chain step. stdout=%s", k, stdout)
+		}
+	}
+	// And none of the actual token values either (defence in depth:
+	// catches a future bug where the scrub renames keys but leaves
+	// values).
+	bannedVals := []string{
+		"secret-gitea-token", "secret-forgejo-token",
+		"secret-gh-token", "secret-github-token",
+		"AKIA-secret-aws-key", "secret-aws-shh",
+	}
+	for _, v := range bannedVals {
+		if strings.Contains(stdout, v) {
+			t.Errorf("scrubbed env still contains the value %q — token would leak. stdout=%s", v, stdout)
+		}
+	}
+
+	// Sanity: PATH should make it through (chain steps need to find
+	// `env`, `gaia`, etc. on PATH; scrubbing PATH would break every
+	// chain immediately).
+	if !strings.Contains(stdout, "PATH=") {
+		t.Errorf("PATH was scrubbed — chain steps can't find any binaries; stdout=%s", stdout)
+	}
+}
