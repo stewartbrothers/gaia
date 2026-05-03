@@ -428,9 +428,9 @@ func TestResumeUnknownDecisionErrors(t *testing.T) {
 	}
 	res1, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
 
-	_, err := chain.Resume(context.Background(), res1.ResumeToken, "modify", chain.RunOptions{StateDir: dir})
-	if err == nil || !strings.Contains(err.Error(), "modify") {
-		t.Errorf("expected error for unsupported 'modify' decision; got %v", err)
+	_, err := chain.Resume(context.Background(), res1.ResumeToken, "skip", chain.RunOptions{StateDir: dir})
+	if err == nil || !strings.Contains(err.Error(), "skip") {
+		t.Errorf("expected error for unsupported 'skip' decision; got %v", err)
 	}
 }
 
@@ -439,6 +439,380 @@ func TestResumeMissingTokenErrors(t *testing.T) {
 	_, err := chain.Resume(context.Background(), "no-such-token", "continue", chain.RunOptions{StateDir: dir})
 	if err == nil {
 		t.Error("expected error for missing token")
+	}
+}
+
+// --- Phase B-2 runtime tests ---
+
+func TestRunStepTimeoutYields(t *testing.T) {
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name: "with-timeout",
+		Steps: []chain.Step{
+			{
+				ID:      "slow",
+				Run:     "sleep 2",
+				Timeout: "50ms",
+				YieldOn: []chain.YieldCondition{chain.YieldTimeout},
+			},
+			{ID: "after", Run: "echo after"},
+		},
+	}
+	res, err := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != chain.StatusYielded {
+		t.Fatalf("status: %s, failure %+v", res.Status, res.Failure)
+	}
+	if res.YieldReason != chain.YieldTimeout {
+		t.Errorf("yield reason: %q (want timeout)", res.YieldReason)
+	}
+	if !res.Steps[0].TimedOut {
+		t.Error("StepResult.TimedOut should be true")
+	}
+}
+
+func TestRunStepTimeoutAborts(t *testing.T) {
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name: "timeout-aborts",
+		Steps: []chain.Step{
+			{
+				ID:      "slow",
+				Run:     "sleep 2",
+				Timeout: "50ms",
+				AbortOn: []chain.YieldCondition{chain.YieldTimeout},
+			},
+		},
+	}
+	res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if res.Status != chain.StatusAborted {
+		t.Errorf("status: %s", res.Status)
+	}
+	if res.AbortReason != chain.YieldTimeout {
+		t.Errorf("abort reason: %q", res.AbortReason)
+	}
+}
+
+func TestRunStepTimeoutFallsThroughToFailure(t *testing.T) {
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name: "timeout-no-routing",
+		Steps: []chain.Step{
+			{ID: "slow", Run: "sleep 2", Timeout: "50ms"},
+		},
+	}
+	res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if res.Status != chain.StatusFailure {
+		t.Errorf("status: %s", res.Status)
+	}
+	if !res.Steps[0].TimedOut {
+		t.Error("TimedOut flag should still be set on failure path")
+	}
+}
+
+func TestRunRetrySucceedsAfterFailure(t *testing.T) {
+	dir := t.TempDir()
+	tmp := t.TempDir()
+	sentinel := tmp + "/attempts"
+	c := &chain.Chain{
+		Name: "retry-recovers",
+		Steps: []chain.Step{
+			{
+				ID: "flaky",
+				// Increment a counter; fail until we hit attempt 3.
+				Run: `n=$(cat "` + sentinel + `" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "` + sentinel + `"; if [ $n -lt 3 ]; then exit 1; fi; echo recovered`,
+				Retry: &chain.RetrySpec{
+					Max:     5,
+					Delay:   "1ms",
+					Backoff: "constant",
+				},
+			},
+		},
+	}
+	res, err := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != chain.StatusSuccess {
+		t.Fatalf("status: %s, failure %+v", res.Status, res.Failure)
+	}
+	if res.Steps[0].Attempts != 3 {
+		t.Errorf("attempts: got %d, want 3", res.Steps[0].Attempts)
+	}
+}
+
+func TestRunRetryExhaustsThenRoutes(t *testing.T) {
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name: "retry-exhausted-yields",
+		Steps: []chain.Step{
+			{
+				ID:  "always-fails",
+				Run: "exit 5",
+				Retry: &chain.RetrySpec{
+					Max:     2,
+					Delay:   "1ms",
+					Backoff: "constant",
+				},
+				YieldOn: []chain.YieldCondition{chain.YieldRateLimited},
+			},
+		},
+	}
+	res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if res.Status != chain.StatusYielded {
+		t.Fatalf("status: %s", res.Status)
+	}
+	if res.Steps[0].Attempts != 3 { // initial + 2 retries
+		t.Errorf("attempts: got %d, want 3", res.Steps[0].Attempts)
+	}
+}
+
+func TestRunRetryBackoffShapes(t *testing.T) {
+	for _, backoff := range []string{"constant", "linear", "exponential"} {
+		t.Run(backoff, func(t *testing.T) {
+			dir := t.TempDir()
+			c := &chain.Chain{
+				Name: "backoff-shape",
+				Steps: []chain.Step{
+					{
+						ID:  "fail",
+						Run: "exit 1",
+						Retry: &chain.RetrySpec{
+							Max:     2,
+							Delay:   "1ms",
+							Backoff: backoff,
+						},
+					},
+				},
+			}
+			res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+			if res.Status != chain.StatusFailure {
+				t.Errorf("status: %s", res.Status)
+			}
+			if res.Steps[0].Attempts != 3 {
+				t.Errorf("attempts: %d", res.Steps[0].Attempts)
+			}
+		})
+	}
+}
+
+func TestRunDefaultYieldOnApplies(t *testing.T) {
+	// Step has no yield_on, but chain default_yield_on includes
+	// rate_limited — chain should yield instead of fail.
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name:           "with-defaults",
+		DefaultYieldOn: []chain.YieldCondition{chain.YieldRateLimited},
+		Steps: []chain.Step{
+			{ID: "boom", Run: "exit 5"},
+		},
+	}
+	res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if res.Status != chain.StatusYielded {
+		t.Errorf("status: %s, failure %+v", res.Status, res.Failure)
+	}
+	if res.YieldReason != chain.YieldRateLimited {
+		t.Errorf("reason: %q", res.YieldReason)
+	}
+}
+
+func TestRunPerStepYieldOnOverridesDefault(t *testing.T) {
+	// Default says yield on rate_limited, but step explicitly does
+	// NOT include rate_limited in its (non-empty) yield_on. The
+	// step's empty list of matching conditions should win — fall
+	// through to failure rather than yielding via the default.
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name:           "step-overrides",
+		DefaultYieldOn: []chain.YieldCondition{chain.YieldRateLimited},
+		Steps: []chain.Step{
+			{
+				ID:      "boom",
+				Run:     "exit 5",
+				YieldOn: []chain.YieldCondition{chain.YieldAuthError},
+			},
+		},
+	}
+	res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if res.Status != chain.StatusFailure {
+		t.Errorf("status: %s (want failure — step's yield_on doesn't match)", res.Status)
+	}
+}
+
+func TestRunCleanupRunsOnAbort(t *testing.T) {
+	dir := t.TempDir()
+	tmp := t.TempDir()
+	cleanupMarker := tmp + "/cleaned"
+	c := &chain.Chain{
+		Name: "abort-with-cleanup",
+		Steps: []chain.Step{
+			{
+				ID:      "boom",
+				Run:     "exit 4",
+				AbortOn: []chain.YieldCondition{chain.YieldAuthError},
+			},
+		},
+		Cleanup: []chain.Step{
+			{ID: "mark-cleaned", Run: "touch " + cleanupMarker},
+		},
+	}
+	res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if res.Status != chain.StatusAborted {
+		t.Fatalf("status: %s", res.Status)
+	}
+	if len(res.CleanupResults) != 1 || res.CleanupResults[0].Status != chain.StepOK {
+		t.Errorf("cleanup results: %+v", res.CleanupResults)
+	}
+	if _, err := os.Stat(cleanupMarker); err != nil {
+		t.Errorf("cleanup didn't run: %v", err)
+	}
+}
+
+func TestRunCleanupContinuesAfterFailingStep(t *testing.T) {
+	// Cleanup is best-effort: a failing cleanup step doesn't stop
+	// later cleanup steps.
+	dir := t.TempDir()
+	tmp := t.TempDir()
+	marker := tmp + "/second"
+	c := &chain.Chain{
+		Name: "cleanup-best-effort",
+		Steps: []chain.Step{
+			{
+				ID:      "boom",
+				Run:     "exit 4",
+				AbortOn: []chain.YieldCondition{chain.YieldAuthError},
+			},
+		},
+		Cleanup: []chain.Step{
+			{ID: "first", Run: "exit 99"},
+			{ID: "second", Run: "touch " + marker},
+		},
+	}
+	res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if res.Status != chain.StatusAborted {
+		t.Fatalf("status: %s", res.Status)
+	}
+	if len(res.CleanupResults) != 2 {
+		t.Fatalf("cleanup results: got %d, want 2", len(res.CleanupResults))
+	}
+	if res.CleanupResults[0].Status != chain.StepFailed {
+		t.Errorf("first cleanup status: %s", res.CleanupResults[0].Status)
+	}
+	if res.CleanupResults[1].Status != chain.StepOK {
+		t.Errorf("second cleanup status: %s", res.CleanupResults[1].Status)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Errorf("second cleanup didn't run: %v", err)
+	}
+}
+
+func TestRunCleanupDoesNotRunOnSuccess(t *testing.T) {
+	dir := t.TempDir()
+	tmp := t.TempDir()
+	marker := tmp + "/should-not-exist"
+	c := &chain.Chain{
+		Name: "no-cleanup-on-success",
+		Steps: []chain.Step{
+			{ID: "ok", Run: "echo ok"},
+		},
+		Cleanup: []chain.Step{
+			{ID: "run-me", Run: "touch " + marker},
+		},
+	}
+	res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if res.Status != chain.StatusSuccess {
+		t.Fatalf("status: %s", res.Status)
+	}
+	if len(res.CleanupResults) != 0 {
+		t.Errorf("cleanup should not run on success; got %+v", res.CleanupResults)
+	}
+	if _, err := os.Stat(marker); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("marker should not exist: %v", err)
+	}
+}
+
+func TestResumeModifyDecision(t *testing.T) {
+	dir := t.TempDir()
+	tmp := t.TempDir()
+	sentinel := tmp + "/sentinel"
+	// Step yields when sentinel doesn't exist; agent supplies a
+	// modify directive that creates it before re-running.
+	c := &chain.Chain{
+		Name: "modify-test",
+		Vars: map[string]chain.VarSpec{
+			"path": {Required: true},
+		},
+		Steps: []chain.Step{
+			{
+				ID:      "check",
+				Run:     "if [ ! -f \"${path}\" ]; then exit 5; fi; echo recovered",
+				YieldOn: []chain.YieldCondition{chain.YieldRateLimited},
+			},
+		},
+	}
+	res1, err := chain.Run(context.Background(), c, map[string]string{"path": tmp + "/missing"}, chain.RunOptions{StateDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res1.Status != chain.StatusYielded {
+		t.Fatalf("first run: %s", res1.Status)
+	}
+
+	// Create the sentinel and modify the var to point at it.
+	if err := os.WriteFile(sentinel, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mod := chain.ModifyDirective{
+		StepID: "check",
+		Vars:   map[string]string{"path": sentinel},
+	}
+	res2, err := chain.Resume(context.Background(), res1.ResumeToken, "modify", chain.RunOptions{StateDir: dir, Modify: &mod})
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if res2.Status != chain.StatusSuccess {
+		t.Errorf("status: %s, failure: %+v", res2.Status, res2.Failure)
+	}
+}
+
+func TestResumeModifyRequiresMatchingStep(t *testing.T) {
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name: "modify-mismatch",
+		Steps: []chain.Step{
+			{
+				ID:      "x",
+				Run:     "exit 5",
+				YieldOn: []chain.YieldCondition{chain.YieldRateLimited},
+			},
+		},
+	}
+	res1, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	mod := chain.ModifyDirective{StepID: "y", Vars: nil}
+	_, err := chain.Resume(context.Background(), res1.ResumeToken, "modify", chain.RunOptions{StateDir: dir, Modify: &mod})
+	if err == nil || !strings.Contains(err.Error(), "modify") {
+		t.Errorf("expected error for mismatched step id; got %v", err)
+	}
+}
+
+func TestResumeModifyRequiresDirective(t *testing.T) {
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name: "modify-missing",
+		Steps: []chain.Step{
+			{
+				ID:      "x",
+				Run:     "exit 5",
+				YieldOn: []chain.YieldCondition{chain.YieldRateLimited},
+			},
+		},
+	}
+	res1, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	_, err := chain.Resume(context.Background(), res1.ResumeToken, "modify", chain.RunOptions{StateDir: dir})
+	if err == nil || !strings.Contains(err.Error(), "modify") {
+		t.Errorf("expected error for missing modify directive; got %v", err)
 	}
 }
 
