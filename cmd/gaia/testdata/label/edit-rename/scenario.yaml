@@ -1,0 +1,46 @@
+description: |
+  `gaia label edit bug --rename --color` does GET (find by name) +
+  PATCH /labels/{id}. Pins the two-step flow.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/labels
+    status: 200
+    body: |
+      [
+        {"id": 7, "name": "bug",     "color": "ff0000", "description": ""},
+        {"id": 8, "name": "feature", "color": "00ff00", "description": ""}
+      ]
+  - method: PATCH
+    path: /repos/o/r/labels/7
+    status: 200
+    body: |
+      {
+        "id": 7,
+        "name": "defect",
+        "color": "ee2200",
+        "description": ""
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - label
+      - edit
+      - bug
+      - --rename
+      - defect
+      - --color
+      - "ee2200"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: PATCH
+      path: /repos/o/r/labels/7
+      body_contains: '"name":"defect"'

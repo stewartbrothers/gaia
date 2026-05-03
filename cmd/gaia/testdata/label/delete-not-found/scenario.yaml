@@ -1,0 +1,29 @@
+description: |
+  `gaia label delete missing --confirm` returns NotFound(3) when
+  the label name doesn't exist (the listing returns it but the
+  name doesn't match).
+
+mocks:
+  - method: GET
+    path: /repos/o/r/labels
+    status: 200
+    body: |
+      [
+        {"id": 1, "name": "bug",     "color": "ff0000", "description": ""}
+      ]
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - label
+      - delete
+      - missing
+      - --confirm
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 3

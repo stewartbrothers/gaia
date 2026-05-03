@@ -1,0 +1,26 @@
+description: |
+  `gaia label list` returns the trimmed label set (no IDs).
+
+mocks:
+  - method: GET
+    path: /repos/o/r/labels
+    status: 200
+    body: |
+      [
+        {"id": 1, "name": "bug",     "color": "ff0000", "description": "broken"},
+        {"id": 2, "name": "feature", "color": "00ff00", "description": ""}
+      ]
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - label
+      - list
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

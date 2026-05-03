@@ -1,0 +1,8 @@
+{
+  "schema_version": "1.0",
+  "data": {
+    "name": "release",
+    "color": "0033cc",
+    "description": "release-blocking"
+  }
+}
