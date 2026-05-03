@@ -1,19 +1,25 @@
 {
   "schema_version": "1.0",
   "data": {
-    "number": 7,
-    "title": "new bug",
-    "state": "open",
     "author": {
       "login": "alice"
     },
+    "body": {
+      "_trust": "external",
+      "_value": "repro: …"
+    },
+    "created_at": "2026-04-01T00:00:00Z",
     "labels": [
       {
         "name": "bug"
       }
     ],
-    "body": "repro: …",
-    "created_at": "2026-04-01T00:00:00Z",
+    "number": 7,
+    "state": "open",
+    "title": {
+      "_trust": "external",
+      "_value": "new bug"
+    },
     "updated_at": "2026-04-01T00:00:00Z"
   }
 }

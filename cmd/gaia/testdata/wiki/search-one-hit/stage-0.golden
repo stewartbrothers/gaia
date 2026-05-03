@@ -3,7 +3,10 @@
   "data": [
     {
       "path": "Setup",
-      "title": "Setup"
+      "title": {
+        "_trust": "external",
+        "_value": "Setup"
+      }
     }
   ]
 }

@@ -55,6 +55,13 @@ reserved for breaking changes only.
   string. Consumers decoding gaia JSON into typed structs need to
   update their decode shapes — see the in-tree test pattern in
   `internal/cli/issue_test.go` (`trustExternal` helper).
+- The marshal walker that applies the trust tag emits objects via a
+  reflection pass, which means `data.*` field order in JSON output
+  is now alphabetical rather than struct-declaration order. Object
+  keys in JSON are unordered per RFC 8259, so consumers that key by
+  name still work; only consumers that rely on byte-identical
+  serialisation (canonical JSON for signing, deterministic caching
+  by hash) need to re-baseline.
 
 Tracking issues for upcoming work:
 - **Phase 4** (#4): SQLite cache (#42), indexed search (#43), webhook

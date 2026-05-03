@@ -1,23 +1,29 @@
 {
   "schema_version": "1.0",
   "data": {
-    "number": 42,
-    "title": "make it better",
-    "state": "open",
     "author": {
       "login": "alice"
-    },
-    "head": {
-      "ref": "feature/x",
-      "sha": "deadbeef"
     },
     "base": {
       "ref": "main",
       "sha": "cafebabe"
     },
-    "draft": false,
-    "body": "describe the change",
+    "body": {
+      "_trust": "external",
+      "_value": "describe the change"
+    },
     "created_at": "2026-04-01T00:00:00Z",
+    "draft": false,
+    "head": {
+      "ref": "feature/x",
+      "sha": "deadbeef"
+    },
+    "number": 42,
+    "state": "open",
+    "title": {
+      "_trust": "external",
+      "_value": "make it better"
+    },
     "updated_at": "2026-04-02T00:00:00Z"
   }
 }

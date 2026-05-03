@@ -1,13 +1,16 @@
 {
   "schema_version": "1.0",
   "data": {
-    "id": 11,
-    "source": "issue",
     "author": {
       "login": "alice"
     },
-    "body": "updated text",
+    "body": {
+      "_trust": "external",
+      "_value": "updated text"
+    },
     "created_at": "2026-04-05T00:00:00Z",
+    "id": 11,
+    "source": "issue",
     "updated_at": "2026-04-06T00:00:00Z"
   }
 }

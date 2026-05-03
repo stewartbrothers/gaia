@@ -1,19 +1,25 @@
 {
   "schema_version": "1.0",
   "data": {
-    "number": 42,
-    "title": "answer",
-    "state": "open",
     "author": {
       "login": "alice"
     },
+    "body": {
+      "_trust": "external",
+      "_value": "what's the answer?"
+    },
+    "created_at": "2026-04-01T00:00:00Z",
     "labels": [
       {
         "name": "p1"
       }
     ],
-    "body": "what's the answer?",
-    "created_at": "2026-04-01T00:00:00Z",
+    "number": 42,
+    "state": "open",
+    "title": {
+      "_trust": "external",
+      "_value": "answer"
+    },
     "updated_at": "2026-04-02T00:00:00Z"
   }
 }
