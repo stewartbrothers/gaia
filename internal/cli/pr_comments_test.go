@@ -158,3 +158,45 @@ func TestPRCommentsPretty(t *testing.T) {
 		}
 	}
 }
+
+// TestPRCommentsNDJSON pins the streaming path for the unified
+// comment stream (#46): each comment emits as one {"item": ...} line,
+// and trust markers persist on every body (Comment.Body carries the
+// gaia:"trust=external" tag).
+func TestPRCommentsNDJSON(t *testing.T) {
+	srv := commentsServer(t)
+	defer srv.Close()
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"--repo", "o/r",
+		"--format", "ndjson",
+		"pr", "comments", "42",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	lines := strings.Split(strings.TrimRight(stdout.String(), "\n"), "\n")
+	if len(lines) != 4 {
+		t.Fatalf("expected 3 comments + trailer = 4 lines; got %d:\n%s",
+			len(lines), stdout.String())
+	}
+	for i := 0; i < 3; i++ {
+		if !strings.Contains(lines[i], `"item"`) {
+			t.Errorf("line %d should be item-wrapped; got: %s", i, lines[i])
+		}
+		if !strings.Contains(lines[i], `"_trust":"external"`) {
+			t.Errorf("line %d body should have _trust marker; got: %s", i, lines[i])
+		}
+	}
+	if !strings.Contains(lines[3], `"_metadata"`) {
+		t.Errorf("last line should be _metadata trailer; got: %s", lines[3])
+	}
+}
