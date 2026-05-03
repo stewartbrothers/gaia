@@ -175,28 +175,133 @@ func (p *Provider) DeleteWebhook(ctx context.Context, owner, repo string, id int
 	return p.client.Delete(ctx, path)
 }
 
-// Delivery + redeliver + test impls land in commit 3 of this stack.
-// Stub here keeps the Provider interface satisfied at this commit
-// boundary so the rest of the build stays green.
-
-// ListWebhookDeliveries is implemented in a follow-up commit.
-func (p *Provider) ListWebhookDeliveries(_ context.Context, _, _ string, _ int64, _ provider.ListDeliveriesOptions) ([]types.WebhookDelivery, *provider.Page, error) {
-	return nil, nil, fmt.Errorf("forgejo: ListWebhookDeliveries not yet implemented")
+// apiHookDelivery mirrors Forgejo's hook-task / delivery record. The
+// upstream field set is large; we decode only what flows into
+// WebhookDelivery + WebhookDeliveryDetail.
+//
+// `Duration` is seconds-as-float on the wire (Forgejo passes Go's
+// time.Duration through json.Marshal, which renders it as
+// nanoseconds-as-int64 — but the historical Gitea/Forgejo task type
+// has used both float-seconds and int-nanoseconds depending on
+// version). We sniff: <1e6 → seconds-as-float; otherwise → ns-as-int.
+type apiHookDelivery struct {
+	ID              int64             `json:"id"`
+	Event           string            `json:"event"`
+	Action          string            `json:"action"`
+	Status          int               `json:"status"`
+	ResponseStatus  int               `json:"response_status"`
+	Duration        float64           `json:"duration"`
+	IsRedelivery    bool              `json:"is_redelivery"`
+	Delivered       string            `json:"delivered"`
+	DeliveredAt     string            `json:"delivered_at"`
+	RequestHeaders  map[string]string `json:"request_headers"`
+	RequestBody     string            `json:"request_body"`
+	ResponseHeaders map[string]string `json:"response_headers"`
+	ResponseBody    string            `json:"response_body"`
 }
 
-// GetWebhookDelivery is implemented in a follow-up commit.
-func (p *Provider) GetWebhookDelivery(_ context.Context, _, _ string, _, _ int64) (*types.WebhookDeliveryDetail, error) {
-	return nil, fmt.Errorf("forgejo: GetWebhookDelivery not yet implemented")
+func (a *apiHookDelivery) toType() types.WebhookDelivery {
+	status := a.ResponseStatus
+	if status == 0 {
+		status = a.Status
+	}
+	return types.WebhookDelivery{
+		ID:          a.ID,
+		Event:       a.Event,
+		Action:      a.Action,
+		StatusCode:  status,
+		DurationMs:  durationToMs(a.Duration),
+		DeliveredAt: parseDeliveredAt(a.DeliveredAt, a.Delivered),
+		Redelivery:  a.IsRedelivery,
+	}
 }
 
-// RedeliverWebhook is implemented in a follow-up commit.
-func (p *Provider) RedeliverWebhook(_ context.Context, _, _ string, _, _ int64) error {
-	return fmt.Errorf("forgejo: RedeliverWebhook not yet implemented")
+func (a *apiHookDelivery) toDetail() types.WebhookDeliveryDetail {
+	return types.WebhookDeliveryDetail{
+		WebhookDelivery: a.toType(),
+		RequestHeaders:  a.RequestHeaders,
+		RequestBody:     a.RequestBody,
+		ResponseHeaders: a.ResponseHeaders,
+		ResponseBody:    a.ResponseBody,
+	}
 }
 
-// TestWebhook is implemented in a follow-up commit.
-func (p *Provider) TestWebhook(_ context.Context, _, _ string, _ int64) error {
-	return fmt.Errorf("forgejo: TestWebhook not yet implemented")
+// durationToMs normalizes Forgejo's two historical `duration` shapes
+// to integer milliseconds: <1e6 → seconds-as-float (so 1.5 → 1500ms);
+// >=1e6 → nanoseconds-as-int (so 1500000000 → 1500ms). The 1e6
+// threshold sits in dead air between the two — no real webhook
+// completes in <1ms (1e6ns) and none take ≥1e6 seconds (~11.5 days).
+func durationToMs(d float64) int64 {
+	if d <= 0 {
+		return 0
+	}
+	if d < 1e6 {
+		return int64(d * 1000)
+	}
+	return int64(d / 1e6)
+}
+
+// parseDeliveredAt prefers the RFC3339 string in `delivered_at`;
+// older Forgejo versions used `delivered` for the same payload.
+// Empty → zero time.
+func parseDeliveredAt(primary, fallback string) time.Time {
+	for _, s := range []string{primary, fallback} {
+		if s == "" {
+			continue
+		}
+		if t, err := time.Parse(time.RFC3339, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
+// ListWebhookDeliveries returns recent delivery summaries for the
+// hook. Bodies are NOT inlined — fetch GetWebhookDelivery for the
+// full per-delivery payload.
+func (p *Provider) ListWebhookDeliveries(ctx context.Context, owner, repo string, id int64, opts provider.ListDeliveriesOptions) ([]types.WebhookDelivery, *provider.Page, error) {
+	limit := clampLimit(opts.Limit)
+	q := url.Values{}
+	q.Set("limit", strconv.Itoa(limit))
+	q.Set("page", pageFromCursor(opts.Cursor))
+
+	path := fmt.Sprintf("/repos/%s/%s/hooks/%d/deliveries?%s", owner, repo, id, q.Encode())
+	var raw []apiHookDelivery
+	if err := p.client.Get(ctx, path, &raw); err != nil {
+		return nil, nil, err
+	}
+	out := make([]types.WebhookDelivery, 0, len(raw))
+	for i := range raw {
+		out = append(out, raw[i].toType())
+	}
+	return out, makePage(len(raw), limit, opts.Cursor), nil
+}
+
+// GetWebhookDelivery fetches one delivery's full request + response
+// payload by delivery ID.
+func (p *Provider) GetWebhookDelivery(ctx context.Context, owner, repo string, id, deliveryID int64) (*types.WebhookDeliveryDetail, error) {
+	path := fmt.Sprintf("/repos/%s/%s/hooks/%d/deliveries/%d", owner, repo, id, deliveryID)
+	var raw apiHookDelivery
+	if err := p.client.Get(ctx, path, &raw); err != nil {
+		return nil, err
+	}
+	out := raw.toDetail()
+	return &out, nil
+}
+
+// RedeliverWebhook re-fires a previously-sent delivery. Forgejo
+// expects POST to the delivery's resource URL; success is 204.
+func (p *Provider) RedeliverWebhook(ctx context.Context, owner, repo string, id, deliveryID int64) error {
+	path := fmt.Sprintf("/repos/%s/%s/hooks/%d/deliveries/%d", owner, repo, id, deliveryID)
+	return p.client.Post(ctx, path, nil, nil)
+}
+
+// TestWebhook sends a synthetic ping payload so the operator can
+// confirm the receiver is reachable. Forgejo: POST /tests; success
+// is 204 with no body.
+func (p *Provider) TestWebhook(ctx context.Context, owner, repo string, id int64) error {
+	path := fmt.Sprintf("/repos/%s/%s/hooks/%d/tests", owner, repo, id)
+	return p.client.Post(ctx, path, nil, nil)
 }
 
 // mergeEvents applies +add / -remove to the existing list, preserving
