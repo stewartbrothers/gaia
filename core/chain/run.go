@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -247,6 +248,10 @@ func Resume(ctx context.Context, token, decision string, opts RunOptions) (*Resu
 //   - on non-zero: route by yield_on / abort_on / chain
 //     default_yield_on, then on_failure, then default failure
 //
+// Phase C: each step dispatches on mode (run / parallel / for_each /
+// chain) via runStep. Routing semantics (yield / abort / failure)
+// apply uniformly regardless of mode.
+//
 // Side effects on res:
 //   - appends to res.Steps for each step that runs
 //   - mutates res.Status / res.FailedStep / res.Failure on failure
@@ -255,135 +260,390 @@ func Resume(ctx context.Context, token, decision string, opts RunOptions) (*Resu
 func executeSteps(ctx context.Context, c *Chain, stepsList []Step, startAt int, scope Scope, res *Result, opts RunOptions, vars map[string]string) {
 	for i := startAt; i < len(stepsList); i++ {
 		step := stepsList[i]
-		// Use SubstituteShell — the resolved string is fed to `sh -c`
-		// and substituted values must be treated as shell-literal data.
-		// See #135 / docs/chain.md "Security: variable substitution
-		// semantics" for the rationale.
-		resolved, unresolved := SubstituteShell(step.Run, scope)
-		sr := StepResult{
-			ID:     step.ID,
-			Run:    resolved,
-			Status: StepSkipped,
-		}
 
 		if opts.DryRun {
+			sr := dryRunStep(step, scope, opts.Progress)
 			res.Steps = append(res.Steps, sr)
-			if opts.Progress != nil {
-				_, _ = fmt.Fprintf(opts.Progress, "[%s] (dry-run) %s\n", step.ID, resolved)
-			}
 			continue
 		}
 
-		// Hard failure: an unresolved ref is a chain-design error
-		// rather than a runtime condition; can't yield/retry our way
-		// out. Goes through the failure path.
-		if len(unresolved) > 0 {
-			sr.Status = StepFailed
-			sr.Stderr = "unresolved variable references: " + strings.Join(unresolved, ", ")
-			res.Steps = append(res.Steps, sr)
-			res.Status = StatusFailure
-			res.FailedStep = step.ID
-			res.Failure = buildFailure(step, scope, "unresolved_variables", sr.Stderr, "")
-			return
-		}
+		sr, outcome := runStep(ctx, c, step, scope, opts, vars)
 
-		// Run-with-retry. Each attempt may set its own deadline via
-		// Step.Timeout. The final attempt's outcome is what routes
-		// through yield/abort/failure. Intermediate attempts just
-		// sleep and try again. DurationMs covers the whole
-		// retry sequence so an operator sees real wall-clock cost.
-		stepStart := time.Now()
-		stdout, stderr, exitCode, attempts, timedOut, runErr := runWithRetry(ctx, step, resolved)
-		sr.DurationMs = time.Since(stepStart).Milliseconds()
-		sr.Stdout = truncate(stdout, opts.MaxOutputBytes)
-		sr.Stderr = truncate(stderr, opts.MaxOutputBytes)
-		sr.ExitCode = exitCode
-		if step.Retry != nil {
-			sr.Attempts = attempts
-		}
-		sr.TimedOut = timedOut
-
-		if opts.Progress != nil {
-			status := "ok"
-			if runErr != nil || exitCode != 0 {
-				status = "failed"
-			}
-			_, _ = fmt.Fprintf(opts.Progress, "[%s] %s\n", step.ID, status)
-		}
-
-		if runErr != nil || exitCode != 0 {
-			// Timeout outranks exit-code mapping: when the runner
-			// killed the subprocess, the condition is `timeout`
-			// regardless of what exit code the SIGKILL'd shell
-			// happened to surface.
-			condition := MapExitCode(exitCode)
-			if timedOut {
-				condition = YieldTimeout
-			}
-
-			// Routing order: per-step yield_on first (caller wants pause),
-			// per-step abort_on second (caller wants stop), chain
-			// default_yield_on third (only when step.YieldOn is empty),
-			// fall-through to failure last.
-			//
-			// default_yield_on does NOT apply when the step has its
-			// own non-empty yield_on — the per-step list is the
-			// authoritative whitelist for that step.
-			yieldList := step.YieldOn
-			if len(yieldList) == 0 {
-				yieldList = c.DefaultYieldOn
-			}
-
-			if containsCondition(yieldList, condition) {
-				sr.Status = StepYielded
-				res.Steps = append(res.Steps, sr)
-				if err := emitYield(c, stepsList, i, condition, sr, scope, vars, res, opts); err != nil {
-					// State save failed — surface as a chain failure
-					// with a clear reason.
-					res.Status = StatusFailure
-					res.FailedStep = step.ID
-					res.Failure = map[string]any{
-						"reason": "yield_state_save_failed",
-						"step":   step.ID,
-						"error":  err.Error(),
-					}
-				}
-				return
-			}
-
-			if containsCondition(step.AbortOn, condition) {
-				sr.Status = StepFailed
-				res.Steps = append(res.Steps, sr)
-				res.Status = StatusAborted
-				res.AbortReason = condition
-				return
-			}
-
-			// No declared routing: existing failure flow.
-			sr.Status = StepFailed
-			res.Steps = append(res.Steps, sr)
-			res.Status = StatusFailure
-			res.FailedStep = step.ID
-			reason := "step_exited_nonzero"
-			if timedOut {
-				reason = "step_timed_out"
-			}
-			errStr := strings.TrimSpace(stderr)
-			if errStr == "" && runErr != nil {
-				errStr = runErr.Error()
-			}
-			res.Failure = buildFailure(step, scope, reason, errStr, stdout)
-			return
-		}
-
-		sr.Status = StepOK
-		if step.Capture != "" {
-			scope.Captures[step.Capture] = decodeCapture(stdout)
-			res.Captured[step.Capture] = scope.Captures[step.Capture]
-		}
+		// Capture outcome's captured value before routing — even on
+		// failure the operator can inspect partial output via
+		// res.Steps[N].
 		res.Steps = append(res.Steps, sr)
+
+		switch outcome.kind {
+		case stepOutcomeOK:
+			if step.Capture != "" {
+				scope.Captures[step.Capture] = outcome.capturedValue
+				res.Captured[step.Capture] = outcome.capturedValue
+			}
+		case stepOutcomeYielded:
+			if err := emitYield(c, stepsList, i, outcome.condition, sr, scope, vars, res, opts); err != nil {
+				res.Status = StatusFailure
+				res.FailedStep = step.ID
+				res.Failure = map[string]any{
+					"reason": "yield_state_save_failed",
+					"step":   step.ID,
+					"error":  err.Error(),
+				}
+			}
+			return
+		case stepOutcomeAborted:
+			res.Status = StatusAborted
+			res.AbortReason = outcome.condition
+			return
+		case stepOutcomeFailed:
+			res.Status = StatusFailure
+			res.FailedStep = step.ID
+			res.Failure = outcome.failure
+			return
+		}
 	}
 }
+
+// stepOutcome encodes how the per-step runner wants its result
+// routed by the loop in executeSteps. Keeping the routing in one
+// place lets the per-mode helpers stay focused on "what did this
+// step do" rather than "where does the chain go from here".
+type stepOutcome struct {
+	kind          stepOutcomeKind
+	condition     YieldCondition // for yielded / aborted
+	failure       map[string]any // for failed
+	capturedValue any            // for OK; nil when no capture
+}
+
+type stepOutcomeKind int
+
+const (
+	stepOutcomeOK stepOutcomeKind = iota
+	stepOutcomeYielded
+	stepOutcomeAborted
+	stepOutcomeFailed
+)
+
+// dryRunStep renders a step's resolved form without executing.
+// Mirrors the original dry-run path; doesn't recurse into parallel
+// blocks or for_each iterations (they keep the same shape but
+// substitute the static template).
+func dryRunStep(step Step, scope Scope, progress io.Writer) StepResult {
+	resolved, _ := SubstituteShell(step.Run, scope)
+	sr := StepResult{ID: step.ID, Run: resolved, Status: StepSkipped}
+	if progress != nil {
+		_, _ = fmt.Fprintf(progress, "[%s] (dry-run) %s\n", step.ID, resolved)
+	}
+	return sr
+}
+
+// runStep dispatches one step on its mode (run / parallel / for_each
+// / chain). Returns the StepResult to record plus a stepOutcome the
+// caller routes. Phase C.
+func runStep(ctx context.Context, c *Chain, step Step, scope Scope, opts RunOptions, vars map[string]string) (StepResult, stepOutcome) {
+	switch {
+	case step.Parallel != nil:
+		return runParallelStep(ctx, c, step, scope, opts, vars)
+	case step.ForEach != "":
+		return runForEachStep(ctx, c, step, scope, opts, vars)
+	case step.Chain != "":
+		return runChainStep(ctx, c, step, scope, opts, vars)
+	default:
+		return runLeafStep(ctx, c, step, scope, opts)
+	}
+}
+
+// runLeafStep handles the original `run:` mode — substitute, exec
+// via sh -c (with retry + timeout), classify the exit, route through
+// yield_on / abort_on / failure.
+func runLeafStep(ctx context.Context, c *Chain, step Step, scope Scope, opts RunOptions) (StepResult, stepOutcome) {
+	// Use SubstituteShell — the resolved string is fed to `sh -c`
+	// and substituted values must be treated as shell-literal data.
+	// See #135 / docs/chain.md "Security: variable substitution
+	// semantics" for the rationale.
+	resolved, unresolved := SubstituteShell(step.Run, scope)
+	sr := StepResult{ID: step.ID, Run: resolved, Status: StepSkipped}
+
+	if len(unresolved) > 0 {
+		sr.Status = StepFailed
+		sr.Stderr = "unresolved variable references: " + strings.Join(unresolved, ", ")
+		return sr, stepOutcome{
+			kind:    stepOutcomeFailed,
+			failure: buildFailure(step, scope, "unresolved_variables", sr.Stderr, ""),
+		}
+	}
+
+	stepStart := time.Now()
+	stdout, stderr, exitCode, attempts, timedOut, runErr := runWithRetry(ctx, step, resolved)
+	sr.DurationMs = time.Since(stepStart).Milliseconds()
+	sr.Stdout = truncate(stdout, opts.MaxOutputBytes)
+	sr.Stderr = truncate(stderr, opts.MaxOutputBytes)
+	sr.ExitCode = exitCode
+	if step.Retry != nil {
+		sr.Attempts = attempts
+	}
+	sr.TimedOut = timedOut
+
+	if opts.Progress != nil {
+		status := "ok"
+		if runErr != nil || exitCode != 0 {
+			status = "failed"
+		}
+		_, _ = fmt.Fprintf(opts.Progress, "[%s] %s\n", step.ID, status)
+	}
+
+	if runErr != nil || exitCode != 0 {
+		condition := MapExitCode(exitCode)
+		if timedOut {
+			condition = YieldTimeout
+		}
+
+		yieldList := step.YieldOn
+		if len(yieldList) == 0 {
+			yieldList = c.DefaultYieldOn
+		}
+
+		if containsCondition(yieldList, condition) {
+			sr.Status = StepYielded
+			return sr, stepOutcome{kind: stepOutcomeYielded, condition: condition}
+		}
+
+		if containsCondition(step.AbortOn, condition) {
+			sr.Status = StepFailed
+			return sr, stepOutcome{kind: stepOutcomeAborted, condition: condition}
+		}
+
+		sr.Status = StepFailed
+		reason := "step_exited_nonzero"
+		if timedOut {
+			reason = "step_timed_out"
+		}
+		errStr := strings.TrimSpace(stderr)
+		if errStr == "" && runErr != nil {
+			errStr = runErr.Error()
+		}
+		return sr, stepOutcome{
+			kind:    stepOutcomeFailed,
+			failure: buildFailure(step, scope, reason, errStr, stdout),
+		}
+	}
+
+	sr.Status = StepOK
+	var captured any
+	if step.Capture != "" {
+		captured = decodeCapture(stdout)
+	}
+	return sr, stepOutcome{kind: stepOutcomeOK, capturedValue: captured}
+}
+
+// runParallelStep fans out a parallel block's sub-steps with a
+// bounded goroutine pool, collects every sub-step's result, and
+// routes outcomes per the priority abort > yield > fail > ok.
+//
+// Concurrency:
+//   - max_concurrent (default 5) caps simultaneous goroutines via
+//     a buffered semaphore channel.
+//   - fail_fast: when true and any sub-step finishes non-OK, the
+//     runner cancels the inner context to short-circuit siblings.
+//   - sub-steps see the chain's vars + captures (a deep copy of
+//     scope at fan-out time) but NOT each other's captures —
+//     parallel siblings have no ordering guarantee, so any
+//     dependency must be a serial step.
+//
+// Routing (priority order):
+//  1. abort: any sub-step routes to abort → outer step aborts with
+//     that condition.
+//  2. yield: any sub-step routes to yield → outer step yields
+//     with that condition. (state-save and resume token wiring
+//     happens at the loop level, not here.)
+//  3. fail: any sub-step routes to fail → outer step fails;
+//     `failed_substep` carries the first failed sub-step's ID.
+//  4. ok: every sub-step OK → outer step OK. The sub-step capture
+//     namespace becomes a map ${outer.<sub-id>.<capture-key>}
+//     downstream — via SubSteps on the StepResult, surfaced by
+//     the substituter.
+//
+// Phase C / #149.
+func runParallelStep(ctx context.Context, c *Chain, step Step, scope Scope, opts RunOptions, _ map[string]string) (StepResult, stepOutcome) {
+	sr := StepResult{ID: step.ID, Status: StepSkipped}
+	stepStart := time.Now()
+	defer func() {
+		sr.DurationMs = time.Since(stepStart).Milliseconds()
+	}()
+
+	pblock := step.Parallel
+	maxConc := pblock.MaxConcurrent
+	if maxConc <= 0 {
+		maxConc = 5
+	}
+
+	// Each sub-step runs against its own scope clone so concurrent
+	// goroutines don't fight over scope.Captures during writes.
+	// Sub-step captures are then aggregated back into the outer
+	// SubSteps slice in declaration order.
+	results := make([]StepResult, len(pblock.Steps))
+	outcomes := make([]stepOutcome, len(pblock.Steps))
+
+	subCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	sem := make(chan struct{}, maxConc)
+	var wg sync.WaitGroup
+	for i, sub := range pblock.Steps {
+		wg.Add(1)
+		go func(idx int, sub Step) {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+			case <-subCtx.Done():
+				// Cancelled before we even started — record a
+				// skipped status and bail.
+				results[idx] = StepResult{ID: sub.ID, Status: StepSkipped, Stderr: "cancelled by sibling fail_fast"}
+				return
+			}
+			defer func() { <-sem }()
+
+			subScope := cloneScope(scope)
+			r, o := runStep(subCtx, c, sub, subScope, opts, nil)
+			results[idx] = r
+			outcomes[idx] = o
+			if pblock.FailFast && o.kind != stepOutcomeOK {
+				cancel()
+			}
+		}(i, sub)
+	}
+	wg.Wait()
+	sr.SubSteps = results
+
+	// Aggregate captures from sub-steps with non-empty Capture into
+	// a map keyed by sub-step ID. Each sub-step's captured value
+	// becomes a field on the outer step's captured object so
+	// downstream `${outer.<sub>.<field>}` substitutions resolve.
+	subCapture := map[string]any{}
+	for i, sub := range pblock.Steps {
+		if sub.Capture != "" && outcomes[i].kind == stepOutcomeOK {
+			subCapture[sub.ID] = outcomes[i].capturedValue
+		}
+		// Also expose the sub-step's full result tree under its ID
+		// (so ${outer.<sub>.exit_code} works) when no capture was
+		// explicit — convenience for parallel fan-outs that don't
+		// pipe values forward.
+		if _, exists := subCapture[sub.ID]; !exists {
+			subCapture[sub.ID] = subStepCaptureView(results[i])
+		}
+	}
+
+	// Route by priority abort > yield > fail.
+	var firstYield, firstAbort, firstFail int = -1, -1, -1
+	for i, o := range outcomes {
+		switch o.kind {
+		case stepOutcomeAborted:
+			if firstAbort < 0 {
+				firstAbort = i
+			}
+		case stepOutcomeYielded:
+			if firstYield < 0 {
+				firstYield = i
+			}
+		case stepOutcomeFailed:
+			if firstFail < 0 {
+				firstFail = i
+			}
+		}
+	}
+
+	if firstAbort >= 0 {
+		sr.Status = StepFailed
+		return sr, stepOutcome{kind: stepOutcomeAborted, condition: outcomes[firstAbort].condition}
+	}
+	if firstYield >= 0 {
+		sr.Status = StepYielded
+		return sr, stepOutcome{kind: stepOutcomeYielded, condition: outcomes[firstYield].condition}
+	}
+	if firstFail >= 0 {
+		sr.Status = StepFailed
+		fail := outcomes[firstFail].failure
+		if fail == nil {
+			fail = map[string]any{}
+		}
+		fail["failed_substep"] = pblock.Steps[firstFail].ID
+		fail["step"] = step.ID
+		return sr, stepOutcome{kind: stepOutcomeFailed, failure: fail}
+	}
+
+	sr.Status = StepOK
+	return sr, stepOutcome{kind: stepOutcomeOK, capturedValue: subCapture}
+}
+
+// runForEachStep is implemented in commit 3 (for_each) — placeholder
+// returns a clear error so the dispatcher above stays exhaustive.
+func runForEachStep(_ context.Context, _ *Chain, step Step, _ Scope, _ RunOptions, _ map[string]string) (StepResult, stepOutcome) {
+	sr := StepResult{ID: step.ID, Status: StepFailed}
+	return sr, stepOutcome{
+		kind: stepOutcomeFailed,
+		failure: map[string]any{
+			"reason": "for_each_not_implemented",
+			"step":   step.ID,
+		},
+	}
+}
+
+// runChainStep is implemented in commit 4/5 (composition) — same
+// placeholder pattern.
+func runChainStep(_ context.Context, _ *Chain, step Step, _ Scope, _ RunOptions, _ map[string]string) (StepResult, stepOutcome) {
+	sr := StepResult{ID: step.ID, Status: StepFailed}
+	return sr, stepOutcome{
+		kind: stepOutcomeFailed,
+		failure: map[string]any{
+			"reason": "chain_composition_not_implemented",
+			"step":   step.ID,
+		},
+	}
+}
+
+// cloneScope makes a shallow copy of vars + captures. Concurrent
+// goroutines mutate their own scope.Captures during sub-runs;
+// without the clone, two siblings writing the same capture key
+// would race.
+func cloneScope(s Scope) Scope {
+	out := Scope{
+		Vars:     make(map[string]string, len(s.Vars)),
+		Captures: make(map[string]any, len(s.Captures)),
+	}
+	for k, v := range s.Vars {
+		out.Vars[k] = v
+	}
+	for k, v := range s.Captures {
+		out.Captures[k] = v
+	}
+	return out
+}
+
+// subStepCaptureView projects a sub-step's StepResult into a small
+// map so ${outer.<sub>.exit_code} / ${outer.<sub>.stdout} resolve
+// even when the sub-step didn't declare a capture. Keeps the
+// mental model simple: every sub-step is addressable.
+func subStepCaptureView(r StepResult) any {
+	out := map[string]any{
+		"id":          r.ID,
+		"status":      r.Status,
+		"exit_code":   r.ExitCode,
+		"stdout":      r.Stdout,
+		"stderr":      r.Stderr,
+		"duration_ms": r.DurationMs,
+	}
+	return out
+}
+
+// Phase C note on env handling: every Phase C spawn site
+// (parallel sub-step, for_each iteration, sub-chain dispatch)
+// flows through execShell — the same code path leaf `run:` steps
+// already use. When hygiene-bundle (#140) lands env-scrub
+// semantics in execShell, every Phase C call site inherits the
+// allowlist (PATH / HOME / USER / LANG / LC_ALL / TERM + step-
+// declared env) without any additional wiring here. That
+// invariant is what lets the Phase C runner reuse runWithRetry /
+// execShell unchanged — no bypass, no second spawn surface.
 
 // runWithRetry runs a single step with optional per-step timeout and
 // retry. Returns the FINAL attempt's outcome plus the total attempts
@@ -647,6 +907,10 @@ func copyAnyMap(in map[string]any) map[string]any {
 // Now even a hostile step (or one constructed via a future
 // shell-injection regression) sees only the allowlist. (#140
 // part 4.)
+//
+// Phase C uses this same execShell call path for parallel sub-steps,
+// for_each iterations, and sub-chain dispatch — every spawn site
+// shares the scrubbed env, no per-call-site duplication.
 func execShell(ctx context.Context, cmd string) (stdout, stderr string, exitCode int, err error) {
 	c := exec.CommandContext(ctx, "sh", "-c", cmd)
 	c.Env = scrubbedChildEnv()

@@ -347,7 +347,7 @@ type Result struct {
 // captured field.
 type StepResult struct {
 	ID         string `json:"id"`
-	Run        string `json:"run"`
+	Run        string `json:"run,omitempty"`
 	Status     string `json:"status"`
 	ExitCode   int    `json:"exit_code,omitempty"`
 	Stdout     string `json:"stdout,omitempty"`
@@ -363,6 +363,17 @@ type StepResult struct {
 	// reached and the subprocess was killed. The condition the
 	// runner routes through is `timeout`. Phase B-2.
 	TimedOut bool `json:"timed_out,omitempty"`
+
+	// SubSteps is the per-sub-step result tree for parallel
+	// blocks and for_each iterations. Order is by declaration
+	// (parallel) or by index (for_each), regardless of the order
+	// concurrent goroutines actually finished. Phase C / #149.
+	SubSteps []StepResult `json:"sub_steps,omitempty"`
+
+	// SubResult is set when this step is a `chain:` composition —
+	// it carries the inner chain's full Result so the agent can
+	// inspect each inner step. Phase C / #149.
+	SubResult *Result `json:"sub_result,omitempty"`
 }
 
 // Result.Status values.

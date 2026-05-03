@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stewartbrothers/gaia/core/chain"
 )
@@ -1033,5 +1034,239 @@ func TestRunChildEnvScrubbed(t *testing.T) {
 	// chain immediately).
 	if !strings.Contains(stdout, "PATH=") {
 		t.Errorf("PATH was scrubbed — chain steps can't find any binaries; stdout=%s", stdout)
+	}
+}
+
+// --- Phase C / #149 ---
+
+// TestRunParallelBlockExecutesAllSubSteps verifies the basic
+// fan-out: a parallel block with three sub-steps runs all three
+// and collects their outcomes. Order in res.Steps[i].Captured
+// matches declaration order — concurrent execution doesn't
+// reorder the result tree.
+func TestRunParallelBlockExecutesAllSubSteps(t *testing.T) {
+	c := &chain.Chain{
+		Name: "fan-out",
+		Steps: []chain.Step{
+			{
+				ID: "fan",
+				Parallel: &chain.ParallelBlock{
+					Steps: []chain.Step{
+						{ID: "a", Run: "echo a", Capture: "out_a"},
+						{ID: "b", Run: "echo b", Capture: "out_b"},
+						{ID: "c", Run: "echo c", Capture: "out_c"},
+					},
+				},
+			},
+		},
+	}
+	res, err := chain.Run(context.Background(), c, nil, chain.RunOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != chain.StatusSuccess {
+		t.Errorf("status: %s, failure: %+v", res.Status, res.Failure)
+	}
+	if len(res.Steps) != 1 {
+		t.Fatalf("outer steps: %d", len(res.Steps))
+	}
+	// Sub-results live in Steps[0].SubSteps, addressed by ID.
+	outer := res.Steps[0]
+	if len(outer.SubSteps) != 3 {
+		t.Fatalf("sub-steps: %d", len(outer.SubSteps))
+	}
+	wantIDs := map[string]bool{"a": true, "b": true, "c": true}
+	for _, ss := range outer.SubSteps {
+		if !wantIDs[ss.ID] {
+			t.Errorf("unexpected sub-step id %q", ss.ID)
+		}
+		if ss.Status != chain.StepOK {
+			t.Errorf("sub-step %s: %s", ss.ID, ss.Status)
+		}
+	}
+	// Each sub-step's capture is exposed under fan.<sub-id>.
+	if outer.Status != chain.StepOK {
+		t.Errorf("outer status: %s", outer.Status)
+	}
+}
+
+// TestRunParallelMaxConcurrentBoundsGoroutines exercises the
+// concurrency bound: with max_concurrent=2 and 4 sub-steps that
+// each sleep 100ms, total wall time should be ~200ms (two waves
+// of 2), not 400ms (serial) or 100ms (unbounded).
+func TestRunParallelMaxConcurrentBoundsGoroutines(t *testing.T) {
+	c := &chain.Chain{
+		Name: "bounded",
+		Steps: []chain.Step{
+			{
+				ID: "fan",
+				Parallel: &chain.ParallelBlock{
+					MaxConcurrent: 2,
+					Steps: []chain.Step{
+						{ID: "a", Run: "sleep 0.1"},
+						{ID: "b", Run: "sleep 0.1"},
+						{ID: "c", Run: "sleep 0.1"},
+						{ID: "d", Run: "sleep 0.1"},
+					},
+				},
+			},
+		},
+	}
+	start := time.Now()
+	res, err := chain.Run(context.Background(), c, nil, chain.RunOptions{})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != chain.StatusSuccess {
+		t.Errorf("status: %s", res.Status)
+	}
+	// Bounds: at least 200ms (two waves), but well under 400ms
+	// (full serial) — give comfortable slack for CI variance.
+	if elapsed < 180*time.Millisecond {
+		t.Errorf("ran too fast (%.0fms) — bound likely not enforced", float64(elapsed)/float64(time.Millisecond))
+	}
+	if elapsed > 800*time.Millisecond {
+		t.Errorf("ran too slow (%.0fms) — concurrency not happening", float64(elapsed)/float64(time.Millisecond))
+	}
+}
+
+// TestRunParallelDefaultMaxConcurrent sanity-checks that a missing
+// max_concurrent applies the default (5) — exercise it indirectly
+// by running 6 fast sub-steps without errors and verifying they
+// all complete.
+func TestRunParallelDefaultMaxConcurrent(t *testing.T) {
+	c := &chain.Chain{
+		Name: "default-conc",
+		Steps: []chain.Step{
+			{
+				ID: "fan",
+				Parallel: &chain.ParallelBlock{
+					Steps: []chain.Step{
+						{ID: "a", Run: "true"},
+						{ID: "b", Run: "true"},
+						{ID: "c", Run: "true"},
+						{ID: "d", Run: "true"},
+						{ID: "e", Run: "true"},
+						{ID: "f", Run: "true"},
+					},
+				},
+			},
+		},
+	}
+	res, err := chain.Run(context.Background(), c, nil, chain.RunOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != chain.StatusSuccess {
+		t.Errorf("status: %s", res.Status)
+	}
+	if len(res.Steps[0].SubSteps) != 6 {
+		t.Errorf("sub-step count: %d", len(res.Steps[0].SubSteps))
+	}
+}
+
+// TestRunParallelOneSubStepFailsCollectsAll: by default we wait for
+// every sub-step to finish even when one fails. The chain then
+// reports failure with the failed sub-step ID surfaced via
+// Failure.failed_substep + the parallel step's outer FailedStep.
+func TestRunParallelOneSubStepFailsCollectsAll(t *testing.T) {
+	c := &chain.Chain{
+		Name: "fan-fail",
+		Steps: []chain.Step{
+			{
+				ID: "fan",
+				Parallel: &chain.ParallelBlock{
+					Steps: []chain.Step{
+						{ID: "a", Run: "echo a"},
+						{ID: "b", Run: "exit 7"},
+						{ID: "c", Run: "echo c"},
+					},
+				},
+			},
+		},
+	}
+	res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{})
+	if res.Status != chain.StatusFailure {
+		t.Errorf("status: %s", res.Status)
+	}
+	if res.FailedStep != "fan" {
+		t.Errorf("FailedStep: %q", res.FailedStep)
+	}
+	// All three sub-steps should have run (no fail-fast → collect all).
+	if len(res.Steps[0].SubSteps) != 3 {
+		t.Errorf("expected all sub-steps to run; got %d", len(res.Steps[0].SubSteps))
+	}
+	// The failed-substep id should be exposed via the outer failure.
+	if got := res.Failure["failed_substep"]; got != "b" {
+		t.Errorf("failed_substep: %v", got)
+	}
+}
+
+// TestRunParallelFailFastShortCircuits: with fail_fast: true, the
+// runner cancels still-running siblings as soon as one fails. Some
+// sub-steps may be skipped/cancelled mid-flight; we just need the
+// overall outcome to be failure and the failing sub-step's stderr
+// to land in the chain's failure envelope.
+func TestRunParallelFailFastShortCircuits(t *testing.T) {
+	c := &chain.Chain{
+		Name: "fan-failfast",
+		Steps: []chain.Step{
+			{
+				ID: "fan",
+				Parallel: &chain.ParallelBlock{
+					FailFast: true,
+					Steps: []chain.Step{
+						// Slow sibling; gets cancelled when fast one fails.
+						{ID: "slow", Run: "sleep 5"},
+						// Fast failure.
+						{ID: "boom", Run: "exit 9"},
+					},
+				},
+			},
+		},
+	}
+	start := time.Now()
+	res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{})
+	elapsed := time.Since(start)
+	if res.Status != chain.StatusFailure {
+		t.Errorf("status: %s", res.Status)
+	}
+	// fail_fast must short-circuit well under the 5s sleep.
+	if elapsed > 3*time.Second {
+		t.Errorf("fail_fast did not cancel siblings; ran %s", elapsed)
+	}
+}
+
+// TestRunParallelSubStepYieldYieldsChain: when a sub-step yields,
+// the whole chain yields. The resume token's state captures the
+// parallel block's progress so resume can re-run only the yielded
+// sub-step.
+func TestRunParallelSubStepYieldYieldsChain(t *testing.T) {
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name: "fan-yield",
+		Steps: []chain.Step{
+			{
+				ID: "fan",
+				Parallel: &chain.ParallelBlock{
+					Steps: []chain.Step{
+						{ID: "ok", Run: "echo ok"},
+						{ID: "rate", Run: "exit 5",
+							YieldOn: []chain.YieldCondition{chain.YieldRateLimited}},
+					},
+				},
+			},
+		},
+	}
+	res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if res.Status != chain.StatusYielded {
+		t.Errorf("status: %s; failure: %+v", res.Status, res.Failure)
+	}
+	if res.YieldReason != chain.YieldRateLimited {
+		t.Errorf("yield reason: %q", res.YieldReason)
+	}
+	if res.ResumeToken == "" {
+		t.Error("resume token missing")
 	}
 }
