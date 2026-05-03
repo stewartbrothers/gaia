@@ -6,10 +6,20 @@ one CLI invocation. The point: cut agent round-trip count. Today
 one `gaia chain run` call returning the final state in a single
 envelope.
 
-This is the v0.x phase-A interface. Linear chains only — no
-parallel, no for-each, no chain composition yet. See
+**Currently shipping:** linear chains (Phase A) + yield/resume with
+disk-backed state (Phase B-1). Linear-only — no parallel, no
+for-each, no chain composition yet. See
 [`#112`](https://github.com/stewartbrothers/gaia/issues/112)
 for the broader design + phasing.
+
+## Subcommands
+
+```
+gaia chain run --chain-file FILE [flags]    # start a chain
+gaia chain resume <token> [--decision …]    # pick up a yielded chain
+gaia chain list                             # show yielded chains
+gaia chain abort <token>                    # discard a yielded chain
+```
 
 ## Quick example
 
@@ -246,15 +256,144 @@ chains where the operator wants progress visibility.
   data.** Better than relying on the agent to parse stderr.
   Always ship a `reason:` field at minimum so dispatch is trivial.
 
-## Limitations (Phase A)
+## Yield + resume (Phase B-1)
 
-- **Saved chains** in `.gaia/chains/<name>.yaml` (Phase B): today
+A step can declare conditions that pause the chain instead of
+failing it. The runner saves state to disk, returns a
+`resume_token` to the agent, and the agent picks up later via
+`gaia chain resume`.
+
+### Yield-condition vocabulary
+
+Fixed enum (named tokens; agents branch on them without parsing
+free text):
+
+| Condition | Maps from |
+|---|---|
+| `auth_error` | exit code 4 (`exitcode.Auth`) |
+| `not_found` | exit code 3 (`exitcode.NotFound`) |
+| `rate_limited` | exit code 5 (`exitcode.RateLimit`) |
+| `timeout` | step exceeded its `timeout:` (Phase B-2) |
+| `unknown_error` | exit code 1 or any unmapped non-zero |
+| `check_failed` | non-flaky CI failure (Phase B-3+) |
+| `check_flaky` | flaky CI failure (Phase B-3+) |
+| `merge_conflict` | gaia pr merge 409 (Phase B-3+) |
+| `review_required` | branch protection blocked merge (Phase B-3+) |
+| `policy_violation` | other policy block (Phase B-3+) |
+
+### Step grammar additions
+
+```yaml
+- id: brittle
+  run: gaia pr ci-wait ${pr.number}
+  yield_on:
+    - rate_limited
+    - timeout
+  abort_on:
+    - auth_error      # if creds break, no point retrying
+```
+
+Routing on step failure:
+
+1. Exit code → condition (via `MapExitCode` table above).
+2. If condition is in `yield_on` → status: yielded, write state, agent resumes later.
+3. If condition is in `abort_on` → status: aborted, no resume.
+4. Otherwise → existing failure flow (`on_failure: { return: ... }` or default `{ reason, step, stderr }`).
+
+Same condition can't appear in both `yield_on` and `abort_on` for
+the same step — parser rejects.
+
+### Yield envelope
+
+```json
+{
+  "data": {
+    "chain": "pr-and-merge",
+    "status": "yielded",
+    "resume_token": "8fe3eb840f45c927dfd41557a2cb0310",
+    "yield_reason": "rate_limited",
+    "yield_payload": {
+      "step": "wait-checks",
+      "exit_code": 5,
+      "stderr": "...",
+      "stdout": "..."
+    },
+    "remaining_steps": ["merge"],
+    "steps": [...],
+    "captured": {...}
+  }
+}
+```
+
+### Resume
+
+```bash
+# Default: re-run the yielded step (after fixing the underlying cause).
+gaia chain resume 8fe3eb840f45c927dfd41557a2cb0310
+
+# Discard the chain instead.
+gaia chain resume 8fe3eb840f45c927dfd41557a2cb0310 --decision abort
+# (or: gaia chain abort <token>)
+```
+
+If the underlying cause is still broken, the chain yields again
+with a **new** token. The old token is cleaned up automatically.
+
+`gaia chain list` shows currently-yielded chains:
+
+```
+$ gaia chain list --format pretty
+bb0165a7ad242a189e99dd6e59f53628  2026-05-03T11:15:34+10:00
+```
+
+### State location + lifecycle
+
+Yielded state lives at:
+
+```
+$XDG_STATE_HOME/gaia/chains/<token>.yaml
+# or  ~/.local/state/gaia/chains/<token>.yaml when XDG isn't set
+```
+
+Mode `0600`, parent `0700`. Same path family as `~/.config/gaia/`.
+**Local-only** — no daemon, no cross-machine resume. Same UX
+pattern as `git rebase --continue`'s `.git/rebase-merge/`.
+
+Files are cleaned up automatically:
+
+- On resume success / failure / abort → state file deleted
+- On chain command startup → files older than 24h removed
+  (opportunistic, no cron)
+
+### When to use yield vs abort vs default-fail
+
+| Scenario | Declaration |
+|---|---|
+| Transient that the agent might fix mid-flight (rate limit, flaky check, push fix commit) | `yield_on:` |
+| Hard stop where retrying makes no sense (creds expired, policy block) | `abort_on:` |
+| Anything else | leave undeclared — falls through to `on_failure` (Phase A) |
+
+Default-fail (Phase A) is still the right answer for chains where
+the agent isn't expected to recover — single-shot CI lints,
+deterministic tooling pipelines, etc.
+
+## Limitations (current)
+
+- **Saved chains** in `.gaia/chains/<name>.yaml` (Phase B-3): today
   every invocation passes `--chain-file <path>`.
-- **Named chain composition** (Phase B): one chain calling another
-  saved chain as a step.
-- **Parallel steps** (Phase C): `parallel:` block + `for_each`,
+- **`gaia chain resume --decision modify`** (Phase B-2): change
+  the yielded step's args before re-running. Today only
+  `continue` and `abort` are supported.
+- **Per-step `timeout` + `retry`** (Phase B-2): currently any
+  exit-code-based yield/abort works, but timeout-driven yields
+  need the runner to enforce per-step deadlines.
+- **Chain-level `default_yield_on`** (Phase B-2): operators
+  declare `yield_on` per step today.
+- **`cleanup:` block on abort** (Phase B-2): no automatic cleanup
+  of partially-completed work.
+- **Parallel steps + for_each** (Phase C): no parallel fan-out
   for "5 comments at once" patterns.
-- **Retries / conditionals** (Phase C): no `if-then` in the step
-  grammar; chain stops at first failure.
+- **Named chain composition** (Phase C): one chain calling
+  another saved chain as a step.
 
 Tracked under [#112](https://github.com/stewartbrothers/gaia/issues/112).

@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"fmt"
+	"io"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -9,22 +12,51 @@ import (
 	"github.com/stewartbrothers/gaia/core/exitcode"
 )
 
+// staleAge is how long a yielded chain's state file lingers before
+// `gaia chain` opportunistically cleans it up. 24h covers "I yielded
+// yesterday and want to resume today" without piling up cruft from
+// abandoned chains.
+const staleAge = 24 * time.Hour
+
 func newChainCmd(flags *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "chain",
-		Short: "Run a chain of steps with success/failure routing",
+		Short: "Run a chain of steps with success / failure / yield routing",
 		Long: `Chains let you describe a multi-step workflow once and have
 gaia run it in one CLI invocation, returning a single envelope
-with success/failure routing.
+with success / failure / yield / abort routing.
 
-Phase A scope (current): linear chains via --chain-file. Phase B
-will add saved chains in .gaia/chains/ and named chain
-composition. Phase C adds parallel steps + retries.
+Subcommands:
 
-See docs/chain.md for the YAML schema and examples.`,
+  run     — start a chain from a YAML file
+  resume  — pick up a chain that yielded earlier (state on disk)
+  list    — show chains that yielded but haven't been resumed
+  abort   — discard a yielded chain without resuming
+
+State for yielded chains lives at $XDG_STATE_HOME/gaia/chains/
+(falls back to ~/.local/state/gaia/chains/). Files are cleaned
+up automatically after 24h of inactivity.
+
+See docs/chain.md for the YAML schema and worked examples.`,
 	}
 	cmd.AddCommand(newChainRunCmd(flags))
+	cmd.AddCommand(newChainResumeCmd(flags))
+	cmd.AddCommand(newChainListCmd(flags))
+	cmd.AddCommand(newChainAbortCmd(flags))
 	return cmd
+}
+
+// resolveStateDir returns the chain state directory, opportunistically
+// cleaning out files older than staleAge. Errors during cleanup are
+// best-effort silent — operators see them via `gaia chain list` if
+// they really need to inspect the directory.
+func resolveStateDir() (string, error) {
+	dir, err := chain.DefaultStateDir()
+	if err != nil {
+		return "", exitcode.Wrap(err, exitcode.Generic, "chain state directory")
+	}
+	_, _ = chain.CleanupStale(dir, staleAge)
+	return dir, nil
 }
 
 func newChainRunCmd(flags *globalFlags) *cobra.Command {
@@ -65,7 +97,11 @@ Exit codes:
 				return err
 			}
 
-			opts := chain.RunOptions{DryRun: dryRun}
+			stateDir, err := resolveStateDir()
+			if err != nil {
+				return err
+			}
+			opts := chain.RunOptions{DryRun: dryRun, StateDir: stateDir}
 			if verbose {
 				opts.Progress = cmd.ErrOrStderr()
 			}
@@ -75,18 +111,11 @@ Exit codes:
 				return exitcode.Wrap(err, exitcode.Usage, "run chain")
 			}
 
-			// Emit the envelope on stdout regardless of success/failure
-			// — agents read the same shape either way and branch on
-			// status.
 			if err := renderEnvelope(cmd, flags, res, nil, nil); err != nil {
 				return err
 			}
 
-			// Non-zero exit on failure so `gaia chain run ... && next` works.
-			if res.Status == chain.StatusFailure {
-				return exitcode.Errorf(exitcode.Generic, "chain %q failed at step %q", res.Chain, res.FailedStep)
-			}
-			return nil
+			return chainExitFromStatus(res)
 		},
 	}
 	cmd.Flags().StringVar(&chainFile, "chain-file", "", "path to a chain YAML definition (required)")
@@ -94,6 +123,120 @@ Exit codes:
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "substitute vars + render the resolved plan, but don't execute")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "stream per-step progress to stderr while the chain runs")
 	return cmd
+}
+
+func newChainResumeCmd(flags *globalFlags) *cobra.Command {
+	var decision string
+	cmd := &cobra.Command{
+		Use:   "resume <token>",
+		Short: "Resume a chain that yielded earlier",
+		Long: `Pick up a chain that paused on a yield_on condition.
+
+  gaia chain resume <token> [--decision continue|abort]
+
+The token is the resume_token from the original ` + "`gaia chain run`" + `
+envelope. Use ` + "`gaia chain list`" + ` to see currently-yielded chains
+if you've lost the token.
+
+--decision options:
+  continue   re-run the yielded step (default). Useful after
+             you've fixed the underlying cause (e.g., pushed a
+             commit, retried a transient outage).
+  abort      discard the yielded chain. Equivalent to
+             ` + "`gaia chain abort`" + `.
+
+Phase B-2 will add a "modify" decision that lets you change the
+yielded step's args before re-running.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			stateDir, err := resolveStateDir()
+			if err != nil {
+				return err
+			}
+			res, err := chain.Resume(cmd.Context(), args[0], decision, chain.RunOptions{StateDir: stateDir})
+			if err != nil {
+				return exitcode.Wrap(err, exitcode.Usage, "resume chain")
+			}
+			if err := renderEnvelope(cmd, flags, res, nil, nil); err != nil {
+				return err
+			}
+			return chainExitFromStatus(res)
+		},
+	}
+	cmd.Flags().StringVar(&decision, "decision", "continue", "continue or abort (modify lands in B-2)")
+	return cmd
+}
+
+func newChainListCmd(flags *globalFlags) *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List chains that yielded but haven't been resumed",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			stateDir, err := resolveStateDir()
+			if err != nil {
+				return err
+			}
+			infos, err := chain.ListStates(stateDir)
+			if err != nil {
+				return exitcode.Wrap(err, exitcode.Generic, "list chains")
+			}
+			return renderEnvelope(cmd, flags, infos, nil, prettyChainList)
+		},
+	}
+}
+
+func newChainAbortCmd(flags *globalFlags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "abort <token>",
+		Short: "Discard a yielded chain (alias for resume --decision abort)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			stateDir, err := resolveStateDir()
+			if err != nil {
+				return err
+			}
+			res, err := chain.Resume(cmd.Context(), args[0], "abort", chain.RunOptions{StateDir: stateDir})
+			if err != nil {
+				return exitcode.Wrap(err, exitcode.Usage, "abort chain")
+			}
+			return renderEnvelope(cmd, flags, res, nil, nil)
+		},
+	}
+	return cmd
+}
+
+// chainExitFromStatus translates a chain Result into the right
+// process exit code. success → 0, yielded → 0 (the chain is alive,
+// just paused; agents read the envelope), failure/aborted → 1.
+func chainExitFromStatus(res *chain.Result) error {
+	switch res.Status {
+	case chain.StatusSuccess, chain.StatusYielded:
+		return nil
+	case chain.StatusFailure:
+		return exitcode.Errorf(exitcode.Generic, "chain %q failed at step %q", res.Chain, res.FailedStep)
+	case chain.StatusAborted:
+		return exitcode.Errorf(exitcode.Generic, "chain %q aborted (reason: %s)", res.Chain, res.AbortReason)
+	default:
+		return nil
+	}
+}
+
+// prettyChainList renders the chain list as a small table for
+// `--format pretty`. JSON output (the default) goes through the
+// envelope unchanged.
+func prettyChainList(w io.Writer, data any) error {
+	infos, ok := data.([]chain.StateInfo)
+	if !ok {
+		return fmt.Errorf("prettyChainList: unexpected type %T", data)
+	}
+	if len(infos) == 0 {
+		_, _ = fmt.Fprintln(w, "(no yielded chains)")
+		return nil
+	}
+	for _, i := range infos {
+		_, _ = fmt.Fprintf(w, "%s  %s\n", i.Token, i.ModTime.Format(time.RFC3339))
+	}
+	return nil
 }
 
 // parseVarFlags converts a slice of "key=value" strings into a map.

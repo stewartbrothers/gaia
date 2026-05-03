@@ -2,6 +2,10 @@ package chain_test
 
 import (
 	"context"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -228,5 +232,259 @@ func TestRunDurationsRecorded(t *testing.T) {
 	}
 	if res.Steps[0].DurationMs < 0 {
 		t.Errorf("step duration: %d", res.Steps[0].DurationMs)
+	}
+}
+
+func TestRunYieldsOnDeclaredCondition(t *testing.T) {
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name: "yield-test",
+		Steps: []chain.Step{
+			{ID: "first", Run: "echo first"},
+			{
+				ID:      "rate-limited",
+				Run:     "exit 5", // exitcode.RateLimit → rate_limited
+				YieldOn: []chain.YieldCondition{chain.YieldRateLimited},
+			},
+			{ID: "never", Run: "echo never reached"},
+		},
+	}
+	res, err := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != chain.StatusYielded {
+		t.Fatalf("status: got %s, want yielded; failure=%+v", res.Status, res.Failure)
+	}
+	if res.YieldReason != chain.YieldRateLimited {
+		t.Errorf("reason: got %q", res.YieldReason)
+	}
+	if res.ResumeToken == "" {
+		t.Error("resume token empty")
+	}
+	if len(res.Steps) != 2 {
+		t.Errorf("expected 2 step results (first + yielded); got %d", len(res.Steps))
+	}
+	if res.Steps[1].Status != chain.StepYielded {
+		t.Errorf("yielded step status: %s", res.Steps[1].Status)
+	}
+	wantRemaining := []string{"never"}
+	if len(res.RemainingSteps) != 1 || res.RemainingSteps[0] != wantRemaining[0] {
+		t.Errorf("remaining: %+v", res.RemainingSteps)
+	}
+	// State file should exist.
+	if _, err := os.Stat(filepath.Join(dir, res.ResumeToken+".yaml")); err != nil {
+		t.Errorf("state file missing: %v", err)
+	}
+}
+
+func TestRunAbortsOnDeclaredCondition(t *testing.T) {
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name: "abort-test",
+		Steps: []chain.Step{
+			{
+				ID:      "boom",
+				Run:     "exit 4", // exitcode.Auth → auth_error
+				AbortOn: []chain.YieldCondition{chain.YieldAuthError},
+			},
+		},
+	}
+	res, err := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != chain.StatusAborted {
+		t.Fatalf("status: %s", res.Status)
+	}
+	if res.AbortReason != chain.YieldAuthError {
+		t.Errorf("abort reason: %q", res.AbortReason)
+	}
+	if res.ResumeToken != "" {
+		t.Error("aborted chains shouldn't have a resume token")
+	}
+}
+
+func TestRunFailureWhenConditionNotDeclared(t *testing.T) {
+	// Step exits with a known condition but the step doesn't
+	// declare it in either yield_on or abort_on. Falls through to
+	// existing failure flow — Phase A behavior.
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name: "untracked",
+		Steps: []chain.Step{
+			{ID: "boom", Run: "exit 5"},
+		},
+	}
+	res, err := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != chain.StatusFailure {
+		t.Errorf("expected failure; got %s", res.Status)
+	}
+	if res.ResumeToken != "" {
+		t.Error("undeclared yield should not produce resume token")
+	}
+}
+
+func TestResumeContinuesFromYieldedStep(t *testing.T) {
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name: "resume-test",
+		Steps: []chain.Step{
+			{ID: "first", Run: "echo first"},
+			{
+				ID:      "transient",
+				Run:     "exit 5",
+				YieldOn: []chain.YieldCondition{chain.YieldRateLimited},
+			},
+			{ID: "third", Run: "echo third"},
+		},
+	}
+	res1, err := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res1.Status != chain.StatusYielded {
+		t.Fatalf("first run: status %s", res1.Status)
+	}
+	token := res1.ResumeToken
+
+	// Mutate the chain on disk: change `transient` to succeed (echo).
+	// In practice the agent would fix the underlying cause; here we
+	// simulate by patching the State directly. But Resume reads the
+	// frozen chain spec from State, so we patch that.
+	state, err := chain.LoadState(dir, token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Chain.Steps[1].Run = "echo transient-now-passes"
+	if err := chain.SaveState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+
+	res2, err := chain.Resume(context.Background(), token, "continue", chain.RunOptions{StateDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res2.Status != chain.StatusSuccess {
+		t.Fatalf("resume: status %s, failure %+v", res2.Status, res2.Failure)
+	}
+	if len(res2.Steps) != 3 {
+		t.Errorf("step count after resume: got %d, want 3", len(res2.Steps))
+	}
+	// State file should be removed after success.
+	if _, err := os.Stat(filepath.Join(dir, token+".yaml")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("state file should be cleaned up; got err %v", err)
+	}
+}
+
+func TestResumeAbortDecision(t *testing.T) {
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name: "abort-on-resume",
+		Steps: []chain.Step{
+			{
+				ID:      "transient",
+				Run:     "exit 5",
+				YieldOn: []chain.YieldCondition{chain.YieldRateLimited},
+			},
+			{ID: "after", Run: "echo after"},
+		},
+	}
+	res1, err := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := res1.ResumeToken
+
+	res2, err := chain.Resume(context.Background(), token, "abort", chain.RunOptions{StateDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res2.Status != chain.StatusAborted {
+		t.Errorf("status: %s", res2.Status)
+	}
+	if res2.AbortReason != chain.YieldRateLimited {
+		t.Errorf("abort reason: %q", res2.AbortReason)
+	}
+	// State file removed after abort too.
+	if _, err := os.Stat(filepath.Join(dir, token+".yaml")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("state file should be cleaned up; got err %v", err)
+	}
+}
+
+func TestResumeUnknownDecisionErrors(t *testing.T) {
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name: "x",
+		Steps: []chain.Step{
+			{
+				ID: "y", Run: "exit 5",
+				YieldOn: []chain.YieldCondition{chain.YieldRateLimited},
+			},
+		},
+	}
+	res1, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+
+	_, err := chain.Resume(context.Background(), res1.ResumeToken, "modify", chain.RunOptions{StateDir: dir})
+	if err == nil || !strings.Contains(err.Error(), "modify") {
+		t.Errorf("expected error for unsupported 'modify' decision; got %v", err)
+	}
+}
+
+func TestResumeMissingTokenErrors(t *testing.T) {
+	dir := t.TempDir()
+	_, err := chain.Resume(context.Background(), "no-such-token", "continue", chain.RunOptions{StateDir: dir})
+	if err == nil {
+		t.Error("expected error for missing token")
+	}
+}
+
+func TestResumeYieldsAgainCleansOldStateFile(t *testing.T) {
+	// If a chain yields, gets resumed, and yields AGAIN (e.g.,
+	// transient outage still ongoing), the old token's state file
+	// must be cleaned up — otherwise `gaia chain list` accumulates
+	// stale tokens forever.
+	dir := t.TempDir()
+	c := &chain.Chain{
+		Name: "still-broken",
+		Steps: []chain.Step{
+			{
+				ID:      "stuck",
+				Run:     "exit 5",
+				YieldOn: []chain.YieldCondition{chain.YieldRateLimited},
+			},
+		},
+	}
+	res1, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{StateDir: dir})
+	if res1.Status != chain.StatusYielded {
+		t.Fatalf("first run: %s", res1.Status)
+	}
+	oldToken := res1.ResumeToken
+
+	res2, _ := chain.Resume(context.Background(), oldToken, "continue", chain.RunOptions{StateDir: dir})
+	if res2.Status != chain.StatusYielded {
+		t.Fatalf("resume: %s", res2.Status)
+	}
+	newToken := res2.ResumeToken
+	if newToken == oldToken {
+		t.Error("resume should issue a fresh token on re-yield")
+	}
+
+	// Old token's state file must be gone.
+	if _, err := os.Stat(filepath.Join(dir, oldToken+".yaml")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("old state file should be cleaned up; got err %v", err)
+	}
+	// New token's state file must exist.
+	if _, err := os.Stat(filepath.Join(dir, newToken+".yaml")); err != nil {
+		t.Errorf("new state file missing: %v", err)
+	}
+
+	// chain list should show exactly one entry (the new one).
+	infos, _ := chain.ListStates(dir)
+	if len(infos) != 1 || infos[0].Token != newToken {
+		t.Errorf("list: %+v", infos)
 	}
 }
