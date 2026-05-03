@@ -23,8 +23,8 @@ type Invalidator struct {
 	cache *Cache
 }
 
-// Of returns an Invalidator backed by c. nil c is fine; every method
-// is a no-op in that case.
+// Invalidator returns an Invalidator backed by c. nil c is fine;
+// every method is a no-op in that case.
 func (c *Cache) Invalidator() *Invalidator {
 	return &Invalidator{cache: c}
 }
