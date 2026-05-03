@@ -649,3 +649,38 @@ steps:
 		t.Errorf("expected duplicate-id error in parallel; got %v", err)
 	}
 }
+
+func TestParseAcceptsForEachWithChainBody(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: list
+    run: echo
+    capture: items
+  - id: per
+    for_each: ${items}
+    chain: inner
+    vars:
+      pr: "${item.number}"
+`
+	c, err := chain.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if c.Steps[1].Chain != "inner" {
+		t.Errorf("chain ref: %q", c.Steps[1].Chain)
+	}
+	if c.Steps[1].Vars["pr"] != "${item.number}" {
+		t.Errorf("vars.pr: %q", c.Steps[1].Vars["pr"])
+	}
+}
+
+func TestParseRejectsInvalidChainRef(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: x
+    chain: "with spaces"
+`
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "chain") {
+		t.Errorf("expected invalid-chain-ref error; got %v", err)
+	}
+}
