@@ -42,6 +42,38 @@ type RunOptions struct {
 	// Modify carries a `--decision modify` directive on Resume.
 	// Required when decision == "modify"; ignored otherwise. Phase B-2.
 	Modify *ModifyDirective
+
+	// SubChainResolver, when non-nil, resolves a `chain:` reference
+	// (a saved-chain name or path) into a parsed *Chain. Required
+	// for Phase C composition; the CLI wires the same Resolve()
+	// path saved-chain dispatch uses, but the core package keeps
+	// the policy injection-style so tests can fake it. Without a
+	// resolver, a step with chain: != "" fails with a clear
+	// `chain_resolver_unavailable` reason.
+	SubChainResolver func(name string) (*Chain, error)
+
+	// MaxChainDepth caps recursive chain composition (one chain
+	// invoking another invoking another). Default 5. <=0 → use
+	// default. A chain whose call tree exceeds the cap fails with
+	// reason `chain_recursion_limit`.
+	MaxChainDepth int
+
+	// chainDepth is internal — incremented when runChainStep
+	// recurses. Operators set MaxChainDepth, the runner manages
+	// chainDepth through option-passing.
+	chainDepth int
+
+	// chainStack tracks the resolved chain names already on the
+	// composition stack for cycle detection ("chain A → chain B →
+	// chain A" trips this). Internal; runChainStep manages it.
+	chainStack []string
+
+	// pendingInnerToken, when non-empty, tells runChainStep to
+	// Resume() the inner chain at its yield point rather than
+	// starting fresh. Set by the outer Resume() path when the
+	// yielded outer step is a chain: composition whose SubResult
+	// preserved an inner ResumeToken. Internal.
+	pendingInnerToken string
 }
 
 // ModifyDirective tells Resume to mutate the yielded step's vars
@@ -214,6 +246,22 @@ func Resume(ctx context.Context, token, decision string, opts RunOptions) (*Resu
 		Steps:    append([]StepResult(nil), state.Steps...),
 		Captured: copyAnyMap(state.Captures),
 	}
+
+	// Phase C nested yield: if the yielded step is a chain
+	// composition (chain: != "") AND its preserved StepResult has
+	// a SubResult with a non-empty ResumeToken, hand that token
+	// off to the inner chain so it picks up at its yield point.
+	// Without this, resume would restart the inner chain from
+	// scratch, blowing away whatever the inner had captured pre-
+	// yield.
+	yieldedStep := state.Chain.Steps[state.YieldedAtStep]
+	if yieldedStep.Chain != "" && len(state.Steps) > 0 {
+		last := state.Steps[len(state.Steps)-1]
+		if last.SubResult != nil && last.SubResult.ResumeToken != "" {
+			opts.pendingInnerToken = last.SubResult.ResumeToken
+		}
+	}
+
 	// Trim the yielded step's prior result — we're re-running it.
 	if n := len(res.Steps); n > 0 {
 		res.Steps = res.Steps[:n-1]
@@ -806,15 +854,210 @@ func resolveIterable(ref string, scope Scope) ([]any, error) {
 	}
 }
 
-// runChainStep is implemented in commit 4/5 (composition) — same
-// placeholder pattern.
-func runChainStep(_ context.Context, _ *Chain, step Step, _ Scope, _ RunOptions, _ map[string]string) (StepResult, stepOutcome) {
-	sr := StepResult{ID: step.ID, Status: StepFailed}
+// runChainStep dispatches a saved chain as a single step. The inner
+// chain runs with vars derived from substitution against the outer
+// scope (so `vars: {pr: "${pr.number}"}` pipes the outer step's
+// captured pr.number down). The inner chain's final captured map
+// becomes this step's captured value; downstream steps see
+// ${this-step.<inner-capture>.<field>} for any field the inner
+// chain captured.
+//
+// Recursion + cycle protection:
+//   - opts.MaxChainDepth (default 5) caps the call tree depth.
+//     Hitting the cap fails with reason `chain_recursion_limit`.
+//   - opts.chainStack tracks the resolved chain names already on
+//     the path. A repeat name fails with reason `chain_cycle`,
+//     listing the cycle for the operator.
+//
+// Failure / yield bubbling:
+//   - Inner chain success → outer step OK; capture = inner.Captured
+//     plus the inner Result attached as SubResult for richer agent
+//     introspection.
+//   - Inner chain failure → outer step fails; the inner Failure +
+//     FailedStep land in the outer failure envelope under
+//     `inner_failure` and `inner_failed_step`.
+//   - Inner chain abort → outer step aborts with the inner
+//     AbortReason.
+//   - Inner chain yield → outer step yields with the inner
+//     YieldReason. The inner ResumeToken is preserved on
+//     SubResult; resume of the OUTER token re-runs the chain
+//     step, which in turn resumes the inner chain via its own
+//     Resume() call (see chainResumeFromToken). State persists at
+//     the outer level so the inner state isn't double-tracked.
+//
+// Phase C / #149.
+func runChainStep(ctx context.Context, c *Chain, step Step, scope Scope, opts RunOptions, _ map[string]string) (StepResult, stepOutcome) {
+	sr := StepResult{ID: step.ID, Status: StepSkipped}
+	stepStart := time.Now()
+	defer func() {
+		sr.DurationMs = time.Since(stepStart).Milliseconds()
+	}()
+
+	// Resolver guard: composition needs a way to load the inner
+	// chain. The CLI wires this; tests fake it.
+	if opts.SubChainResolver == nil {
+		sr.Status = StepFailed
+		return sr, stepOutcome{
+			kind: stepOutcomeFailed,
+			failure: map[string]any{
+				"reason": "chain_resolver_unavailable",
+				"step":   step.ID,
+				"hint":   "RunOptions.SubChainResolver must be set for chain: composition",
+			},
+		}
+	}
+
+	maxDepth := opts.MaxChainDepth
+	if maxDepth <= 0 {
+		maxDepth = 5
+	}
+	if opts.chainDepth >= maxDepth {
+		sr.Status = StepFailed
+		return sr, stepOutcome{
+			kind: stepOutcomeFailed,
+			failure: map[string]any{
+				"reason":    "chain_recursion_limit",
+				"step":      step.ID,
+				"max_depth": maxDepth,
+				"stack":     append([]string(nil), opts.chainStack...),
+			},
+		}
+	}
+
+	// Cycle check: if this chain is already on the stack, reject
+	// before resolving (we'd otherwise loop until depth limit).
+	for _, name := range opts.chainStack {
+		if name == step.Chain {
+			sr.Status = StepFailed
+			return sr, stepOutcome{
+				kind: stepOutcomeFailed,
+				failure: map[string]any{
+					"reason": "chain_cycle",
+					"step":   step.ID,
+					"chain":  step.Chain,
+					"stack":  append([]string(nil), opts.chainStack...),
+				},
+			}
+		}
+	}
+
+	inner, err := opts.SubChainResolver(step.Chain)
+	if err != nil {
+		sr.Status = StepFailed
+		return sr, stepOutcome{
+			kind: stepOutcomeFailed,
+			failure: map[string]any{
+				"reason": "chain_resolve_failed",
+				"step":   step.ID,
+				"chain":  step.Chain,
+				"error":  err.Error(),
+			},
+		}
+	}
+
+	// Substitute outer-scope refs into the var values being passed
+	// into the inner chain. SubstituteRaw — these values are not
+	// shell-bound, they're plain strings the inner runner will
+	// shell-quote when ITS sub-steps interpolate them.
+	innerVars := map[string]string{}
+	for k, v := range step.Vars {
+		resolved, _ := SubstituteRaw(v, scope)
+		innerVars[k] = resolved
+	}
+
+	innerOpts := opts
+	innerOpts.chainDepth++
+	innerOpts.chainStack = append(append([]string(nil), opts.chainStack...), step.Chain)
+	// On resume, an inner-chain token piggybacks on the outer
+	// resume call via opts.pendingInnerToken. Consume it here so a
+	// yielded inner chain picks up at its yield point rather than
+	// restarting from scratch.
+	var innerRes *Result
+	var runErr error
+	if opts.pendingInnerToken != "" {
+		// Reset the pending token so a recursive composition
+		// doesn't accidentally apply it twice.
+		consumed := opts.pendingInnerToken
+		innerOpts.pendingInnerToken = ""
+		innerRes, runErr = Resume(ctx, consumed, "continue", innerOpts)
+	} else {
+		innerRes, runErr = Run(ctx, inner, innerVars, innerOpts)
+	}
+	if runErr != nil {
+		sr.Status = StepFailed
+		return sr, stepOutcome{
+			kind: stepOutcomeFailed,
+			failure: map[string]any{
+				"reason": "inner_chain_setup_failed",
+				"step":   step.ID,
+				"chain":  step.Chain,
+				"error":  runErr.Error(),
+			},
+		}
+	}
+
+	sr.SubResult = innerRes
+	sr.DurationMs = innerRes.DurationMs
+
+	switch innerRes.Status {
+	case StatusSuccess:
+		sr.Status = StepOK
+		// Capture exposes the inner Captured map as a single value;
+		// downstream steps reference it via this step's capture
+		// name + dotted lookup.
+		return sr, stepOutcome{kind: stepOutcomeOK, capturedValue: innerRes.Captured}
+
+	case StatusFailure:
+		sr.Status = StepFailed
+		fail := map[string]any{
+			"reason":            "inner_chain_failed",
+			"step":              step.ID,
+			"chain":             step.Chain,
+			"inner_failed_step": innerRes.FailedStep,
+			"inner_failure":     innerRes.Failure,
+		}
+		// Surface structural failures (recursion / cycle) at the
+		// outer level too — the operator's grep is for the cause,
+		// not the wrapping chain. Without this lift the test below
+		// has to walk the failure tree to find the root reason.
+		if innerRes.Failure != nil {
+			if r, ok := innerRes.Failure["reason"].(string); ok {
+				if r == "chain_recursion_limit" || r == "chain_cycle" {
+					fail["reason"] = r
+				}
+			}
+		}
+		return sr, stepOutcome{kind: stepOutcomeFailed, failure: fail}
+
+	case StatusAborted:
+		sr.Status = StepFailed
+		return sr, stepOutcome{
+			kind:      stepOutcomeAborted,
+			condition: innerRes.AbortReason,
+		}
+
+	case StatusYielded:
+		// Inner chain paused. The outer chain yields too — the
+		// emitYield hook at the executeSteps level packages the
+		// outer state (which embeds the inner ResumeToken via
+		// SubResult). On resume, runChainStep recognizes the
+		// preserved inner token and Resume()s the inner chain at
+		// its yield point rather than starting fresh.
+		sr.Status = StepYielded
+		return sr, stepOutcome{
+			kind:      stepOutcomeYielded,
+			condition: innerRes.YieldReason,
+		}
+	}
+
+	// Unrecognized inner status — defensive.
+	sr.Status = StepFailed
 	return sr, stepOutcome{
 		kind: stepOutcomeFailed,
 		failure: map[string]any{
-			"reason": "chain_composition_not_implemented",
-			"step":   step.ID,
+			"reason":       "inner_chain_unknown_status",
+			"step":         step.ID,
+			"inner_status": innerRes.Status,
 		},
 	}
 }

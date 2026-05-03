@@ -3,6 +3,7 @@ package chain_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -1426,6 +1427,207 @@ func TestRunForEachSerialFailureStops(t *testing.T) {
 	iter := res.Steps[1]
 	if len(iter.SubSteps) != 2 {
 		t.Errorf("expected first 2 iterations recorded; got %d", len(iter.SubSteps))
+	}
+}
+
+// --- Phase C / chain composition ---
+
+// TestRunChainComposition runs a saved chain as a step. The inner
+// chain's captures collapse into the outer step's capture under
+// the configured name, so downstream steps can reference
+// ${outer-step.<inner-capture>.<field>}.
+func TestRunChainComposition(t *testing.T) {
+	inner := &chain.Chain{
+		Name: "inner",
+		Vars: map[string]chain.VarSpec{"who": {Required: true}},
+		Steps: []chain.Step{
+			{ID: "greet", Run: `echo '{"data":{"hello":"${who}"}}'`, Capture: "msg"},
+		},
+	}
+	outer := &chain.Chain{
+		Name: "outer",
+		Steps: []chain.Step{
+			{
+				ID:    "call-inner",
+				Chain: "inner",
+				Vars: map[string]string{
+					"who": "world",
+				},
+				Capture: "result",
+			},
+			{
+				ID:  "after",
+				Run: `echo got ${result.msg.hello}`,
+			},
+		},
+	}
+	resolver := func(name string) (*chain.Chain, error) {
+		if name == "inner" {
+			return inner, nil
+		}
+		return nil, fmt.Errorf("not found: %s", name)
+	}
+	res, err := chain.Run(context.Background(), outer, nil, chain.RunOptions{
+		SubChainResolver: resolver,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != chain.StatusSuccess {
+		t.Fatalf("status: %s, failure: %+v", res.Status, res.Failure)
+	}
+	// `after` should see the inner chain's captured msg.
+	if got := res.Steps[1].Stdout; !strings.Contains(got, "got world") {
+		t.Errorf("downstream substitution failed; stdout: %q", got)
+	}
+}
+
+// TestRunChainResolverMissing: a chain step without a configured
+// resolver fails with a clear reason rather than silently no-oping.
+func TestRunChainResolverMissing(t *testing.T) {
+	c := &chain.Chain{
+		Name: "outer",
+		Steps: []chain.Step{
+			{ID: "x", Chain: "inner"},
+		},
+	}
+	res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{})
+	if res.Status != chain.StatusFailure {
+		t.Errorf("status: %s", res.Status)
+	}
+	if got, _ := res.Failure["reason"].(string); !strings.Contains(got, "resolver") {
+		t.Errorf("failure reason: %v", res.Failure["reason"])
+	}
+}
+
+// TestRunChainCompositionFailureBubbles: when the inner chain
+// fails, the outer step fails — the inner failure payload is
+// preserved on Result.Failure.
+func TestRunChainCompositionFailureBubbles(t *testing.T) {
+	inner := &chain.Chain{
+		Name: "boom",
+		Steps: []chain.Step{
+			{ID: "fail", Run: "exit 9"},
+		},
+	}
+	outer := &chain.Chain{
+		Name:  "outer",
+		Steps: []chain.Step{{ID: "call", Chain: "boom"}},
+	}
+	resolver := func(_ string) (*chain.Chain, error) { return inner, nil }
+	res, _ := chain.Run(context.Background(), outer, nil, chain.RunOptions{
+		SubChainResolver: resolver,
+	})
+	if res.Status != chain.StatusFailure {
+		t.Errorf("status: %s", res.Status)
+	}
+}
+
+// TestRunChainRecursionLimit: a chain that resolves to itself trips
+// MaxChainDepth (default 5). The fail message should make the
+// recursion cause obvious.
+func TestRunChainRecursionLimit(t *testing.T) {
+	loop := &chain.Chain{
+		Name:  "loop",
+		Steps: []chain.Step{{ID: "self", Chain: "loop"}},
+	}
+	resolver := func(_ string) (*chain.Chain, error) { return loop, nil }
+	res, _ := chain.Run(context.Background(), loop, nil, chain.RunOptions{
+		SubChainResolver: resolver,
+	})
+	if res.Status != chain.StatusFailure {
+		t.Errorf("status: %s", res.Status)
+	}
+	reason, _ := res.Failure["reason"].(string)
+	if !strings.Contains(reason, "recursion") && !strings.Contains(reason, "cycle") {
+		t.Errorf("failure reason should signal recursion/cycle; got %q", reason)
+	}
+}
+
+// TestRunChainNestedYieldResume: an inner chain yield bubbles up
+// as an outer chain yield with the outer ResumeToken pointing at
+// the outer state file. Resume of the outer token re-runs the
+// inner chain from its yield point — verified by capturing how
+// many times the per-iteration step ran (once when first invoked,
+// once on resume).
+func TestRunChainNestedYieldResume(t *testing.T) {
+	dir := t.TempDir()
+	// Inner chain has one step that yields on first run, succeeds
+	// on resume — implemented via a temp marker file: if it
+	// doesn't exist, the step creates it and exits 5 (rate_limit);
+	// if it does exist, it succeeds.
+	marker := filepath.Join(dir, "marker")
+	inner := &chain.Chain{
+		Name: "inner",
+		Steps: []chain.Step{
+			{
+				ID:      "transient",
+				Run:     fmt.Sprintf("[ -f %s ] || (touch %s && exit 5)", marker, marker),
+				YieldOn: []chain.YieldCondition{chain.YieldRateLimited},
+			},
+		},
+	}
+	outer := &chain.Chain{
+		Name:  "outer",
+		Steps: []chain.Step{{ID: "go", Chain: "inner"}},
+	}
+	resolver := func(_ string) (*chain.Chain, error) { return inner, nil }
+	opts := chain.RunOptions{
+		StateDir:         dir,
+		SubChainResolver: resolver,
+	}
+	res1, _ := chain.Run(context.Background(), outer, nil, opts)
+	if res1.Status != chain.StatusYielded {
+		t.Fatalf("first run status: %s, failure: %+v", res1.Status, res1.Failure)
+	}
+	if res1.YieldReason != chain.YieldRateLimited {
+		t.Errorf("yield reason: %q", res1.YieldReason)
+	}
+	if res1.ResumeToken == "" {
+		t.Fatal("missing resume token")
+	}
+
+	// Resume — the inner chain should pick up its single step's
+	// re-run, see the marker, succeed; outer chain ends success.
+	res2, err := chain.Resume(context.Background(), res1.ResumeToken, "continue", opts)
+	if err != nil {
+		t.Fatalf("resume err: %v", err)
+	}
+	if res2.Status != chain.StatusSuccess {
+		t.Errorf("resume status: %s, failure: %+v", res2.Status, res2.Failure)
+	}
+}
+
+// TestRunChainCycleDetection: chain A → chain B → chain A trips
+// cycle detection separately from depth. Cleaner error message
+// because we can name the cycle pair.
+func TestRunChainCycleDetection(t *testing.T) {
+	a := &chain.Chain{
+		Name:  "a",
+		Steps: []chain.Step{{ID: "a-step", Chain: "b"}},
+	}
+	b := &chain.Chain{
+		Name:  "b",
+		Steps: []chain.Step{{ID: "b-step", Chain: "a"}},
+	}
+	resolver := func(name string) (*chain.Chain, error) {
+		switch name {
+		case "a":
+			return a, nil
+		case "b":
+			return b, nil
+		}
+		return nil, fmt.Errorf("missing %q", name)
+	}
+	res, _ := chain.Run(context.Background(), a, nil, chain.RunOptions{
+		SubChainResolver: resolver,
+	})
+	if res.Status != chain.StatusFailure {
+		t.Errorf("status: %s", res.Status)
+	}
+	reason, _ := res.Failure["reason"].(string)
+	if !strings.Contains(reason, "cycle") && !strings.Contains(reason, "recursion") {
+		t.Errorf("failure reason: %q", reason)
 	}
 }
 

@@ -120,7 +120,11 @@ Exit codes:
 			if err != nil {
 				return err
 			}
-			opts := chain.RunOptions{DryRun: dryRun, StateDir: stateDir}
+			opts := chain.RunOptions{
+				DryRun:           dryRun,
+				StateDir:         stateDir,
+				SubChainResolver: subChainResolver(),
+			}
 			if verbose {
 				opts.Progress = cmd.ErrOrStderr()
 			}
@@ -164,6 +168,29 @@ func resolveChainArg(chainFile string, args []string) (string, error) {
 		return "", exitcode.Wrap(err, exitcode.Usage, "resolve chain")
 	}
 	return resolved, nil
+}
+
+// subChainResolver wraps chainResolveOptions + chain.Resolve +
+// chain.ParseFile into a single closure suitable for
+// chain.RunOptions.SubChainResolver. Phase C / #149 chain
+// composition uses this on every nested-chain step so a Forgejo-
+// resident chain can call another saved chain ("open-and-land")
+// without manual orchestration.
+//
+// Errors propagate the resolution path the operator can read —
+// "chain X: not found (tried: <a>, <b>)" — rather than collapsing
+// to a generic "missing chain". Parse errors include the resolved
+// file path so an operator running `vim` against the right file
+// is one click away.
+func subChainResolver() func(string) (*chain.Chain, error) {
+	opts := chainResolveOptions()
+	return func(name string) (*chain.Chain, error) {
+		path, err := chain.Resolve(name, opts)
+		if err != nil {
+			return nil, err
+		}
+		return chain.ParseFile(path)
+	}
 }
 
 // chainResolveOptions builds the project + global lookup directives
@@ -230,7 +257,10 @@ abort + start a fresh chain with new --var inputs.`,
 			if err != nil {
 				return err
 			}
-			runOpts := chain.RunOptions{StateDir: stateDir}
+			runOpts := chain.RunOptions{
+				StateDir:         stateDir,
+				SubChainResolver: subChainResolver(),
+			}
 			if decision == "modify" {
 				if modifyStep == "" {
 					return exitcode.Errorf(exitcode.Usage, "--decision modify requires --modify-step <step-id>")
