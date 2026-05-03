@@ -3,8 +3,11 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -268,5 +271,185 @@ func TestPackagesNeedsOwnerOrRepo(t *testing.T) {
 	})
 	if err := root.Execute(); err == nil {
 		t.Fatal("expected error when neither --owner nor --repo is set")
+	}
+}
+
+// TestPackagesUploadFromFile drives `gaia packages upload` with a
+// real on-disk artifact. Verifies the PUT lands on the generic-
+// package endpoint with the expected path + body.
+func TestPackagesUploadFromFile(t *testing.T) {
+	dir := t.TempDir()
+	artifact := filepath.Join(dir, "myapp.tar.gz")
+	if err := os.WriteFile(artifact, []byte("HELLO-PAYLOAD"), 0o600); err != nil {
+		t.Fatalf("write artifact: %v", err)
+	}
+
+	var (
+		gotMethod      string
+		gotPath        string
+		gotContentType string
+		gotBody        []byte
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotContentType = r.Header.Get("Content-Type")
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(201)
+	}))
+	defer srv.Close()
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"packages", "upload",
+		"--owner", "o",
+		"--content-type", "application/gzip",
+		"generic", "myapp", "1.2.0", artifact,
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	if gotMethod != http.MethodPut {
+		t.Errorf("method: got %q", gotMethod)
+	}
+	if gotPath != "/packages/o/generic/myapp/1.2.0/myapp.tar.gz" {
+		t.Errorf("path: got %q", gotPath)
+	}
+	if gotContentType != "application/gzip" {
+		t.Errorf("content-type: got %q", gotContentType)
+	}
+	if string(gotBody) != "HELLO-PAYLOAD" {
+		t.Errorf("body: got %q", string(gotBody))
+	}
+	if !strings.Contains(stdout.String(), "✓ Uploaded") {
+		t.Errorf("stdout: %q", stdout.String())
+	}
+}
+
+// TestPackagesUploadFromStdin streams the artifact body from stdin
+// when <file> = "-". --filename is required because there's no path
+// to derive a basename from.
+func TestPackagesUploadFromStdin(t *testing.T) {
+	var gotBody []byte
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(201)
+	}))
+	defer srv.Close()
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetIn(strings.NewReader("STDIN-PAYLOAD"))
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"packages", "upload",
+		"--owner", "o",
+		"--filename", "stream.bin",
+		"generic", "myapp", "1.0.0", "-",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	if gotPath != "/packages/o/generic/myapp/1.0.0/stream.bin" {
+		t.Errorf("path: got %q", gotPath)
+	}
+	if string(gotBody) != "STDIN-PAYLOAD" {
+		t.Errorf("body: got %q", string(gotBody))
+	}
+}
+
+// TestPackagesUploadStdinRequiresFileName: --filename is required for
+// stdin uploads since there's no path to derive a basename from.
+func TestPackagesUploadStdinRequiresFileName(t *testing.T) {
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetIn(strings.NewReader("data"))
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", "http://x",
+		"packages", "upload",
+		"--owner", "o",
+		"generic", "myapp", "1.0", "-",
+	})
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected error when --filename omitted with stdin")
+	}
+}
+
+// TestPackagesUploadFileNotFound surfaces a file-open error rather
+// than a network call.
+func TestPackagesUploadFileNotFound(t *testing.T) {
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", "http://x",
+		"packages", "upload",
+		"--owner", "o",
+		"generic", "myapp", "1.0", "/nonexistent/path/that/does/not/exist",
+	})
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected error for missing file")
+	}
+}
+
+// TestPackagesUploadOverridesFilename: --filename overrides the
+// basename-derived default.
+func TestPackagesUploadOverridesFilename(t *testing.T) {
+	dir := t.TempDir()
+	artifact := filepath.Join(dir, "build.tgz")
+	if err := os.WriteFile(artifact, []byte("X"), 0o600); err != nil {
+		t.Fatalf("write artifact: %v", err)
+	}
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(201)
+	}))
+	defer srv.Close()
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"packages", "upload",
+		"--owner", "o",
+		"--filename", "renamed.tar.gz",
+		"generic", "myapp", "1.0", artifact,
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(gotPath, "renamed.tar.gz") {
+		t.Errorf("path should use overridden filename; got %q", gotPath)
 	}
 }
