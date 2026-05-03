@@ -10,6 +10,28 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+### Security
+
+- CI now runs `govulncheck ./...` on every PR and push to `main`
+  (#140 part 3). Known CVEs in transitive deps that touch reachable
+  code paths gate the merge, surfacing the same risk class that the
+  stale mcp-go pin in #138 represented — but on every PR rather
+  than via ad-hoc audit. Initial pass: clean against the Go 1.25.9
+  stdlib + current deps; the floor was bumped from 1.25.5 (mcp-go's
+  required minimum) to 1.25.9 via a `toolchain` directive to clear
+  7 stdlib CVEs the older patch carried.
+- CI third-party actions pinned by commit SHA, with the version as
+  a trailing comment (#140 part 2). A compromised actions/* org
+  can no longer push a malicious update under a tag we already
+  trust. Applied across `.forgejo/workflows/*.yml` and
+  `.github/workflows/ci.yml`. See each workflow header for the
+  bump discipline.
+- `SECURITY.md` added at the repo root (#140 part 1). Documents
+  threat model, reporting channel
+  (`aidev@stewartbrothers.com.au`), and 7-day-ack / 30–90-day-fix
+  timeline. Public projects on Forgejo / GitHub now expose the
+  "Report a vulnerability" link.
+
 ### Fixed
 
 - Trust-tagged JSON output now preserves struct-declaration field order
