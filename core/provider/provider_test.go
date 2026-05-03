@@ -41,6 +41,8 @@ func TestOptionsZeroValuesUsable(t *testing.T) {
 	_ = provider.GetPullRequestDiffOptions{}
 	_ = provider.ListCommentsOptions{}
 	_ = provider.SearchOptions{}
+	_ = provider.ListWikiPagesOptions{}
+	_ = provider.SearchWikiOptions{}
 }
 
 // noopProvider is the always-fail stand-in used to compile-check the
@@ -139,6 +141,21 @@ func (*noopProvider) GetPackage(_ context.Context, _, _, _, _ string) (*types.Pa
 	return nil, errNotImplemented
 }
 func (*noopProvider) DeletePackage(_ context.Context, _, _, _, _ string) error {
+	return errNotImplemented
+}
+func (*noopProvider) ListWikiPages(_ context.Context, _, _ string, _ provider.ListWikiPagesOptions) ([]types.WikiPage, *provider.Page, error) {
+	return nil, nil, errNotImplemented
+}
+func (*noopProvider) GetWikiPage(_ context.Context, _, _, _ string) (*types.WikiPage, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) SearchWikiPages(_ context.Context, _, _, _ string, _ provider.SearchWikiOptions) ([]types.WikiSearchHit, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) EditWikiPage(_ context.Context, _, _, _, _ string) (*types.WikiPage, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) DeleteWikiPage(_ context.Context, _, _, _ string) error {
 	return errNotImplemented
 }
 

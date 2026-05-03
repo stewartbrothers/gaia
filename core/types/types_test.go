@@ -148,6 +148,42 @@ func TestDiffFileBinary(t *testing.T) {
 	}
 }
 
+func TestWikiPageRoundTrip(t *testing.T) {
+	in := types.WikiPage{
+		Title:      "Home",
+		Path:       "Home",
+		Body:       "# Welcome\n\nThis is the wiki home page.",
+		LastCommit: "deadbee",
+		UpdatedAt:  time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
+	}
+	out := jsonRoundTrip(t, in, &types.WikiPage{}).(*types.WikiPage)
+
+	if out.Title != in.Title || out.Path != in.Path || out.Body != in.Body {
+		t.Errorf("scalars: got %+v", out)
+	}
+	if out.LastCommit != "deadbee" {
+		t.Errorf("last_commit: got %q", out.LastCommit)
+	}
+	// Body should be omitempty when zero.
+	listShape := types.WikiPage{Title: "x", Path: "x", UpdatedAt: in.UpdatedAt}
+	b, _ := json.Marshal(listShape)
+	if strings.Contains(string(b), `"body"`) {
+		t.Errorf("empty body should be omitempty; got %s", b)
+	}
+}
+
+func TestWikiSearchHitRoundTrip(t *testing.T) {
+	in := types.WikiSearchHit{
+		Path:    "Home",
+		Title:   "Home",
+		Snippet: "...the wiki home page contains [match] in the body...",
+	}
+	out := jsonRoundTrip(t, in, &types.WikiSearchHit{}).(*types.WikiSearchHit)
+	if out.Path != in.Path || out.Title != in.Title || out.Snippet != in.Snippet {
+		t.Errorf("got %+v", out)
+	}
+}
+
 func TestSearchResultRoundTrip(t *testing.T) {
 	in := types.SearchResult{
 		Kind:     "pull_request",
