@@ -9,6 +9,17 @@ LDFLAGS := -X 'github.com/stewartbrothers/gaia/internal/version.Version=$(VERSIO
 COVER_PROFILE := coverage.out
 COVER_HTML    := coverage.html
 
+# Scope coverage to packages that have tests. Without this, `go test ./...`
+# tries to instrument every package — including ones with no tests
+# (cmd/gaia, internal/forgebuilder, scripts/cmd/cache-bench, core/diff)
+# — and invokes `go tool covdata` per package to merge per-package
+# coverdata. Go 1.25's auto-downloaded toolchain ships WITHOUT covdata
+# (only ~7 tools vs the full install's 18), so those invocations fail
+# and the overall `go test` exit code becomes non-zero even though
+# every test passes. Filtering to test-bearing packages avoids the
+# covdata invocation entirely. See #165.
+COVER_PKGS    := $(shell $(GO) list -f '{{ if or .TestGoFiles .XTestGoFiles }}{{.ImportPath}}{{end}}' ./...)
+
 .PHONY: all build build-gaia build-mcp test test-race cover cover-html vet fmt lint tidy clean release-snapshot release-check dogfood-chain cache-bench
 
 all: build
@@ -28,7 +39,7 @@ test-race:
 	$(GO) test ./... -race -count=1
 
 cover:
-	$(GO) test ./... -race -count=1 -covermode=atomic -coverprofile=$(COVER_PROFILE)
+	$(GO) test $(COVER_PKGS) -race -count=1 -covermode=atomic -coverprofile=$(COVER_PROFILE)
 	$(GO) tool cover -func=$(COVER_PROFILE)
 
 cover-html: cover
