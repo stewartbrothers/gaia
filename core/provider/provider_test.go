@@ -43,6 +43,10 @@ func TestOptionsZeroValuesUsable(t *testing.T) {
 	_ = provider.SearchOptions{}
 	_ = provider.ListWikiPagesOptions{}
 	_ = provider.SearchWikiOptions{}
+	_ = provider.ListWebhooksOptions{}
+	_ = provider.CreateWebhookOptions{}
+	_ = provider.EditWebhookOptions{}
+	_ = provider.ListDeliveriesOptions{}
 }
 
 // noopProvider is the always-fail stand-in used to compile-check the
@@ -159,6 +163,33 @@ func (*noopProvider) EditWikiPage(_ context.Context, _, _, _, _ string) (*types.
 	return nil, errNotImplemented
 }
 func (*noopProvider) DeleteWikiPage(_ context.Context, _, _, _ string) error {
+	return errNotImplemented
+}
+func (*noopProvider) ListWebhooks(_ context.Context, _, _ string, _ provider.ListWebhooksOptions) ([]types.Webhook, *provider.Page, error) {
+	return nil, nil, errNotImplemented
+}
+func (*noopProvider) GetWebhook(_ context.Context, _, _ string, _ int64) (*types.Webhook, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) CreateWebhook(_ context.Context, _, _ string, _ provider.CreateWebhookOptions) (*types.Webhook, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) EditWebhook(_ context.Context, _, _ string, _ int64, _ provider.EditWebhookOptions) (*types.Webhook, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) DeleteWebhook(_ context.Context, _, _ string, _ int64) error {
+	return errNotImplemented
+}
+func (*noopProvider) ListWebhookDeliveries(_ context.Context, _, _ string, _ int64, _ provider.ListDeliveriesOptions) ([]types.WebhookDelivery, *provider.Page, error) {
+	return nil, nil, errNotImplemented
+}
+func (*noopProvider) GetWebhookDelivery(_ context.Context, _, _ string, _, _ int64) (*types.WebhookDeliveryDetail, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) RedeliverWebhook(_ context.Context, _, _ string, _, _ int64) error {
+	return errNotImplemented
+}
+func (*noopProvider) TestWebhook(_ context.Context, _, _ string, _ int64) error {
 	return errNotImplemented
 }
 
