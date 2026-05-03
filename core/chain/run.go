@@ -575,16 +575,234 @@ func runParallelStep(ctx context.Context, c *Chain, step Step, scope Scope, opts
 	return sr, stepOutcome{kind: stepOutcomeOK, capturedValue: subCapture}
 }
 
-// runForEachStep is implemented in commit 3 (for_each) — placeholder
-// returns a clear error so the dispatcher above stays exhaustive.
-func runForEachStep(_ context.Context, _ *Chain, step Step, _ Scope, _ RunOptions, _ map[string]string) (StepResult, stepOutcome) {
-	sr := StepResult{ID: step.ID, Status: StepFailed}
-	return sr, stepOutcome{
-		kind: stepOutcomeFailed,
-		failure: map[string]any{
-			"reason": "for_each_not_implemented",
-			"step":   step.ID,
-		},
+// runForEachStep iterates a captured array, running the step's
+// per-iteration body (run: or chain:) once per element. Each
+// iteration sees a scope that adds `item` and `index` to the
+// captures namespace so substitutions like ${item}, ${item.field},
+// or ${index} resolve as expected.
+//
+// Modes:
+//   - parallel: false (default) → serial iteration in declaration
+//     order. A failed iteration stops further iterations and
+//     propagates failure.
+//   - parallel: true            → concurrent iteration up to
+//     MaxConcurrent (default 5). All iterations run before the
+//     overall outcome is computed; routing follows the same abort
+//     > yield > fail priority parallel blocks use.
+//
+// The iterable source is taken from step.ForEach (a substitution
+// reference like `${items}`). It MUST resolve to a JSON array; a
+// non-array (string / object / scalar) is a hard failure with a
+// clear reason. Empty array → step OK with empty SubSteps.
+//
+// Phase C / #149.
+func runForEachStep(ctx context.Context, c *Chain, step Step, scope Scope, opts RunOptions, _ map[string]string) (StepResult, stepOutcome) {
+	sr := StepResult{ID: step.ID, Status: StepSkipped}
+	stepStart := time.Now()
+	defer func() {
+		sr.DurationMs = time.Since(stepStart).Milliseconds()
+	}()
+
+	// Resolve the iterable. step.ForEach is a literal `${ref}` — we
+	// peel the wrapper and look up against the scope's captures.
+	items, err := resolveIterable(step.ForEach, scope)
+	if err != nil {
+		sr.Status = StepFailed
+		sr.Stderr = err.Error()
+		return sr, stepOutcome{
+			kind: stepOutcomeFailed,
+			failure: map[string]any{
+				"reason": "for_each_not_iterable",
+				"step":   step.ID,
+				"error":  err.Error(),
+			},
+		}
+	}
+
+	if len(items) == 0 {
+		// Empty iterable is fine — the step succeeds with no work.
+		sr.Status = StepOK
+		return sr, stepOutcome{kind: stepOutcomeOK, capturedValue: []any{}}
+	}
+
+	// Build the per-iteration step body. Per the parser, exactly
+	// one of step.Run or step.Chain is set alongside for_each.
+	// Each iteration uses a synthesized Step with the same body and
+	// inheritable knobs (timeout, retry, yield_on, abort_on,
+	// on_failure) — so a transient failure in one iteration can
+	// retry inside its own iteration without re-running siblings.
+	results := make([]StepResult, len(items))
+	outcomes := make([]stepOutcome, len(items))
+
+	var ranCount int
+	if step.ParallelIter {
+		runForEachConcurrent(ctx, c, step, scope, opts, items, results, outcomes)
+		ranCount = len(items)
+	} else {
+		ranCount = runForEachSerial(ctx, c, step, scope, opts, items, results, outcomes)
+	}
+	// Trim trailing un-run iterations off SubSteps so the outer
+	// envelope matches what actually executed.
+	sr.SubSteps = results[:ranCount]
+
+	// Aggregate the outer captured value as a list of per-iteration
+	// captures. Operators reference ${step-id.0.field} for the 0th
+	// iteration's capture, ${step-id.1.field} for the 1st, etc.
+	// The per-iteration capture is the iteration's run output
+	// (parsed via decodeCapture) when step.Capture is set.
+	captured := make([]any, ranCount)
+	for i := 0; i < ranCount; i++ {
+		if outcomes[i].kind == stepOutcomeOK && step.Capture != "" {
+			captured[i] = outcomes[i].capturedValue
+		} else {
+			captured[i] = subStepCaptureView(results[i])
+		}
+	}
+
+	// Route by priority abort > yield > fail.
+	for i, o := range outcomes {
+		if o.kind == stepOutcomeAborted {
+			sr.Status = StepFailed
+			return sr, stepOutcome{kind: stepOutcomeAborted, condition: o.condition}
+		}
+		_ = i
+	}
+	for i, o := range outcomes {
+		if o.kind == stepOutcomeYielded {
+			sr.Status = StepYielded
+			return sr, stepOutcome{kind: stepOutcomeYielded, condition: o.condition}
+		}
+		_ = i
+	}
+	for i, o := range outcomes {
+		if o.kind == stepOutcomeFailed {
+			sr.Status = StepFailed
+			fail := o.failure
+			if fail == nil {
+				fail = map[string]any{}
+			}
+			fail["failed_iteration"] = i
+			fail["step"] = step.ID
+			return sr, stepOutcome{kind: stepOutcomeFailed, failure: fail}
+		}
+	}
+
+	sr.Status = StepOK
+	return sr, stepOutcome{kind: stepOutcomeOK, capturedValue: captured}
+}
+
+// runForEachSerial runs iterations in declaration order, stopping
+// at the first non-OK outcome. Returns the number of iterations
+// that actually ran (so the caller can trim the result slice).
+func runForEachSerial(ctx context.Context, c *Chain, step Step, scope Scope, opts RunOptions, items []any, results []StepResult, outcomes []stepOutcome) int {
+	for i, item := range items {
+		iterScope := scopeWithItem(scope, item, i)
+		iter := iterationStep(step, i)
+		r, o := runStep(ctx, c, iter, iterScope, opts, nil)
+		results[i] = r
+		outcomes[i] = o
+		if o.kind != stepOutcomeOK {
+			return i + 1
+		}
+	}
+	return len(items)
+}
+
+// runForEachConcurrent runs iterations in parallel, bounded by
+// max_concurrent. All iterations complete before routing — same
+// shape as parallel-block fan-out.
+func runForEachConcurrent(ctx context.Context, c *Chain, step Step, scope Scope, opts RunOptions, items []any, results []StepResult, outcomes []stepOutcome) {
+	maxConc := step.MaxConcurrent
+	if maxConc <= 0 {
+		maxConc = 5
+	}
+	subCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	sem := make(chan struct{}, maxConc)
+	var wg sync.WaitGroup
+	for i, item := range items {
+		wg.Add(1)
+		go func(idx int, it any) {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+			case <-subCtx.Done():
+				results[idx] = StepResult{ID: fmt.Sprintf("%s[%d]", step.ID, idx), Status: StepSkipped}
+				return
+			}
+			defer func() { <-sem }()
+			iterScope := scopeWithItem(scope, it, idx)
+			iter := iterationStep(step, idx)
+			r, o := runStep(subCtx, c, iter, iterScope, opts, nil)
+			results[idx] = r
+			outcomes[idx] = o
+			if step.FailFast && o.kind != stepOutcomeOK {
+				cancel()
+			}
+		}(i, item)
+	}
+	wg.Wait()
+}
+
+// iterationStep clones the Step into a per-iteration leaf step for
+// the runner to dispatch. The synthesized step has its for_each /
+// parallel knobs cleared (the dispatcher would otherwise recurse
+// into for_each forever) and its ID suffixed with [<index>] so
+// per-iteration log lines and StepResult IDs distinguish.
+func iterationStep(step Step, index int) Step {
+	// Strip iteration-only knobs so the inner runStep call sees a
+	// pure leaf or pure chain step.
+	out := step
+	out.ID = fmt.Sprintf("%s[%d]", step.ID, index)
+	out.ForEach = ""
+	out.Parallel = nil
+	out.ParallelIter = false
+	// Capture is preserved when set so per-iteration capture lookup
+	// works through subStepCaptureView fallback.
+	return out
+}
+
+// scopeWithItem returns a new Scope with `item` and `index` added
+// to the captures namespace. The original scope is left untouched
+// so concurrent iterations don't fight.
+//
+// `item`: the per-iteration value (any JSON shape).
+// `index`: the 0-based ordinal as an int (rendered as "0", "1", ...).
+func scopeWithItem(s Scope, item any, index int) Scope {
+	out := cloneScope(s)
+	out.Captures["item"] = item
+	out.Captures["index"] = index
+	return out
+}
+
+// resolveIterable looks up the for_each reference against the scope
+// and returns the result as a slice. The reference must point at a
+// JSON array (typed []any after decodeCapture). Anything else is an
+// error with the actual type named.
+//
+// The reference syntax is the standard substitution form — typically
+// `${captured_name}` or `${captured.subfield}` — but parser-level we
+// just resolve it via the same lookup path and check the resulting
+// shape.
+func resolveIterable(ref string, scope Scope) ([]any, error) {
+	// Strip the ${...} wrapper so we resolve directly against the
+	// scope. If the operator wrote `for_each: items` (no wrapper),
+	// we tolerate that too.
+	trimmed := strings.TrimSpace(ref)
+	if strings.HasPrefix(trimmed, "${") && strings.HasSuffix(trimmed, "}") {
+		trimmed = trimmed[2 : len(trimmed)-1]
+	}
+	val, ok := lookupRaw(trimmed, scope)
+	if !ok {
+		return nil, fmt.Errorf("for_each: reference %q did not resolve to anything in scope", ref)
+	}
+	switch v := val.(type) {
+	case []any:
+		return v, nil
+	case nil:
+		return nil, fmt.Errorf("for_each: reference %q resolved to null (not iterable)", ref)
+	default:
+		return nil, fmt.Errorf("for_each: reference %q must resolve to a JSON array; got %T", ref, val)
 	}
 }
 

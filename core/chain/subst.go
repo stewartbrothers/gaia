@@ -132,6 +132,51 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
+// lookupRaw resolves a ref against the scope and returns the raw
+// underlying value (no stringification). Used by Phase C for_each
+// to peek at the captured array shape before iterating, and by
+// chain composition to pull whole sub-objects through. Returns
+// (value, true) on success, (nil, false) on miss.
+//
+// Resolution mirrors lookup(): single-segment refs try Vars then
+// Captures; dotted refs descend Captures.
+func lookupRaw(ref string, scope Scope) (any, bool) {
+	if ref == "" {
+		return nil, false
+	}
+	parts := strings.Split(ref, ".")
+	for _, p := range parts {
+		if p == "" || !isValidIdent(p) {
+			return nil, false
+		}
+	}
+	if len(parts) == 1 {
+		if v, ok := scope.Vars[parts[0]]; ok {
+			return v, true
+		}
+		if v, ok := scope.Captures[parts[0]]; ok {
+			return v, true
+		}
+		return nil, false
+	}
+	root, ok := scope.Captures[parts[0]]
+	if !ok {
+		return nil, false
+	}
+	cur := root
+	for _, p := range parts[1:] {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		cur, ok = m[p]
+		if !ok {
+			return nil, false
+		}
+	}
+	return cur, true
+}
+
 // lookup resolves a single ref string (the contents of `${...}`)
 // against the scope. Returns (value, true) on success, ("", false)
 // on miss.

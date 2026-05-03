@@ -1270,3 +1270,194 @@ func TestRunParallelSubStepYieldYieldsChain(t *testing.T) {
 		t.Error("resume token missing")
 	}
 }
+
+// TestRunForEachSerial iterates a JSON-array capture, running the
+// step once per element with ${item} bound to the scalar and
+// ${index} to the ordinal. Default order serial — verifies indices
+// run 0 → N-1 and per-iteration captures collapse into the outer
+// SubSteps slice.
+//
+// Substituted values are shell-quoted (#135), so inside the run
+// line `echo got ${item}` resolves to `echo got 'a'` — the
+// surrounding shell renders that as `got a` once the literal
+// quotes are consumed. The test reads the stdout AFTER the shell
+// runs, so the quotes don't appear.
+func TestRunForEachSerial(t *testing.T) {
+	c := &chain.Chain{
+		Name: "fanout-serial",
+		Steps: []chain.Step{
+			{ID: "list", Run: `echo '["a","b","c"]'`, Capture: "items"},
+			{
+				ID:      "per-item",
+				ForEach: "${items}",
+				Run:     `echo got ${item} at ${index}`,
+				Capture: "iter",
+			},
+		},
+	}
+	res, err := chain.Run(context.Background(), c, nil, chain.RunOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != chain.StatusSuccess {
+		t.Fatalf("status: %s, failure: %+v", res.Status, res.Failure)
+	}
+	if len(res.Steps) != 2 {
+		t.Fatalf("outer steps: %d", len(res.Steps))
+	}
+	iter := res.Steps[1]
+	if len(iter.SubSteps) != 3 {
+		t.Fatalf("iterations: %d", len(iter.SubSteps))
+	}
+	wants := []string{"got a at 0\n", "got b at 1\n", "got c at 2\n"}
+	for i, want := range wants {
+		if iter.SubSteps[i].Stdout != want {
+			t.Errorf("iter %d stdout: got %q want %q", i, iter.SubSteps[i].Stdout, want)
+		}
+	}
+}
+
+// TestRunForEachParallel: same iteration, but with parallel: true,
+// so iterations run concurrently up to max_concurrent. Verify
+// total wall time is well under the serial sum.
+func TestRunForEachParallel(t *testing.T) {
+	c := &chain.Chain{
+		Name: "fanout-parallel",
+		Steps: []chain.Step{
+			{ID: "list", Run: `echo '["a","b","c","d"]'`, Capture: "items"},
+			{
+				ID:            "per-item",
+				ForEach:       "${items}",
+				ParallelIter:  true,
+				MaxConcurrent: 4,
+				Run:           "sleep 0.1",
+			},
+		},
+	}
+	start := time.Now()
+	res, err := chain.Run(context.Background(), c, nil, chain.RunOptions{})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != chain.StatusSuccess {
+		t.Errorf("status: %s, failure: %+v", res.Status, res.Failure)
+	}
+	// 4 sleep-0.1s iterations at concurrency 4 ≈ 100ms; serial
+	// would be 400ms. Allow generous slack.
+	if elapsed > 350*time.Millisecond {
+		t.Errorf("for_each parallel didn't fan out (%s)", elapsed)
+	}
+}
+
+// TestRunForEachEmptyArray: when the iterable resolves to [], the
+// step runs zero iterations and reports OK with empty SubSteps.
+// Downstream steps still see the chain as successful.
+func TestRunForEachEmptyArray(t *testing.T) {
+	c := &chain.Chain{
+		Name: "fanout-empty",
+		Steps: []chain.Step{
+			{ID: "list", Run: `echo '[]'`, Capture: "items"},
+			{ID: "per-item", ForEach: "${items}", Run: "echo never"},
+			{ID: "after", Run: "echo after"},
+		},
+	}
+	res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{})
+	if res.Status != chain.StatusSuccess {
+		t.Errorf("status: %s", res.Status)
+	}
+	iter := res.Steps[1]
+	if iter.Status != chain.StepOK {
+		t.Errorf("for_each status: %s", iter.Status)
+	}
+	if len(iter.SubSteps) != 0 {
+		t.Errorf("expected no iterations; got %d", len(iter.SubSteps))
+	}
+	// after step ran.
+	if len(res.Steps) != 3 {
+		t.Errorf("steps count: %d", len(res.Steps))
+	}
+}
+
+// TestRunForEachNonArrayFails: a non-array iterable (string, object,
+// scalar) trips a hard failure with a clear reason. Operators see
+// the step ID and the resolved value's type.
+func TestRunForEachNonArrayFails(t *testing.T) {
+	c := &chain.Chain{
+		Name: "fanout-bad",
+		Steps: []chain.Step{
+			{ID: "list", Run: `echo '"not a list"'`, Capture: "items"},
+			{ID: "per-item", ForEach: "${items}", Run: "echo ${item}"},
+		},
+	}
+	res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{})
+	if res.Status != chain.StatusFailure {
+		t.Errorf("status: %s", res.Status)
+	}
+	if !strings.Contains(strings.ToLower(res.Failure["reason"].(string)), "for_each") {
+		t.Errorf("failure reason: %v", res.Failure["reason"])
+	}
+}
+
+// TestRunForEachSerialFailureStops: with a serial loop, a failed
+// iteration stops further iterations and propagates as the outer
+// step's failure. The successful iterations before the failure are
+// still recorded in SubSteps.
+//
+// Use ${index} (an int captured as int) to drive the conditional
+// because shell-quoting of ${item} would change the literal-equality
+// check. ${index} renders as the number; `[ 1 -eq 1 ]` succeeds.
+func TestRunForEachSerialFailureStops(t *testing.T) {
+	c := &chain.Chain{
+		Name: "fanout-fail",
+		Steps: []chain.Step{
+			{ID: "list", Run: `echo '["a","b","c"]'`, Capture: "items"},
+			{
+				ID:      "per-item",
+				ForEach: "${items}",
+				Run:     `[ ${index} = 1 ] && exit 7; echo ${item}`,
+			},
+		},
+	}
+	res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{})
+	if res.Status != chain.StatusFailure {
+		t.Errorf("status: %s, failure: %+v", res.Status, res.Failure)
+	}
+	iter := res.Steps[1]
+	if len(iter.SubSteps) != 2 {
+		t.Errorf("expected first 2 iterations recorded; got %d", len(iter.SubSteps))
+	}
+}
+
+// TestRunForEachItemFromObjectArray: when the iterable is a list of
+// objects (not scalars), ${item.field} resolves into the object.
+// This is the common shape — gaia issue list returns objects, not
+// scalars — so it has to work cleanly.
+func TestRunForEachItemFromObjectArray(t *testing.T) {
+	c := &chain.Chain{
+		Name: "fanout-objects",
+		Steps: []chain.Step{
+			{
+				ID:      "list",
+				Run:     `echo '[{"number":1,"title":"x"},{"number":2,"title":"y"}]'`,
+				Capture: "issues",
+			},
+			{
+				ID:      "per-item",
+				ForEach: "${issues}",
+				Run:     `echo issue ${item.number}: ${item.title}`,
+			},
+		},
+	}
+	res, _ := chain.Run(context.Background(), c, nil, chain.RunOptions{})
+	if res.Status != chain.StatusSuccess {
+		t.Fatalf("status: %s, failure: %+v", res.Status, res.Failure)
+	}
+	iter := res.Steps[1]
+	wants := []string{"issue 1: x\n", "issue 2: y\n"}
+	for i, want := range wants {
+		if iter.SubSteps[i].Stdout != want {
+			t.Errorf("iter %d stdout: got %q want %q", i, iter.SubSteps[i].Stdout, want)
+		}
+	}
+}
