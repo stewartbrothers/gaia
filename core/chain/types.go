@@ -35,14 +35,48 @@
 // merge` (409 conflict / 405 review-required / policy violation)
 // and a new `gaia pr ci-wait` (timeout / flaky / failed), and
 // the canned `pr-create-and-land` chain.
-// Phase C (later): parallel steps, named chain composition,
-// for_each.
+//
+// Phase C (shipped, #149): parallel steps, for_each iteration,
+// named chain composition. Steps gain three new mutually-exclusive
+// modes alongside `run:`:
+//
+//   - `parallel:` runs a list of sub-steps concurrently with a
+//     bounded goroutine pool (max_concurrent, default 5). Yield
+//     in any sub-step yields the whole chain; resume picks up
+//     just the yielded sub-step.
+//   - `for_each:` iterates a captured list, running the step
+//     once per element with `${item}` and `${index}` bound.
+//     Combinable with parallel: true to fan out concurrently.
+//   - `chain:` invokes a saved chain by name, passing `vars:`,
+//     receiving its captures back as a single nested object.
+//     Recursion limit 5; cycle detection at parse time when
+//     possible, runtime otherwise.
 //
 // Local-tool boundary: gaia is a CLI + local MCP. Chain state is
 // per-developer-laptop disk-backed. No daemon. No cross-machine
 // resume. No multi-tenant routing. See #112's body for the full
 // design + scope discussion.
 package chain
+
+import (
+	"errors"
+
+	"gopkg.in/yaml.v3"
+)
+
+// errParallelShape is returned when `parallel:` decodes as something
+// other than a boolean scalar or a mapping (block form).
+var errParallelShape = errors.New("chain: parallel must be a boolean (for for_each fan-out) or a mapping with steps: [...]")
+
+// yamlNode aliases yaml.v3's Node so the Step / yamlParallelNode
+// UnmarshalYAML signatures match yaml.v3's interface without exposing
+// the yaml.v3 import in every callsite.
+type yamlNode = yaml.Node
+
+const (
+	yamlScalarNode  = yaml.ScalarNode
+	yamlMappingNode = yaml.MappingNode
+)
 
 // Chain is a parsed YAML chain definition. Validate() enforces the
 // invariants ParseFile / Parse can't catch syntactically (unique
@@ -100,9 +134,12 @@ type VarSpec struct {
 // a failure → on_failure / default failure envelope).
 //
 // Conditions reference the YieldCondition vocabulary below.
+//
+// Phase C: a step is exactly one of `run`, `parallel`, `for_each`,
+// or `chain`. Validate() rejects steps that combine these modes.
 type Step struct {
 	ID        string           `yaml:"id"`
-	Run       string           `yaml:"run"`
+	Run       string           `yaml:"run,omitempty"`
 	Capture   string           `yaml:"capture,omitempty"`
 	YieldOn   []YieldCondition `yaml:"yield_on,omitempty"`
 	AbortOn   []YieldCondition `yaml:"abort_on,omitempty"`
@@ -123,6 +160,62 @@ type Step struct {
 	// on_failure). Retries do NOT yield/abort between attempts —
 	// only the final outcome routes. Phase B-2.
 	Retry *RetrySpec `yaml:"retry,omitempty"`
+
+	// Parallel runs a fixed list of sub-steps concurrently. Mutually
+	// exclusive with Run / ForEach / Chain. Phase C.
+	Parallel *ParallelBlock `yaml:"parallel,omitempty"`
+
+	// ForEach iterates a captured list, running this step once per
+	// element. The reference (e.g. `${pr_numbers}`) must resolve to
+	// a JSON array; non-array values fail at run time. ${item} and
+	// ${index} are bound in each iteration's scope. Combine with
+	// `parallel: true` (boolean shorthand) to fan out concurrently.
+	// Phase C.
+	ForEach string `yaml:"for_each,omitempty"`
+
+	// ParallelIter is the boolean variant of `parallel:` used with
+	// for_each — `parallel: true` means "run iterations
+	// concurrently up to MaxConcurrent". Decoded via custom YAML
+	// handling so a step can either embed a parallel block (Run-mode
+	// fan-out) or set the boolean (for_each fan-out). Default false.
+	// Phase C.
+	ParallelIter bool `yaml:"-"`
+
+	// MaxConcurrent caps the goroutine count for parallel /
+	// for_each iteration. Default 5; <= 0 means "use default".
+	// Phase C.
+	MaxConcurrent int `yaml:"max_concurrent,omitempty"`
+
+	// FailFast: when true and any sub-step in a parallel block (or
+	// for_each iteration) fails, cancel siblings and propagate the
+	// failure immediately rather than waiting for all to finish.
+	// Default false (collect every sibling's outcome). Phase C.
+	FailFast bool `yaml:"fail_fast,omitempty"`
+
+	// Chain invokes a saved chain by name as a single step. Vars
+	// pass values into the inner chain; the inner chain's final
+	// captured map becomes this step's capture. Mutually exclusive
+	// with Run / Parallel / ForEach. Phase C.
+	Chain string `yaml:"chain,omitempty"`
+
+	// Vars is the var map passed into a sub-chain (Chain != "").
+	// Each value is substituted against the OUTER chain's scope
+	// before the inner chain starts, so `vars: {body: "${input}"}`
+	// pipes outer-scope values down. Ignored for non-chain steps.
+	// Phase C.
+	Vars map[string]string `yaml:"vars,omitempty"`
+}
+
+// ParallelBlock is the inline-list form of step.parallel: a fixed
+// roster of sub-steps that run concurrently. MaxConcurrent caps the
+// goroutine pool (default 5). FailFast cancels siblings on first
+// failure when true. Sub-steps are themselves Steps so they support
+// every leaf-mode the parser knows — `run`, `chain`, even nested
+// `for_each` (the runner enforces a recursion budget). Phase C.
+type ParallelBlock struct {
+	Steps         []Step `yaml:"steps"`
+	MaxConcurrent int    `yaml:"max_concurrent,omitempty"`
+	FailFast      bool   `yaml:"fail_fast,omitempty"`
 }
 
 // RetrySpec configures per-step retry. Sensible defaults: max 3,
@@ -287,3 +380,148 @@ const (
 	StepSkipped = "skipped"
 	StepYielded = "yielded"
 )
+
+// stepRaw mirrors Step but with `parallel` typed as a free-form node
+// so we can dispatch between the boolean (`parallel: true`) and
+// block (`parallel: {steps: [...]}`) variants ourselves. UnmarshalYAML
+// on Step decodes into stepRaw, then narrows.
+type stepRaw struct {
+	ID            string            `yaml:"id"`
+	Run           string            `yaml:"run,omitempty"`
+	Capture       string            `yaml:"capture,omitempty"`
+	YieldOn       []YieldCondition  `yaml:"yield_on,omitempty"`
+	AbortOn       []YieldCondition  `yaml:"abort_on,omitempty"`
+	OnFailure     *FailureAction    `yaml:"on_failure,omitempty"`
+	Timeout       string            `yaml:"timeout,omitempty"`
+	Retry         *RetrySpec        `yaml:"retry,omitempty"`
+	Parallel      *yamlParallelNode `yaml:"parallel,omitempty"`
+	ForEach       string            `yaml:"for_each,omitempty"`
+	MaxConcurrent int               `yaml:"max_concurrent,omitempty"`
+	FailFast      bool              `yaml:"fail_fast,omitempty"`
+	Chain         string            `yaml:"chain,omitempty"`
+	Vars          map[string]string `yaml:"vars,omitempty"`
+}
+
+// MarshalYAML serializes a Step back to YAML. Used by the chain state
+// file (yaml.v3 round-trips chains through marshal/unmarshal). The
+// shape mirrors the canonical step shape — `parallel:` as a block
+// when set, plus the boolean `parallel: true` flag for for_each
+// fan-out (we encode that as parallel_iter so it round-trips
+// distinguishable from the block form).
+func (s Step) MarshalYAML() (any, error) {
+	out := map[string]any{}
+	if s.ID != "" {
+		out["id"] = s.ID
+	}
+	if s.Run != "" {
+		out["run"] = s.Run
+	}
+	if s.Capture != "" {
+		out["capture"] = s.Capture
+	}
+	if len(s.YieldOn) > 0 {
+		out["yield_on"] = s.YieldOn
+	}
+	if len(s.AbortOn) > 0 {
+		out["abort_on"] = s.AbortOn
+	}
+	if s.OnFailure != nil {
+		out["on_failure"] = s.OnFailure
+	}
+	if s.Timeout != "" {
+		out["timeout"] = s.Timeout
+	}
+	if s.Retry != nil {
+		out["retry"] = s.Retry
+	}
+	if s.Parallel != nil {
+		out["parallel"] = s.Parallel
+	} else if s.ParallelIter {
+		// Round-trip the boolean variant as `parallel: true`. On
+		// reload, the YAML decoder dispatches it back into
+		// ParallelIter via UnmarshalYAML below.
+		out["parallel"] = true
+	}
+	if s.ForEach != "" {
+		out["for_each"] = s.ForEach
+	}
+	if s.MaxConcurrent > 0 {
+		out["max_concurrent"] = s.MaxConcurrent
+	}
+	if s.FailFast {
+		out["fail_fast"] = s.FailFast
+	}
+	if s.Chain != "" {
+		out["chain"] = s.Chain
+	}
+	if len(s.Vars) > 0 {
+		out["vars"] = s.Vars
+	}
+	return out, nil
+}
+
+// UnmarshalYAML implements custom decode logic so `parallel:` can be
+// either a boolean (`parallel: true` — for_each fan-out) or a block
+// (`parallel: {steps: [...]}` — fixed-roster fan-out). Other fields
+// pass through unchanged. Phase C.
+func (s *Step) UnmarshalYAML(value *yamlNode) error {
+	var raw stepRaw
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	s.ID = raw.ID
+	s.Run = raw.Run
+	s.Capture = raw.Capture
+	s.YieldOn = raw.YieldOn
+	s.AbortOn = raw.AbortOn
+	s.OnFailure = raw.OnFailure
+	s.Timeout = raw.Timeout
+	s.Retry = raw.Retry
+	s.ForEach = raw.ForEach
+	s.MaxConcurrent = raw.MaxConcurrent
+	s.FailFast = raw.FailFast
+	s.Chain = raw.Chain
+	s.Vars = raw.Vars
+	if raw.Parallel != nil {
+		if raw.Parallel.IsBool {
+			s.ParallelIter = raw.Parallel.Bool
+		} else if raw.Parallel.Block != nil {
+			s.Parallel = raw.Parallel.Block
+		}
+	}
+	return nil
+}
+
+// yamlParallelNode is the dispatch wrapper for `parallel:`. It accepts
+// either a boolean scalar or a mapping; the Step decoder consults
+// IsBool to decide which slot to populate.
+type yamlParallelNode struct {
+	IsBool bool
+	Bool   bool
+	Block  *ParallelBlock
+}
+
+// UnmarshalYAML decodes the `parallel:` field, handling both the
+// boolean shorthand (`parallel: true`) and the structured form
+// (`parallel: {steps: [...], max_concurrent: 5}`).
+func (n *yamlParallelNode) UnmarshalYAML(value *yamlNode) error {
+	// Scalar with boolean tag → treat as bool; mapping → block.
+	if value.Kind == yamlScalarNode && (value.Tag == "!!bool" || value.ShortTag() == "!!bool") {
+		var b bool
+		if err := value.Decode(&b); err != nil {
+			return err
+		}
+		n.IsBool = true
+		n.Bool = b
+		return nil
+	}
+	if value.Kind == yamlMappingNode {
+		var block ParallelBlock
+		if err := value.Decode(&block); err != nil {
+			return err
+		}
+		n.Block = &block
+		return nil
+	}
+	return errParallelShape
+}

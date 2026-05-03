@@ -226,6 +226,13 @@ func (c *Chain) Validate() error {
 // conditions, no overlap between yield_on and abort_on, well-formed
 // timeout + retry. The kind label distinguishes "step" vs "cleanup
 // step" in error messages so an operator can find the bad block.
+//
+// Phase C: a step picks exactly one of `run` (leaf), `parallel`
+// (block), `for_each` (iteration), `chain` (composition). When
+// for_each is set the per-iteration body is run OR chain (mutually
+// exclusive between themselves but combined with for_each).
+// Parallel sub-step IDs must be unique within their block but may
+// reuse outer step IDs.
 func validateSteps(steps []Step, kind string) error {
 	seen := map[string]struct{}{}
 	for i, s := range steps {
@@ -236,9 +243,76 @@ func validateSteps(steps []Step, kind string) error {
 			return fmt.Errorf("chain: %s %d: duplicate id %q", kind, i, s.ID)
 		}
 		seen[s.ID] = struct{}{}
-		if strings.TrimSpace(s.Run) == "" {
-			return fmt.Errorf("chain: %s %q: run is required", kind, s.ID)
+
+		// Phase C: pick exactly one mode. for_each combines with
+		// run / chain as the per-iteration body, so the count
+		// excludes for_each. When for_each is set, the modes
+		// check below tolerates 0 here and a dedicated for_each
+		// body check downstream surfaces the precise error
+		// ("for_each requires run or chain ...").
+		modes := 0
+		if strings.TrimSpace(s.Run) != "" {
+			modes++
 		}
+		if s.Parallel != nil {
+			modes++
+		}
+		if strings.TrimSpace(s.Chain) != "" {
+			modes++
+		}
+		if s.ForEach == "" {
+			if modes != 1 {
+				return fmt.Errorf("chain: %s %q: must declare exactly one of run / parallel / chain (got %d)", kind, s.ID, modes)
+			}
+		} else {
+			// for_each is set: modes must be 0 (handled by the
+			// dedicated check below) or exactly 1 of run/chain.
+			// Parallel block + for_each is forbidden (the
+			// dedicated check below catches that too).
+			if modes > 1 {
+				return fmt.Errorf("chain: %s %q: must declare exactly one of run / chain alongside for_each (got %d)", kind, s.ID, modes)
+			}
+		}
+
+		if s.Parallel != nil {
+			if len(s.Parallel.Steps) == 0 {
+				return fmt.Errorf("chain: %s %q: parallel block requires at least one sub-step", kind, s.ID)
+			}
+			if s.Parallel.MaxConcurrent < 0 {
+				return fmt.Errorf("chain: %s %q: parallel.max_concurrent must be ≥ 0 (got %d)", kind, s.ID, s.Parallel.MaxConcurrent)
+			}
+			// Recursively validate sub-steps. Sub-steps are full Steps;
+			// they may themselves be run / parallel / chain. for_each
+			// inside a parallel block is allowed (it's a leaf-mode
+			// per the Phase C grammar).
+			if err := validateSteps(s.Parallel.Steps, kind+".parallel"); err != nil {
+				return err
+			}
+		}
+
+		if s.ForEach != "" {
+			// for_each must pair with a body: run or chain.
+			if strings.TrimSpace(s.Run) == "" && strings.TrimSpace(s.Chain) == "" {
+				return fmt.Errorf("chain: %s %q: for_each requires run or chain as the per-iteration body", kind, s.ID)
+			}
+			if s.Parallel != nil {
+				return fmt.Errorf("chain: %s %q: for_each cannot combine with a parallel block (use `parallel: true` for concurrent iteration)", kind, s.ID)
+			}
+		}
+
+		if s.MaxConcurrent < 0 {
+			return fmt.Errorf("chain: %s %q: max_concurrent must be ≥ 0 (got %d)", kind, s.ID, s.MaxConcurrent)
+		}
+
+		if strings.TrimSpace(s.Chain) != "" && !isValidChainRef(s.Chain) {
+			return fmt.Errorf("chain: %s %q: chain reference %q must be a saved-chain name or path", kind, s.ID, s.Chain)
+		}
+
+		// Run-mode steps need a non-empty Run; the modes count above
+		// already guarantees one mode is picked, so a step with
+		// modes==0 is rejected. The remaining shape checks (capture,
+		// yield/abort, timeout, retry) apply uniformly.
+		_ = i
 		if s.Capture != "" {
 			if !isValidIdent(s.Capture) {
 				return fmt.Errorf("chain: %s %q: capture %q must be a simple identifier (letters/digits/underscore, no dots)", kind, s.ID, s.Capture)
@@ -289,6 +363,30 @@ func validateSteps(steps []Step, kind string) error {
 		}
 	}
 	return nil
+}
+
+// isValidChainRef accepts a saved-chain identifier or a literal
+// path. We allow letters, digits, hyphens, underscores, plus the
+// usual path characters (`/`, `\`, `.`) so a step can name a saved
+// chain ("pr-create-and-land") or point at a file ("./pipelines/foo.yaml").
+// The actual file existence check is deferred to runtime — parse
+// time is just shape validation.
+func isValidChainRef(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case (r >= 'a' && r <= 'z'),
+			(r >= 'A' && r <= 'Z'),
+			(r >= '0' && r <= '9'),
+			r == '-' || r == '_' || r == '.' || r == '/' || r == '\\':
+			// ok
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // isValidIdent returns true for [A-Za-z_][A-Za-z0-9_]* — the same

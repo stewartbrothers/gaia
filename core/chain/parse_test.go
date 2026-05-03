@@ -98,12 +98,15 @@ steps:
 }
 
 func TestParseFailsOnEmptyStepRun(t *testing.T) {
+	// Phase C: a step with no run / parallel / chain trips the
+	// "exactly one mode" error rather than a "run is required" one.
+	// That message is still actionable — it lists the modes.
 	yaml := `name: norun
 steps:
   - id: x
 `
-	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "run") {
-		t.Errorf("expected missing-run error, got %v", err)
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Errorf("expected exactly-one-mode error, got %v", err)
 	}
 }
 
@@ -445,5 +448,204 @@ func TestResolveAcceptsBareIdentifierWithExtension(t *testing.T) {
 func TestResolveEmptyName(t *testing.T) {
 	if _, err := chain.Resolve("", chain.ResolveOptions{}); err == nil {
 		t.Fatal("expected error on empty name")
+	}
+}
+
+// --- Phase C / #149: parallel block + for_each + chain composition ---
+
+func TestParseAcceptsParallelBlock(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: fan-out
+    parallel:
+      max_concurrent: 3
+      fail_fast: true
+      steps:
+        - id: a
+          run: echo a
+        - id: b
+          run: echo b
+        - id: c
+          run: echo c
+`
+	c, err := chain.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if c.Steps[0].Parallel == nil {
+		t.Fatal("Parallel block not decoded")
+	}
+	if c.Steps[0].Parallel.MaxConcurrent != 3 {
+		t.Errorf("max_concurrent: %d", c.Steps[0].Parallel.MaxConcurrent)
+	}
+	if !c.Steps[0].Parallel.FailFast {
+		t.Errorf("fail_fast not set")
+	}
+	if len(c.Steps[0].Parallel.Steps) != 3 {
+		t.Errorf("substeps: %d", len(c.Steps[0].Parallel.Steps))
+	}
+	if c.Steps[0].Parallel.Steps[0].ID != "a" {
+		t.Errorf("first substep id: %q", c.Steps[0].Parallel.Steps[0].ID)
+	}
+}
+
+func TestParseRejectsStepWithRunAndParallel(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: x
+    run: echo hi
+    parallel:
+      steps:
+        - id: a
+          run: echo a
+`
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Errorf("expected mutual-exclusion error; got %v", err)
+	}
+}
+
+func TestParseRejectsStepWithNoMode(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: x
+`
+	// id but no run / parallel / for_each / chain.
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Errorf("expected mode-required error; got %v", err)
+	}
+}
+
+func TestParseRejectsParallelWithNoSubSteps(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: x
+    parallel:
+      steps: []
+`
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "parallel") {
+		t.Errorf("expected empty-parallel error; got %v", err)
+	}
+}
+
+func TestParseAcceptsForEachStep(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: list
+    run: gaia issue list --format json
+    capture: items
+  - id: comment
+    for_each: ${items}
+    run: gaia issue comment ${item} --body hi
+    capture: result
+`
+	c, err := chain.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if c.Steps[1].ForEach != "${items}" {
+		t.Errorf("for_each: %q", c.Steps[1].ForEach)
+	}
+}
+
+func TestParseAcceptsForEachWithParallelBoolean(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: list
+    run: echo
+    capture: items
+  - id: fan
+    for_each: ${items}
+    parallel: true
+    max_concurrent: 4
+    run: echo ${item}
+`
+	c, err := chain.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !c.Steps[1].ParallelIter {
+		t.Error("ParallelIter should be true")
+	}
+	if c.Steps[1].MaxConcurrent != 4 {
+		t.Errorf("max_concurrent: %d", c.Steps[1].MaxConcurrent)
+	}
+}
+
+func TestParseRejectsForEachWithoutRunOrChain(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: x
+    for_each: ${items}
+`
+	// for_each must be paired with run: or chain: as the per-iteration body.
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "for_each") {
+		t.Errorf("expected for_each-needs-body error; got %v", err)
+	}
+}
+
+func TestParseAcceptsChainComposition(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: open-and-land
+    chain: pr-create-and-land
+    vars:
+      title: feat thing
+      head: feature/x
+    capture: landed
+`
+	c, err := chain.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if c.Steps[0].Chain != "pr-create-and-land" {
+		t.Errorf("chain ref: %q", c.Steps[0].Chain)
+	}
+	if c.Steps[0].Vars["title"] != "feat thing" {
+		t.Errorf("vars.title: %q", c.Steps[0].Vars["title"])
+	}
+}
+
+func TestParseRejectsChainAndRunCombined(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: x
+    run: echo hi
+    chain: other
+`
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Errorf("expected mutual-exclusion error; got %v", err)
+	}
+}
+
+func TestParseRejectsChainAndForEachCombined(t *testing.T) {
+	// chain + for_each is allowed (per-iteration sub-chain dispatch);
+	// but chain + parallel-block is not (parallel needs sub-step roster).
+	yaml := `name: c
+steps:
+  - id: x
+    chain: inner
+    parallel:
+      steps:
+        - id: a
+          run: echo
+`
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Errorf("expected mutual-exclusion error; got %v", err)
+	}
+}
+
+func TestParseDuplicateSubStepIDInParallel(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: fan
+    parallel:
+      steps:
+        - id: dup
+          run: echo a
+        - id: dup
+          run: echo b
+`
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Errorf("expected duplicate-id error in parallel; got %v", err)
 	}
 }
