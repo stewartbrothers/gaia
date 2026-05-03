@@ -1,0 +1,21 @@
+description: |
+  Minimal chain that runs to completion. Exercises the
+  happy-path: ResolveVars + executeSteps + StepOK + envelope
+  rendering with --format json.
+
+chain_yaml: |
+  name: minimal-success
+  steps:
+    - id: greet
+      run: echo hello world
+    - id: tail
+      run: echo done
+
+stages:
+  - description: gaia chain run --chain-file <chainfile>
+    args:
+      - chain
+      - run
+      - --chain-file
+      - ${chainfile}
+    exit_code: 0
