@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"sync/atomic"
 	"testing"
@@ -130,5 +132,142 @@ func TestPackagesDeleteWithConfirm(t *testing.T) {
 	}
 	if atomic.LoadInt32(&deleteHits) != 1 {
 		t.Errorf("confirm=true must DELETE; got %d", deleteHits)
+	}
+}
+
+// TestPackagesUploadToolBase64 covers the typical MCP binary path:
+// the agent base64-encodes the artifact, the tool decodes and PUTs.
+func TestPackagesUploadToolBase64(t *testing.T) {
+	var (
+		gotPath string
+		gotBody []byte
+	)
+	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			gotPath = r.URL.Path
+			gotBody, _ = io.ReadAll(r.Body)
+			w.WriteHeader(201)
+		}
+	})
+	pinBuilder(t, p)
+
+	payload := []byte("BINARY-PAYLOAD-VIA-BASE64")
+	res, err := callTool(context.Background(), handlePackagesUpload, map[string]any{
+		"owner":       "o",
+		"type":        "generic",
+		"name":        "myapp",
+		"version":     "1.2.0",
+		"filename":    "release.tar.gz",
+		"body_base64": base64.StdEncoding.EncodeToString(payload),
+	})
+	if err != nil || res.IsError {
+		t.Fatalf("err=%v res=%s", err, resultText(t, res))
+	}
+	if gotPath != "/packages/o/generic/myapp/1.2.0/release.tar.gz" {
+		t.Errorf("path: got %q", gotPath)
+	}
+	if string(gotBody) != string(payload) {
+		t.Errorf("body: got %q", string(gotBody))
+	}
+}
+
+// TestPackagesUploadToolBodyText covers the convenience path for
+// text-shaped artifacts (the body is passed inline, no base64).
+func TestPackagesUploadToolBodyText(t *testing.T) {
+	var gotBody []byte
+	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			gotBody, _ = io.ReadAll(r.Body)
+			w.WriteHeader(201)
+		}
+	})
+	pinBuilder(t, p)
+
+	res, err := callTool(context.Background(), handlePackagesUpload, map[string]any{
+		"owner":    "o",
+		"type":     "generic",
+		"name":     "x",
+		"version":  "1",
+		"filename": "f.txt",
+		"body":     "TEXT-PAYLOAD",
+	})
+	if err != nil || res.IsError {
+		t.Fatalf("err=%v res=%s", err, resultText(t, res))
+	}
+	if string(gotBody) != "TEXT-PAYLOAD" {
+		t.Errorf("body: got %q", string(gotBody))
+	}
+}
+
+// TestPackagesUploadToolRequiresBody asserts the empty-body case
+// surfaces a usage error rather than uploading zero bytes silently.
+func TestPackagesUploadToolRequiresBody(t *testing.T) {
+	p, _ := fakeForgeProvider(t, func(_ http.ResponseWriter, _ *http.Request) {
+		t.Error("missing body must not reach the upstream")
+	})
+	pinBuilder(t, p)
+
+	res, _ := callTool(context.Background(), handlePackagesUpload, map[string]any{
+		"owner":    "o",
+		"type":     "generic",
+		"name":     "x",
+		"version":  "1",
+		"filename": "f",
+	})
+	if !res.IsError {
+		t.Error("missing body must error")
+	}
+}
+
+// TestPackagesUploadToolRejectsBothBodies pins the mutually-exclusive
+// rule so callers don't get an ambiguous "which one wins" surprise.
+func TestPackagesUploadToolRejectsBothBodies(t *testing.T) {
+	p, _ := fakeForgeProvider(t, func(_ http.ResponseWriter, _ *http.Request) {
+		t.Error("conflicting body args must not reach the upstream")
+	})
+	pinBuilder(t, p)
+
+	res, _ := callTool(context.Background(), handlePackagesUpload, map[string]any{
+		"owner":       "o",
+		"type":        "generic",
+		"name":        "x",
+		"version":     "1",
+		"filename":    "f",
+		"body":        "a",
+		"body_base64": base64.StdEncoding.EncodeToString([]byte("b")),
+	})
+	if !res.IsError {
+		t.Error("both body and body_base64 must error")
+	}
+}
+
+// TestPackagesUploadToolRequiresFileName: filename empty surfaces a
+// usage error.
+func TestPackagesUploadToolRequiresFileName(t *testing.T) {
+	res, _ := callTool(context.Background(), handlePackagesUpload, map[string]any{
+		"owner":   "o",
+		"type":    "generic",
+		"name":    "x",
+		"version": "1",
+		"body":    "data",
+	})
+	if !res.IsError {
+		t.Error("missing filename must error")
+	}
+}
+
+// TestPackagesUploadToolBadBase64 surfaces a decode error rather than
+// uploading garbage.
+func TestPackagesUploadToolBadBase64(t *testing.T) {
+	res, _ := callTool(context.Background(), handlePackagesUpload, map[string]any{
+		"owner":       "o",
+		"type":        "generic",
+		"name":        "x",
+		"version":     "1",
+		"filename":    "f",
+		"body_base64": "this-is-not-base64!!!",
+	})
+	if !res.IsError {
+		t.Error("malformed base64 must error")
 	}
 }
