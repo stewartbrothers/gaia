@@ -55,12 +55,18 @@ type Client struct {
 
 // Options configure a Client. BaseURL defaults to api.github.com when
 // empty; Token is required for authenticated calls.
+//
+// WikiRemoteFunc is a test hook: when non-nil, the wiki cache uses its
+// return value as the clone/push URL instead of computing one from the
+// production GitHub host. Production callers leave it nil; tests inject
+// a `file://` path to a local bare repo so the suite stays offline.
 type Options struct {
-	BaseURL    string
-	Token      string
-	UserAgent  string
-	HTTPClient *http.Client
-	RetryWait  time.Duration
+	BaseURL        string
+	Token          string
+	UserAgent      string
+	HTTPClient     *http.Client
+	RetryWait      time.Duration
+	WikiRemoteFunc func(owner, repo string) string
 }
 
 // New constructs a Client with sensible defaults.
