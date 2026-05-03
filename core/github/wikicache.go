@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -97,17 +98,80 @@ func defaultWikiCacheRoot() (string, error) {
 	return filepath.Join(home, ".cache", "gaia", "wikis"), nil
 }
 
+// pathSegmentRegexp is the strict allowlist for cache path segments.
+// owner / repo / slug names that don't match are rejected at the
+// boundary by validatePathSegment so a hostile caller can't inject
+// `..` (path traversal) or path separators.
+//
+// GitHub's own owner / repo grammar is `[A-Za-z0-9._-]+` with the
+// hidden-name and dot-only forms forbidden (`.` and `..`). Wiki page
+// slugs follow the same grammar — GitHub turns `Setup Guide` into
+// `Setup-Guide` on disk and rejects characters outside this set in
+// the web UI. We mirror that here.
+var pathSegmentRegexp = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+
+// validatePathSegment rejects any string that isn't safe to use as a
+// single path segment under the wiki cache root. Layered checks: the
+// regex is the canonical allowlist; the explicit `.`, `..`,
+// hidden-prefix, and embedded-separator checks make the intent
+// readable in the error messages and serve as belt-and-braces
+// against future regex tweaks.
+//
+// Callers MUST run this on every owner / repo / slug they take from
+// outside (CLI flags, MCP client args, chain captures) before
+// passing the value to filepath.Join inside the cache root.
+func validatePathSegment(s string) error {
+	if s == "" {
+		return exitcode.Errorf(exitcode.Usage, "path segment is empty")
+	}
+	if s == "." || s == ".." {
+		return exitcode.Errorf(exitcode.Usage, "path segment %q is forbidden", s)
+	}
+	if strings.ContainsAny(s, "/\\\x00") {
+		return exitcode.Errorf(exitcode.Usage, "path segment %q contains forbidden separator or null byte", s)
+	}
+	if strings.HasPrefix(s, ".") {
+		return exitcode.Errorf(exitcode.Usage, "path segment %q starts with `.` (hidden-name traversal forbidden)", s)
+	}
+	if !pathSegmentRegexp.MatchString(s) {
+		return exitcode.Errorf(exitcode.Usage, "path segment %q contains characters outside [A-Za-z0-9_.-]", s)
+	}
+	return nil
+}
+
+// safeJoin appends segment to base via filepath.Join after validating
+// segment. As defence-in-depth, it then verifies the resulting path
+// is still under base (using filepath.Rel) so a future
+// validatePathSegment bug can't silently grant traversal.
+func safeJoin(base, segment string) (string, error) {
+	if err := validatePathSegment(segment); err != nil {
+		return "", err
+	}
+	joined := filepath.Join(base, segment)
+	rel, err := filepath.Rel(base, joined)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") || strings.ContainsRune(rel, filepath.Separator) {
+		return "", exitcode.Errorf(exitcode.Usage, "path segment %q resolves outside cache base", segment)
+	}
+	return joined, nil
+}
+
 // ensureClone returns the path to a checked-out wiki clone for
 // {owner}/{repo}, cloning if absent and refreshing if older than the
 // TTL. Callers may safely modify the returned working tree — the
 // next ensureClone call observes the modifications until a refresh
 // fast-forwards them away.
 func (c *wikiCache) ensureClone(ctx context.Context, owner, repo, remote string) (string, error) {
-	ownerDir := filepath.Join(c.root, owner)
+	ownerDir, err := safeJoin(c.root, owner)
+	if err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(ownerDir, 0o700); err != nil {
 		return "", exitcode.Wrap(err, exitcode.Generic, "create wiki cache owner dir")
 	}
-	repoDir := filepath.Join(ownerDir, repo)
+	repoDir, err := safeJoin(ownerDir, repo)
+	if err != nil {
+		return "", err
+	}
 	gitDir := filepath.Join(repoDir, ".git")
 
 	if _, err := os.Stat(gitDir); err != nil {

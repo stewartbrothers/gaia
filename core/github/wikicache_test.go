@@ -281,6 +281,101 @@ func TestWikiRemoteURLAllowsCustomHost(t *testing.T) {
 	}
 }
 
+// Path-segment validation regression tests (#136).
+//
+// owner / repo / slug each come from caller-controlled input (CLI
+// flag or MCP client) and are joined into a filesystem path inside
+// the cache root. validatePathSegment is the boundary check: it
+// rejects empty strings, `.` / `..`, anything containing a path
+// separator, hidden-file prefixes, and anything that doesn't match
+// the strict allowlist. Tests below exercise each rejected shape +
+// confirm valid names still pass.
+
+func TestValidatePathSegmentRejectsTraversal(t *testing.T) {
+	cases := []string{
+		"",
+		".",
+		"..",
+		"../etc",
+		"foo/bar",
+		"foo\\bar",
+		".hidden",
+		"name\x00with-null",
+		"name with space",
+		"a$b",
+		"a*b",
+	}
+	for _, in := range cases {
+		t.Run(in, func(t *testing.T) {
+			if err := validatePathSegment(in); err == nil {
+				t.Errorf("validatePathSegment(%q) = nil; want error", in)
+			}
+		})
+	}
+}
+
+func TestValidatePathSegmentAcceptsSafeNames(t *testing.T) {
+	cases := []string{
+		"alice",
+		"My-Repo",
+		"my_repo.0",
+		"Home",
+		"a",
+		"A1B2C3",
+		"Setup-Guide",
+		"page.with.dots",
+	}
+	for _, in := range cases {
+		t.Run(in, func(t *testing.T) {
+			if err := validatePathSegment(in); err != nil {
+				t.Errorf("validatePathSegment(%q) = %v; want nil", in, err)
+			}
+		})
+	}
+}
+
+func TestEnsureCloneRejectsTraversalOwner(t *testing.T) {
+	cache := t.TempDir()
+	c := &wikiCache{root: cache, ttl: time.Minute}
+	_, err := c.ensureClone(context.Background(), "../../../etc", "repo", "ignored")
+	if err == nil {
+		t.Fatal("expected error on traversal owner")
+	}
+	// Defence-in-depth: also assert nothing was created outside the
+	// cache root. Walk the cache root's PARENT and ensure the only
+	// thing inside is `cache` itself (the t.TempDir we configured).
+	parent := filepath.Dir(cache)
+	entries, _ := os.ReadDir(parent)
+	for _, e := range entries {
+		full := filepath.Join(parent, e.Name())
+		if full == cache {
+			continue
+		}
+		// `etc` would only exist if the owner segment escaped.
+		if e.Name() == "etc" || strings.HasPrefix(e.Name(), "..") {
+			t.Errorf("traversal escaped: created %s", full)
+		}
+	}
+}
+
+func TestEnsureCloneRejectsTraversalRepo(t *testing.T) {
+	cache := t.TempDir()
+	c := &wikiCache{root: cache, ttl: time.Minute}
+	_, err := c.ensureClone(context.Background(), "alice", ".git", "ignored")
+	if err == nil {
+		t.Fatal("expected error on suspicious repo segment")
+	}
+}
+
+func TestEnsureCloneRejectsTraversalRepoDotDot(t *testing.T) {
+	cache := t.TempDir()
+	c := &wikiCache{root: cache, ttl: time.Minute}
+	_, err := c.ensureClone(context.Background(), "alice", "..", "ignored")
+	if err == nil {
+		t.Fatal("expected error on `..` repo segment")
+	}
+}
+
 // pushFreshCommit clones the bare repo to a temp dir, replaces a file's
 // content, commits, and pushes back. Helper used by tests that want
 // upstream to advance between cache calls. Importantly, the helper
