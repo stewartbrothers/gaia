@@ -1,0 +1,25 @@
+description: |
+  `gaia release view v9.9.9` against a non-existent tag returns
+  NotFound(3).
+
+mocks:
+  - method: GET
+    path: /repos/o/r/releases/tags/v9.9.9
+    status: 404
+    body: |
+      {"message": "Not Found"}
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - release
+      - view
+      - v9.9.9
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 3

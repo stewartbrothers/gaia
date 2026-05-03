@@ -1,0 +1,52 @@
+description: |
+  `gaia release publish v1.0.0 --asset ...` get-or-creates the
+  release, then uploads each asset in turn. Scenario tag doesn't
+  exist yet (404 on the GET) so the publish path falls through to
+  CreateRelease, then POSTs each asset multipart.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/releases/tags/v1.0.0
+    status: 404
+    body: |
+      {"message": "Not Found"}
+  - method: POST
+    path: /repos/o/r/releases
+    status: 201
+    body: |
+      {
+        "id": 50,
+        "tag_name": "v1.0.0",
+        "name": "v1.0.0",
+        "body": "release notes",
+        "draft": false,
+        "prerelease": false,
+        "author": {"login": "alice"},
+        "target_commitish": "main",
+        "created_at": "2026-04-20T00:00:00Z",
+        "published_at": "2026-04-20T00:00:00Z"
+      }
+  - method: POST
+    path: /repos/o/r/releases/50/assets
+    status: 201
+    body: |
+      {"id": 1, "name": "asset"}
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - release
+      - publish
+      - v1.0.0
+      - --asset
+      - ${scenarioDir}/assets/gaia-darwin-amd64.tar.gz
+      - --asset
+      - ${scenarioDir}/assets/gaia-linux-amd64.tar.gz
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

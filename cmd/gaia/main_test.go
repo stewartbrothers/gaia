@@ -125,11 +125,15 @@ type mockRule struct {
 //
 // Argv tokens supported:
 //
-//	${tempdir}    — scenario tempdir (HOME also points here).
-//	${chainfile}  — path to the written ChainYAML.
-//	${stateDir}   — XDG_STATE_HOME for the scenario.
-//	${apiURL}     — base URL of the in-process fake forge server
-//	                (only present when scenario.Mocks is set).
+//	${tempdir}     — scenario tempdir (HOME also points here).
+//	${chainfile}   — path to the written ChainYAML.
+//	${stateDir}    — XDG_STATE_HOME for the scenario.
+//	${scenarioDir} — absolute path to the scenario's testdata
+//	                 directory (so fixture files committed alongside
+//	                 scenario.yaml can be referenced as
+//	                 ${scenarioDir}/assets/foo.tar.gz).
+//	${apiURL}      — base URL of the in-process fake forge server
+//	                 (only present when scenario.Mocks is set).
 //	${token:N}    — resume_token mined from stage N's stdout
 //	                envelope. Lets a "resume" stage reference
 //	                what a prior "run" stage yielded.
@@ -329,6 +333,7 @@ func runStage(
 			s = strings.ReplaceAll(s, "${tempdir}", tempDir)
 			s = strings.ReplaceAll(s, "${chainfile}", chainFile)
 			s = strings.ReplaceAll(s, "${stateDir}", stateDir)
+			s = strings.ReplaceAll(s, "${scenarioDir}", scenarioDir)
 			if apiURL != "" {
 				s = strings.ReplaceAll(s, "${apiURL}", apiURL)
 			}
@@ -390,6 +395,10 @@ func runStage(
 		if apiURL != "" {
 			got = strings.ReplaceAll(got, apiURL, "<APIURL>")
 		}
+		// Scenario-dir paths can leak through `gaia release publish`'s
+		// `assets[].path` field (an absolute filesystem path). Normalize
+		// the prefix so the golden stays committable.
+		got = strings.ReplaceAll(got, scenarioDir, "<SCENARIODIR>")
 		if *updateGolden {
 			if err := os.WriteFile(goldenPath, []byte(got), 0o644); err != nil {
 				t.Fatalf("update golden %s: %v", goldenPath, err)

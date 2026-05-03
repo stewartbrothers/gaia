@@ -1,0 +1,43 @@
+description: |
+  `gaia release delete v0.2.0 --confirm` is a two-step: GET to
+  resolve ID, then DELETE /releases/{id}.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/releases/tags/v0.2.0
+    status: 200
+    body: |
+      {
+        "id": 9,
+        "tag_name": "v0.2.0",
+        "name": "v0.2.0",
+        "body": "",
+        "draft": false,
+        "prerelease": false,
+        "author": {"login": "alice"},
+        "target_commitish": "main",
+        "created_at": "2026-04-10T00:00:00Z",
+        "published_at": "2026-04-10T00:00:00Z"
+      }
+  - method: DELETE
+    path: /repos/o/r/releases/9
+    status: 204
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - release
+      - delete
+      - v0.2.0
+      - --confirm
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: DELETE
+      path: /repos/o/r/releases/9
