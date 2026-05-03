@@ -98,17 +98,35 @@ release notes that the workflow attaches to the Forgejo release.
 
 ### 3. Tag
 
-After the release-prep PR merges:
+After the release-prep PR merges, the tag step is wrapped in a
+helper script that runs the same gate CI runs and pushes the tag:
 
 ```bash
 git checkout main
 git pull --ff-only
+./scripts/cut-release.sh vX.Y.Z
+```
+
+The script:
+
+1. Refuses to cut a release if the working tree is dirty, you're
+   not on `main`, or local `main` differs from `origin/main`.
+2. Refuses if `CHANGELOG.md` doesn't have a `[X.Y.Z]` section
+   (i.e. the release-prep PR step was skipped).
+3. Refuses if the tag already exists locally or on the remote.
+4. Runs `make fmt vet lint cover build` — same gate CI runs.
+5. Creates an annotated tag (`-a`) and pushes to `origin`.
+6. Prints a follow-up checklist + the Forgejo Actions URL.
+
+Manual fallback (if the script blocks for a reason you've decided
+to override):
+
+```bash
 git tag -a vX.Y.Z -m "release: vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
-The annotated tag (`-a`) carries metadata git describes from. The
-push triggers the `.forgejo/workflows/release.yml` workflow.
+Either path triggers the `.forgejo/workflows/release.yml` workflow.
 
 ### 4. Workflow runs
 
@@ -116,20 +134,42 @@ push triggers the `.forgejo/workflows/release.yml` workflow.
 
 1. `actions/checkout@v4` with `fetch-depth: 0` (goreleaser needs
    full history for changelog).
-2. `actions/setup-go@v5` with Go 1.23.
-3. Shell-installs `goreleaser/v2@v2.4.5` (third-party actions
+2. **Verify the tag points at `main`.** Forgejo Actions doesn't
+   gate which branch a tag was created on, so the workflow walks
+   the commit graph and refuses to release from a feature-branch
+   tag. Caught early so the goreleaser run doesn't burn 5 minutes
+   on artifacts that can't ship.
+3. `actions/setup-go@v5` with Go 1.23.
+4. Shell-installs `goreleaser/v2@v2.4.5` (third-party actions
    don't mirror to code.forgejo.org, so we install via `go install`).
-4. Runs `goreleaser release --clean --skip=publish`.
-5. Builds `bin/gaia` from this tag's source.
-6. Runs `gaia release publish "${TAG}" --asset 'dist/*' --notes-from CHANGELOG.md`,
+5. Runs `goreleaser release --clean --skip=publish`. The `brews:`
+   block (#49) writes a commit bumping `Formula/gaia.rb` to the
+   new tag's url + sha256 and pushes it to `main` (gated on
+   `GORELEASER_TAP_DEPLOY_KEY` being configured).
+6. Builds `bin/gaia` from this tag's source.
+7. Runs `gaia release publish "${TAG}" --asset 'dist/*' --notes-from CHANGELOG.md`,
    which creates the release record (Forgejo doesn't auto-create
    on tag push) and uploads each asset.
+8. **If `GITHUB_MIRROR_SSH_KEY` is configured (#47)**, pushes the
+   tag to `github.com/stewartbrothers/gaia` so the `go install …@vX.Y.Z`
+   path works against the public mirror and the Homebrew tap URL
+   form against `https://github.com/stewartbrothers/gaia` returns the
+   formula at the tagged commit.
+
+Each step that can fail (goreleaser, build, publish, mirror push)
+captures stderr to a file and re-emits it as `::error::` annotations,
+so the workflow run page surfaces the specific failure rather than
+burying it in a wall of output.
 
 If the workflow fails after the tag is pushed, the tag stays — the
 release may be empty or partial. Re-running the workflow (Forgejo
-UI → Actions → re-run) re-attaches missing assets since
-`gaia release publish` is idempotent on the create step. Local
-recovery:
+UI → Actions → re-run) is **idempotent**:
+
+- `gaia release publish` no-ops on existing release records.
+- The Homebrew formula bump is a regular `git push`, also idempotent.
+- The mirror tag push converges on canonical state.
+
+Local recovery for the rare case the workflow can't be re-run:
 
 ```bash
 git checkout vX.Y.Z
@@ -147,16 +187,35 @@ Equivalent to what the workflow runs, just from your laptop.
 
 ### 5. Verify
 
+Run through the checklist:
+
+- [ ] **Forgejo release page** shows `vX.Y.Z` with all six archives
+      (linux/darwin/windows × amd64/arm64) plus the checksums file.
+      Download one and run `./gaia version` — should report the new
+      tag.
+- [ ] **`Formula/gaia.rb` on `main`** has been bumped to the new
+      tag's url + sha256 (the `release: bump Homebrew formula to
+      vX.Y.Z` commit, signed by `gaia-release-bot`). If
+      `GORELEASER_TAP_DEPLOY_KEY` was unset, this step silently
+      skips — re-run after configuring the secret.
+- [ ] **GitHub mirror** has the new tag visible at
+      `github.com/stewartbrothers/gaia/tags`. If `GITHUB_MIRROR_SSH_KEY`
+      was unset, the workflow logs a notice and exits 0; the
+      Forgejo release stands alone until the mirror is set up.
+- [ ] **`brew upgrade gaia`** on a tap-installed Mac picks up the
+      new version: `brew upgrade gaia && gaia version`. (Skip if
+      the formula bump didn't run.)
+- [ ] **`go install …@vX.Y.Z`** resolves cleanly:
+      `go install github.com/stewartbrothers/gaia/cmd/gaia@vX.Y.Z`.
+
+Manual binary check (any platform):
+
 ```bash
-# From the Forgejo release page, download a binary for your platform:
 curl -fsSLO "https://github.com/stewartbrothers/gaia/releases/download/vX.Y.Z/gaia_vX.Y.Z_linux_x86_64.tar.gz"
 tar -xzf gaia_vX.Y.Z_linux_x86_64.tar.gz
 ./gaia version
 # → reports vX.Y.Z + abbreviated commit + go version
 ```
-
-If `gaia version` reports the right tag, the build pipeline is
-working end-to-end.
 
 ### 6. Post-release
 
@@ -190,18 +249,39 @@ stable. If we need that flag set explicitly, extend the workflow's
 upload step to PATCH the release with `prerelease: true` after
 attaching assets. (Filed as a future TODO; not blocking.)
 
-## Required Forgejo secret
+## Required Forgejo secrets
 
-`FORGEJO_RELEASE_TOKEN` — repo-scoped token with `write:repository`
-scope. Set via Repository Settings → Secrets → Add Secret.
+The release workflow uses up to three secrets, all configured via
+Repository Settings → Secrets → Add Secret:
 
-Without this the workflow's upload step 401s and the release ends
-up empty. Workflow logs point at the fix.
+- **`FORGEJO_RELEASE_TOKEN`** — repo-scoped Forgejo token with
+  `write:repository` scope. Used by `gaia release publish` to
+  create the release record and upload artifacts. **Required.**
+  Without it the upload step 401s and the release ends up empty.
+
+- **`GORELEASER_TAP_DEPLOY_KEY`** — SSH private key matching a
+  deploy key with **write** access on this repo. Used by the
+  `brews:` block (#49) to push the `Formula/gaia.rb` bump to
+  `main` after each tagged release. **Optional**; if absent, the
+  Homebrew formula doesn't get auto-updated and tap users stay
+  on the previous tag until the next manual update.
+
+- **`GITHUB_MIRROR_SSH_KEY`** — SSH private key matching a deploy
+  key with **write** access on `github.com/stewartbrothers/gaia` (the
+  public mirror). Used by both `mirror.yml` (#47) and the release
+  workflow's mirror-push step. **Optional**; if absent, the
+  GitHub mirror doesn't track new tags. Forgejo release is the
+  canonical artifact host either way.
+
+The optional secrets gate independently — configure the ones you
+need, leave the others unset. Workflow logs surface a `notice`
+line when a step is skipped due to a missing secret so you can
+tell at a glance which subsystems are wired.
 
 ## Container image publishing
 
 Not yet wired into the release workflow — local-build only via the
-project's `Dockerfile`. Push-to-registry (GHCR or ttl.sh or your own
-registry) tracked under the broader Distribution epic (#5,
-specifically #50). When that lands, this doc will gain a "container
-image" section parallel to the binaries section above.
+project's `Dockerfile`. Push-to-registry (GHCR, the Forgejo package
+registry, or ttl.sh) is a future TODO; when that lands, this doc
+will gain a "container image" section parallel to the binaries
+section above.

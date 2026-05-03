@@ -1,17 +1,68 @@
 # Installing gaia
 
-Three install paths, ordered roughly from "most users" to "fewest":
+Four install paths, ordered roughly from "most users" to "fewest":
 
-1. [**Pre-built binary**](#pre-built-binary) — fastest path. One
-   download, two binaries, works on any of the supported
-   platforms.
-2. [**`go install`**](#go-install) — for Go developers who already
+1. [**Homebrew**](#homebrew) (macOS + Linux): one-line install via
+   `brew install`, formula auto-updated on every release.
+2. [**Pre-built binary**](#pre-built-binary) — fastest path on any
+   supported platform. One download, two binaries.
+3. [**`go install`**](#go-install) — for Go developers who already
    have the toolchain set up. Always builds from latest `main`.
-3. [**Build from source**](#build-from-source) — for contributors
+4. [**Build from source**](#build-from-source) — for contributors
    or anyone running a fork.
 
 The container image (for `gaia-mcp --http` deployments) is a
 separate concern — see [`deploy-mcp.md`](deploy-mcp.md).
+
+## Homebrew
+
+`gaia` ships a Homebrew formula in this repo, served as a tap
+straight off the canonical Forgejo instance:
+
+```bash
+brew tap Gerwood/gaia https://github.com/stewartbrothers/gaia
+brew install gaia
+```
+
+The `https://...` URL form is required because Homebrew defaults
+to `github.com/<owner>/homebrew-<name>` — the explicit URL points
+the tap at the Forgejo repo instead. Both `gaia` and `gaia-mcp`
+land on `$PATH` after the install.
+
+After the [GitHub mirror](mirroring.md) is live, the tap also
+works against the mirror:
+
+```bash
+brew tap Gerwood/gaia https://github.com/stewartbrothers/gaia
+brew install gaia
+```
+
+(Same formula; the `Formula/gaia.rb` file is committed to both
+sides via the mirror push.)
+
+To upgrade:
+
+```bash
+brew update
+brew upgrade gaia
+```
+
+The formula is **auto-updated on every release tag** by the
+release workflow (see [`../RELEASING.md`](../RELEASING.md)) — when
+a `v*` tag is pushed, goreleaser rewrites `Formula/gaia.rb` with
+the new archive URL and `sha256`, then commits to `main`. So
+`brew upgrade gaia` always pulls the latest tagged release.
+
+### Verifying the install
+
+```bash
+gaia version
+gaia-mcp --help
+```
+
+Both binaries ship in the formula's `install` step; if either is
+missing on `$PATH`, something went wrong with the tap (file an
+issue on the Forgejo repo).
 
 ## Pre-built binary
 
@@ -152,8 +203,9 @@ $ gaia whoami
 {"data": {"login": "alice", "host": "your-forge.example.com"}}
 ```
 
-## What about Homebrew / apt / Scoop?
+## What about apt / Scoop?
 
-Tracked under epic #5 (issue #49). Until those land, the install
-paths above cover every supported platform. Homebrew formula will
-likely come first; apt/scoop only if there's demand.
+Homebrew is supported (above). `apt` and Scoop tracked under epic
+#5 (issue #49) — only if there's demand. Until those land, the
+pre-built binary covers Debian/Ubuntu and Windows; Homebrew
+covers macOS and Linux for users who already have it.
