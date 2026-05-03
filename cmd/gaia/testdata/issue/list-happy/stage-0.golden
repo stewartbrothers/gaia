@@ -2,36 +2,36 @@
   "schema_version": "1.0",
   "data": [
     {
+      "number": 1,
+      "title": {
+        "_trust": "external",
+        "_value": "first thing"
+      },
+      "state": "open",
       "author": {
         "login": "alice"
       },
-      "created_at": "2026-04-01T00:00:00Z",
       "labels": [
         {
           "name": "bug"
         }
       ],
-      "number": 1,
-      "state": "open",
-      "title": {
-        "_trust": "external",
-        "_value": "first thing"
-      },
+      "created_at": "2026-04-01T00:00:00Z",
       "updated_at": "2026-04-02T00:00:00Z"
     },
     {
-      "author": {
-        "login": "bob"
-      },
-      "closed_at": "2026-04-04T00:00:00Z",
-      "created_at": "2026-04-03T00:00:00Z",
       "number": 2,
-      "state": "closed",
       "title": {
         "_trust": "external",
         "_value": "second thing"
       },
-      "updated_at": "2026-04-04T00:00:00Z"
+      "state": "closed",
+      "author": {
+        "login": "bob"
+      },
+      "created_at": "2026-04-03T00:00:00Z",
+      "updated_at": "2026-04-04T00:00:00Z",
+      "closed_at": "2026-04-04T00:00:00Z"
     }
   ]
 }

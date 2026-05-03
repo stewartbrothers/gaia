@@ -1,23 +1,23 @@
 {
   "schema_version": "1.0",
   "data": {
-    "author": {
-      "login": "alice"
+    "id": 9,
+    "tag_name": "v0.2.1",
+    "name": {
+      "_trust": "external",
+      "_value": "renamed"
     },
     "body": {
       "_trust": "external",
       "_value": "old body"
     },
-    "created_at": "2026-04-10T00:00:00Z",
     "draft": false,
-    "id": 9,
-    "name": {
-      "_trust": "external",
-      "_value": "renamed"
-    },
     "prerelease": false,
-    "published_at": "2026-04-10T00:00:00Z",
-    "tag_name": "v0.2.1",
-    "target_commitish": "main"
+    "author": {
+      "login": "alice"
+    },
+    "target_commitish": "main",
+    "created_at": "2026-04-10T00:00:00Z",
+    "published_at": "2026-04-10T00:00:00Z"
   }
 }

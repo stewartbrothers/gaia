@@ -10,6 +10,13 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+### Fixed
+
+- Trust-tagged JSON output now preserves struct-declaration field order
+  (was alphabetical since #146). Closes #148; restores the historical
+  wire-shape ordering that pre-#146 callers relied on for canonical
+  serialisation / hash-keyed caching.
+
 ### Security
 
 - Chain runner: substituted variable values are now shell-quoted
@@ -56,12 +63,15 @@ reserved for breaking changes only.
   update their decode shapes — see the in-tree test pattern in
   `internal/cli/issue_test.go` (`trustExternal` helper).
 - The marshal walker that applies the trust tag emits objects via a
-  reflection pass, which means `data.*` field order in JSON output
-  is now alphabetical rather than struct-declaration order. Object
-  keys in JSON are unordered per RFC 8259, so consumers that key by
-  name still work; only consumers that rely on byte-identical
-  serialisation (canonical JSON for signing, deterministic caching
-  by hash) need to re-baseline.
+  reflection pass. Initially this changed `data.*` field order from
+  struct-declaration order to alphabetical (object keys in JSON are
+  unordered per RFC 8259, so consumers that key by name still work);
+  consumers that rely on byte-identical serialisation needed to
+  re-baseline. **Resolved in #148** — the walker now preserves
+  struct-declaration order via an ordered-object marshaler, so the
+  historical wire ordering is back. This second drift is the final
+  one; consumers that re-baselined for the alphabetical interim
+  should re-baseline once more against declaration order.
 
 Tracking issues for upcoming work:
 - **Phase 4** (#4): SQLite cache (#42), indexed search (#43), webhook

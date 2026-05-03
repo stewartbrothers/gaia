@@ -2,21 +2,21 @@
   "schema_version": "1.0",
   "data": [
     {
-      "last_commit": "abc1234",
-      "path": "Home",
       "title": {
         "_trust": "external",
         "_value": "Home"
       },
+      "path": "Home",
+      "last_commit": "abc1234",
       "updated_at": "2026-04-01T00:00:00Z"
     },
     {
-      "last_commit": "def5678",
-      "path": "Setup",
       "title": {
         "_trust": "external",
         "_value": "Setup"
       },
+      "path": "Setup",
+      "last_commit": "def5678",
       "updated_at": "2026-04-02T00:00:00Z"
     }
   ]
