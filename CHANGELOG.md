@@ -10,6 +10,54 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+### Security
+
+- Chain runner: substituted variable values are now shell-quoted
+  before insertion into the run command (#135). Hostile vars /
+  captures can no longer inject shell metacharacters. Existing
+  chains that wrapped `${var}` references in their own `"..."` or
+  used `${var}` as multi-token shell input need to drop the manual
+  quoting (the shell-quoting is now automatic) or wrap with
+  `sh -c "${var}"` in their own step. The bundled chain scenarios
+  and `docs/chain.md` example are updated.
+- GitHub wiki cache: validates owner/repo/slug against an allowlist
+  (`[A-Za-z0-9_.-]+` minus `.`, `..`, hidden-name prefixes,
+  separators, null bytes) before joining into filesystem paths
+  (#136); path-traversal segments are rejected with a clear error.
+- GitHub wiki cache: git auth header now travels via `GIT_CONFIG_*`
+  env vars instead of in the URL passed to argv (#137); tokens are
+  no longer visible in `ps`, `/proc/<pid>/cmdline`, or process
+  accounting. Requires git 2.31+ for `GIT_CONFIG_COUNT` support.
+  `runGit` error formatting also scrubs both the joined argv and
+  combined output through `scrubToken` as defence in depth.
+- MCP tool envelopes / CLI output: fields containing user-provided
+  forge content (issue bodies, PR bodies, comments, wiki content,
+  release bodies, titles, search snippets, etc.) now carry
+  `_trust: "external"` markers in JSON and `<<<EXTERNAL` /
+  `EXTERNAL>>>` delimiters in pretty output. `--no-external-markers`
+  opts out of the pretty wrapping for tooling that processes raw
+  output; JSON output is always tagged. Mitigates indirect prompt
+  injection (#146). See `docs/agent-guide.md` "Threat model: tool
+  results carry untrusted content" for the recommended
+  system-prompt snippet.
+- gaia-mcp `/readyz` no longer drains the host's forge rate limit
+  on unauthenticated requests (#139). The endpoint is now
+  liveness-equivalent (200 "ready" while the listener is bound,
+  no upstream call). Operators who need to monitor forge
+  reachability point their probe at `/readyz/upstream` instead;
+  that endpoint requires a bearer (mounted inside
+  `passThroughAuthMiddleware`) and uses the supplied bearer as
+  the forge token, so each caller spends only their own quota
+  rather than the host's.
+
+### Wire-shape change (consumers must update)
+
+- Trust-tagged fields (above) now serialise as
+  `{"_trust":"external","_value":"<text>"}` rather than as a bare
+  string. Consumers decoding gaia JSON into typed structs need to
+  update their decode shapes — see the in-tree test pattern in
+  `internal/cli/issue_test.go` (`trustExternal` helper).
+
 Tracking issues for upcoming work:
 - **Phase 4** (#4): SQLite cache (#42), indexed search (#43), webhook
   helpers (#85, #44), CI runs/logs (#45), NDJSON streaming (#46).
