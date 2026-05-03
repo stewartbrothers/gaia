@@ -17,6 +17,14 @@ func TestMapExitCodeKnown(t *testing.T) {
 		{exitcode.RateLimit, chain.YieldRateLimited},
 		{exitcode.Generic, chain.YieldUnknownError},
 		{exitcode.Network, chain.YieldUnknownError}, // mapped to unknown for retry-policy alignment
+		// Phase B-3 codes — structured outcomes from gaia pr merge /
+		// gaia pr ci-wait route into the chain condition vocabulary
+		// directly (no stderr parsing).
+		{exitcode.MergeConflict, chain.YieldMergeConflict},
+		{exitcode.ReviewRequired, chain.YieldReviewRequired},
+		{exitcode.PolicyViolation, chain.YieldPolicyViolation},
+		{exitcode.CheckFailed, chain.YieldCheckFailed},
+		{exitcode.CheckFlaky, chain.YieldCheckFlaky},
 	}
 	for _, tc := range cases {
 		if got := chain.MapExitCode(tc.exit); got != tc.want {

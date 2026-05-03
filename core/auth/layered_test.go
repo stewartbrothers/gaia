@@ -69,6 +69,25 @@ func TestProjectRootReturnsEmptyOutsideRepo(t *testing.T) {
 	}
 }
 
+// TestProjectRootHandlesWorktreeGitFile pins the worktree-friendly
+// behaviour: linked worktrees and submodules use a `.git` FILE
+// (containing `gitdir: …`) rather than a directory. Treating only
+// the directory shape as a project root silently breaks gaia inside
+// a worktree (e.g. saved-chain resolution can't find .gaia/chains).
+func TestProjectRootHandlesWorktreeGitFile(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".git"), []byte("gitdir: /elsewhere/.git/worktrees/feat\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(root, "nested")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := auth.ProjectRoot(sub); got != root {
+		t.Errorf("worktree .git file should still resolve project root: got %q, want %q", got, root)
+	}
+}
+
 func TestProjectPath(t *testing.T) {
 	got := auth.ProjectPath("/some/repo")
 	want := filepath.Join("/some/repo", ".gaia", "credentials.yaml")

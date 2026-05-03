@@ -1,0 +1,60 @@
+name: pr-create-and-land
+description: |
+  Open a PR, wait for CI checks to settle, and merge once they're
+  green. Yields on transient conditions (rate limit, flaky checks,
+  ci-wait timeout, merge conflict requiring a rebase, branch-
+  protection review-required) so the agent can fix mid-flight and
+  resume; aborts on hard failures (non-flaky CI failure) so we
+  never silently retry a real test break.
+
+  Phase B-3 / #112. The whole flow is one envelope: previously this
+  was 3+ separate gaia calls (create → poll loop → merge) with the
+  agent reading every intermediate response.
+
+vars:
+  title:
+    required: true
+  body:
+    required: true
+  head:
+    required: true
+  base:
+    default: main
+  merge_method:
+    default: squash
+  ci_timeout:
+    default: 30m
+
+steps:
+  - id: open
+    run: gaia pr create --title "${title}" --body "${body}" --head "${head}" --base "${base}"
+    capture: pr
+    on_failure:
+      return:
+        reason: pr-create-failed
+        error: "${error.message}"
+
+  - id: wait-checks
+    run: gaia pr ci-wait ${pr.number} --timeout ${ci_timeout}
+    yield_on:
+      - rate_limited
+      - check_flaky
+      - timeout
+    abort_on:
+      - check_failed
+    retry:
+      max: 3
+      delay: 30s
+      backoff: exponential
+
+  - id: merge
+    run: gaia pr merge ${pr.number} --method ${merge_method}
+    yield_on:
+      - merge_conflict
+      - review_required
+      - rate_limited
+    on_failure:
+      return:
+        reason: merge-failed
+        pr_number: "${pr.number}"
+        error: "${error.message}"

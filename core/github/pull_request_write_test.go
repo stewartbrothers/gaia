@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/provider"
 )
 
@@ -97,6 +98,64 @@ func TestMergePullRequestGHDefaults(t *testing.T) {
 	_ = p.MergePullRequest(context.Background(), "o", "r", 7, provider.MergePullRequestOptions{})
 	if !strings.Contains(string(captured), `"merge_method":"merge"`) {
 		t.Errorf("default method: %s", captured)
+	}
+}
+
+// TestMergePullRequestGHConflict verifies GitHub's 409 response surfaces
+// as exitcode.MergeConflict so chains can yield on `merge_conflict`.
+func TestMergePullRequestGHConflict(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(409)
+		_, _ = w.Write([]byte(`{"message":"Head branch was modified"}`))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	err := p.MergePullRequest(context.Background(), "o", "r", 7, provider.MergePullRequestOptions{})
+	if err == nil {
+		t.Fatal("expected error on 409")
+	}
+	if got := exitcode.Of(err); got != exitcode.MergeConflict {
+		t.Errorf("409 → exit code: got %d, want MergeConflict (%d)", got, exitcode.MergeConflict)
+	}
+}
+
+// TestMergePullRequestGHReviewRequired verifies GitHub's 405 with a
+// review-related message surfaces as exitcode.ReviewRequired.
+func TestMergePullRequestGHReviewRequired(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(405)
+		_, _ = w.Write([]byte(`{"message":"At least 1 approving review is required by reviewers with write access."}`))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	err := p.MergePullRequest(context.Background(), "o", "r", 7, provider.MergePullRequestOptions{})
+	if err == nil {
+		t.Fatal("expected error on 405")
+	}
+	if got := exitcode.Of(err); got != exitcode.ReviewRequired {
+		t.Errorf("405+review → exit code: got %d, want ReviewRequired (%d)", got, exitcode.ReviewRequired)
+	}
+}
+
+// TestMergePullRequestGHPolicyViolation verifies GitHub's 405 with a
+// non-review body (status check missing, locked branch, etc.) surfaces
+// as exitcode.PolicyViolation.
+func TestMergePullRequestGHPolicyViolation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(405)
+		_, _ = w.Write([]byte(`{"message":"Required status check 'ci/test' is expected."}`))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	err := p.MergePullRequest(context.Background(), "o", "r", 7, provider.MergePullRequestOptions{})
+	if err == nil {
+		t.Fatal("expected error on 405")
+	}
+	if got := exitcode.Of(err); got != exitcode.PolicyViolation {
+		t.Errorf("405+policy → exit code: got %d, want PolicyViolation (%d)", got, exitcode.PolicyViolation)
 	}
 }
 

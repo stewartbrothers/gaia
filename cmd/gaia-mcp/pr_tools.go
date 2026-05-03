@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"regexp"
+	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/provider"
+	"github.com/stewartbrothers/gaia/core/types"
 )
 
 func registerPRTools(s *server.MCPServer) {
@@ -75,6 +79,15 @@ func registerPRTools(s *server.MCPServer) {
 		mcp.WithString("message"),
 		mcp.WithBoolean("delete_branch"),
 	), ctxBoundHandler(handlePRMerge))
+
+	s.AddTool(mcp.NewTool("gaia_pr_ci_wait",
+		mcp.WithDescription(`Block until a PR's CI checks settle. Returns the final CISummary plus a structured outcome: "success" | "check_failed" | "check_flaky". Mirrors `+"`gaia pr ci-wait`"+` exit semantics for chain-style routing inside an MCP session.`),
+		mcp.WithString("repo", mcp.Required()),
+		mcp.WithNumber("number", mcp.Required()),
+		mcp.WithString("timeout", mcp.Description("any time.ParseDuration value, e.g. '30m'. Default 30m. On expiry → outcome=check_flaky")),
+		mcp.WithString("interval", mcp.Description("poll interval, default 10s")),
+		mcp.WithArray("flaky_markers", mcp.Description("additional case-insensitive substrings marking a check name as flaky"), mcp.Items(map[string]any{"type": "string"})),
+	), ctxBoundHandler(handlePRCIWait))
 
 	s.AddTool(mcp.NewTool("gaia_pr_review",
 		mcp.WithDescription("Submit a PR review. State maps to event (APPROVED/REQUEST_CHANGES/COMMENT). Inline comments are an array of {path, line, body}."),
@@ -300,6 +313,158 @@ func handlePRReview(ctx context.Context, args map[string]any) (*mcp.CallToolResu
 		return toolError(err), nil
 	}
 	return toolResult(map[string]any{"submitted": true, "number": n, "event": event}, nil), nil
+}
+
+// handlePRCIWait implements `gaia_pr_ci_wait`. Mirrors the CLI
+// command's behaviour (poll commit-status until settled or timeout,
+// classify into success/CheckFailed/CheckFlaky) and surfaces the
+// result as an envelope shape:
+//
+//	{
+//	  "summary": <CISummary>,
+//	  "outcome": "success" | "check_failed" | "check_flaky",
+//	  "exit_code": 0 | 10 | 11
+//	}
+//
+// MCP doesn't have a native "exit code" concept, so we surface it
+// inside the envelope where chain-style consumers can branch on it.
+//
+// Phase B-3 / #112.
+func handlePRCIWait(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
+	owner, repo, err := repoFromArgs(args)
+	if err != nil {
+		return toolError(err), nil
+	}
+	n := optInt(args, "number")
+	if n <= 0 {
+		return toolError(exitcode.Errorf(exitcode.Usage, "number is required")), nil
+	}
+	timeout, err := parseMCPDuration(optString(args, "timeout"), 30*time.Minute)
+	if err != nil {
+		return toolError(err), nil
+	}
+	interval, err := parseMCPDuration(optString(args, "interval"), 10*time.Second)
+	if err != nil {
+		return toolError(err), nil
+	}
+	flakyMarkers := optStringSlice(args, "flaky_markers")
+
+	p, err := build(ctx)
+	if err != nil {
+		return toolError(err), nil
+	}
+
+	summary, classifyErr := mcpWaitForCI(ctx, p, owner, repo, n, timeout, interval, flakyMarkers)
+	out := map[string]any{
+		"summary":   summary,
+		"exit_code": exitcode.Of(classifyErr),
+	}
+	switch exitcode.Of(classifyErr) {
+	case exitcode.OK:
+		out["outcome"] = "success"
+	case exitcode.CheckFailed:
+		out["outcome"] = "check_failed"
+	case exitcode.CheckFlaky:
+		out["outcome"] = "check_flaky"
+	default:
+		// Provider error during polling — surface as MCP tool error
+		// so the agent sees the actionable detail. A separate code
+		// path because this isn't a chain-routable outcome.
+		return toolError(classifyErr), nil
+	}
+	return toolResult(out, nil), nil
+}
+
+func parseMCPDuration(raw string, def time.Duration) (time.Duration, error) {
+	if raw == "" {
+		return def, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, exitcode.Errorf(exitcode.Usage, "invalid duration %q: %v", raw, err)
+	}
+	return d, nil
+}
+
+// mcpFlakyMarkerRE mirrors the regex in internal/cli/pr_ci_wait.go;
+// duplicated here so the MCP tool doesn't need to import the cli
+// package (which would tangle dependencies).
+var mcpFlakyMarkerRE = regexp.MustCompile(`(?i)(\bflaky\b|\battempt\s*\d+\b|\bretry\s*\d*\b|\bretries\b|\brerun\b)`)
+
+func mcpWaitForCI(ctx context.Context, p provider.Provider, owner, repo string, n int, timeout, interval time.Duration, flakyMarkers []string) (*types.CISummary, error) {
+	deadline := time.Now().Add(timeout)
+	var last *types.CISummary
+	for {
+		pr, err := p.GetPullRequest(ctx, owner, repo, n, provider.GetPullRequestOptions{WithCISummary: true})
+		if err != nil {
+			return last, err
+		}
+		last = pr.CISummary
+		if last == nil {
+			return &types.CISummary{State: "success"}, nil
+		}
+		if last.State != "pending" {
+			return last, mcpClassifyChecks(last, flakyMarkers)
+		}
+		if time.Now().After(deadline) {
+			return last, exitcode.Errorf(exitcode.CheckFlaky,
+				"ci-wait: timed out after %s with %d/%d still pending",
+				timeout, last.Pending, last.Total)
+		}
+		select {
+		case <-ctx.Done():
+			return last, ctx.Err()
+		case <-time.After(interval):
+		}
+	}
+}
+
+func mcpClassifyChecks(s *types.CISummary, flakyMarkers []string) error {
+	if s.Failed == 0 {
+		return nil
+	}
+	flakyOnly := true
+	failingNames := make([]string, 0, s.Failed)
+	for _, c := range s.Checks {
+		if !mcpIsFailureState(c.State) {
+			continue
+		}
+		failingNames = append(failingNames, c.Name)
+		if !mcpIsFlakyName(c.Name, flakyMarkers) {
+			flakyOnly = false
+		}
+	}
+	if len(failingNames) == 0 {
+		return exitcode.Errorf(exitcode.CheckFailed,
+			"ci-wait: %d check(s) failed (no per-check names available)", s.Failed)
+	}
+	if flakyOnly {
+		return exitcode.Errorf(exitcode.CheckFlaky,
+			"ci-wait: %d flaky-named check(s) failed: %s", s.Failed, strings.Join(failingNames, ", "))
+	}
+	return exitcode.Errorf(exitcode.CheckFailed,
+		"ci-wait: %d check(s) failed: %s", s.Failed, strings.Join(failingNames, ", "))
+}
+
+func mcpIsFailureState(state string) bool {
+	switch strings.ToLower(state) {
+	case "failure", "error", "timed_out", "cancelled", "action_required", "stale":
+		return true
+	}
+	return false
+}
+
+func mcpIsFlakyName(name string, flakyMarkers []string) bool {
+	if mcpFlakyMarkerRE.MatchString(name) {
+		return true
+	}
+	low := strings.ToLower(name)
+	for _, m := range flakyMarkers {
+		if strings.Contains(low, strings.ToLower(m)) {
+			return true
+		}
+	}
+	return false
 }
 
 func stateToEvent(state string) (string, error) {

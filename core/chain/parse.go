@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -36,6 +37,152 @@ func ParseFile(path string) (*Chain, error) {
 		return nil, fmt.Errorf("chain %s: %w", path, err)
 	}
 	return c, nil
+}
+
+// ResolveOptions tunes Resolve's lookup. ProjectRoot, when non-empty,
+// gates the project-local `.gaia/chains/<name>.yaml` candidate;
+// callers pass the discovered git/project root or "" to skip that
+// layer entirely. GlobalDir is the home-rooted fallback (typically
+// `~/.config/gaia/chains/`); empty disables the global layer.
+type ResolveOptions struct {
+	ProjectRoot string
+	GlobalDir   string
+}
+
+// ResolveError carries the resolution attempts that failed when
+// Resolve can't find a chain. The CLI surfaces the attempts so the
+// operator sees exactly which paths were tried (project, global,
+// literal-path).
+type ResolveError struct {
+	Name     string
+	Attempts []string
+}
+
+func (e *ResolveError) Error() string {
+	if len(e.Attempts) == 0 {
+		return fmt.Sprintf("chain %q: not found", e.Name)
+	}
+	return fmt.Sprintf("chain %q: not found (tried: %s)",
+		e.Name, strings.Join(e.Attempts, ", "))
+}
+
+// Resolve maps a name-or-path argument to a chain YAML file path.
+//
+// Lookup order (first existing wins):
+//
+//  1. Literal path (contains a path separator OR has a YAML extension):
+//     used as-is. Lets `gaia chain run --chain-file ./pipeline.yaml`
+//     and `gaia chain run ./pipeline.yaml` keep working.
+//  2. Project-local: `${ProjectRoot}/.gaia/chains/<name>.yaml`
+//     (skipped when ProjectRoot is empty).
+//  3. Global: `${GlobalDir}/<name>.yaml` (typically
+//     `~/.config/gaia/chains/<name>.yaml`; skipped when empty).
+//
+// Bare identifiers fall through to the project + global lookup;
+// anything that "looks like a path" (separator or .yml/.yaml suffix)
+// short-circuits to layer 1. None-found returns *ResolveError with
+// the attempted paths populated.
+func Resolve(name string, opts ResolveOptions) (string, error) {
+	if name == "" {
+		return "", errors.New("chain: name is required")
+	}
+
+	// Layer 1: literal path. Heuristic — if the argument contains a
+	// path separator or a YAML extension, it's a path, not a name.
+	if looksLikePath(name) {
+		if _, err := os.Stat(name); err == nil {
+			return name, nil
+		}
+		// Not found at the literal path — fall through to the
+		// saved-chain layers, but record the attempt.
+		attempts := []string{name}
+		if p := tryLayer(name, opts.ProjectRoot, ".gaia/chains"); p != "" {
+			return p, nil
+		}
+		if opts.ProjectRoot != "" {
+			attempts = append(attempts, filepath.Join(opts.ProjectRoot, ".gaia", "chains", appendYAMLExt(name)))
+		}
+		if p := tryGlobal(name, opts.GlobalDir); p != "" {
+			return p, nil
+		}
+		if opts.GlobalDir != "" {
+			attempts = append(attempts, filepath.Join(opts.GlobalDir, appendYAMLExt(name)))
+		}
+		return "", &ResolveError{Name: name, Attempts: attempts}
+	}
+
+	// Layer 2: project-local.
+	var attempts []string
+	if opts.ProjectRoot != "" {
+		candidate := filepath.Join(opts.ProjectRoot, ".gaia", "chains", appendYAMLExt(name))
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+		attempts = append(attempts, candidate)
+	}
+
+	// Layer 3: global.
+	if opts.GlobalDir != "" {
+		candidate := filepath.Join(opts.GlobalDir, appendYAMLExt(name))
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+		attempts = append(attempts, candidate)
+	}
+
+	return "", &ResolveError{Name: name, Attempts: attempts}
+}
+
+// looksLikePath reports whether name is best treated as a literal
+// filesystem path rather than a saved-chain identifier. Returns true
+// for absolute paths, paths containing a separator, or names ending
+// in .yaml / .yml.
+func looksLikePath(name string) bool {
+	if filepath.IsAbs(name) {
+		return true
+	}
+	if strings.ContainsAny(name, `/\`) {
+		return true
+	}
+	low := strings.ToLower(name)
+	return strings.HasSuffix(low, ".yaml") || strings.HasSuffix(low, ".yml")
+}
+
+// tryLayer probes <root>/<dir>/<name>.yaml; returns the path when
+// it exists, "" otherwise. root == "" means "skip this layer".
+func tryLayer(name, root, dir string) string {
+	if root == "" {
+		return ""
+	}
+	candidate := filepath.Join(root, dir, appendYAMLExt(name))
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate
+	}
+	return ""
+}
+
+// tryGlobal probes <globalDir>/<name>.yaml. globalDir == "" means
+// "skip the global layer".
+func tryGlobal(name, globalDir string) string {
+	if globalDir == "" {
+		return ""
+	}
+	candidate := filepath.Join(globalDir, appendYAMLExt(name))
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate
+	}
+	return ""
+}
+
+// appendYAMLExt adds .yaml when name has no .yaml/.yml suffix.
+// Bare identifiers like "pr-create-and-land" become
+// "pr-create-and-land.yaml"; explicit "ci.yaml" stays as-is.
+func appendYAMLExt(name string) string {
+	low := strings.ToLower(name)
+	if strings.HasSuffix(low, ".yaml") || strings.HasSuffix(low, ".yml") {
+		return name
+	}
+	return name + ".yaml"
 }
 
 // Validate enforces structural rules ParseFile / Parse can't catch

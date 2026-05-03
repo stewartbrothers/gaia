@@ -46,7 +46,8 @@ type apiCommitStatus struct {
 }
 
 type apiStatusItem struct {
-	State string `json:"state"`
+	State   string `json:"state"`
+	Context string `json:"context,omitempty"` // Forgejo's name for the check
 }
 
 func (a *apiPullRequest) toType() types.PullRequest {
@@ -92,6 +93,9 @@ func (s *apiCommitStatus) toCISummary() *types.CISummary {
 			out.Failed++
 		case "pending":
 			out.Pending++
+		}
+		if st.Context != "" {
+			out.Checks = append(out.Checks, types.CheckItem{Name: st.Context, State: st.State})
 		}
 	}
 	return out

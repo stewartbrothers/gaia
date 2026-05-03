@@ -1,6 +1,9 @@
 package chain_test
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -334,5 +337,113 @@ cleanup:
 `
 	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "duplicate") {
 		t.Errorf("expected duplicate-id error in cleanup; got %v", err)
+	}
+}
+
+// --- B-3 / #112: saved-chain resolution ---
+
+func TestResolveLiteralPath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "literal.yaml")
+	if err := os.WriteFile(path, []byte("name: x\nsteps:\n  - id: a\n    run: echo a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := chain.Resolve(path, chain.ResolveOptions{})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got != path {
+		t.Errorf("got %q want %q", got, path)
+	}
+}
+
+func TestResolveProjectLocalWins(t *testing.T) {
+	root := t.TempDir()
+	chains := filepath.Join(root, ".gaia", "chains")
+	if err := os.MkdirAll(chains, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(chains, "ship.yaml")
+	if err := os.WriteFile(want, []byte("name: ship\nsteps:\n  - id: a\n    run: echo a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Also seed the global location with a different file — project must win.
+	globalDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(globalDir, "ship.yaml"), []byte("name: global\nsteps:\n  - id: b\n    run: echo b\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := chain.Resolve("ship", chain.ResolveOptions{ProjectRoot: root, GlobalDir: globalDir})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got != want {
+		t.Errorf("project-local should win: got %q want %q", got, want)
+	}
+}
+
+func TestResolveGlobalFallback(t *testing.T) {
+	root := t.TempDir() // no .gaia/chains here
+	globalDir := t.TempDir()
+	want := filepath.Join(globalDir, "deploy.yaml")
+	if err := os.WriteFile(want, []byte("name: deploy\nsteps:\n  - id: a\n    run: echo a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := chain.Resolve("deploy", chain.ResolveOptions{ProjectRoot: root, GlobalDir: globalDir})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestResolveNotFoundListsAttempts(t *testing.T) {
+	root := t.TempDir()
+	globalDir := t.TempDir()
+	_, err := chain.Resolve("missing", chain.ResolveOptions{ProjectRoot: root, GlobalDir: globalDir})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var rerr *chain.ResolveError
+	if !errors.As(err, &rerr) {
+		t.Fatalf("expected *chain.ResolveError, got %T", err)
+	}
+	if len(rerr.Attempts) != 2 {
+		t.Errorf("expected 2 attempts (project + global); got %d: %v", len(rerr.Attempts), rerr.Attempts)
+	}
+	if !strings.Contains(err.Error(), "missing") {
+		t.Errorf("error message should mention name: %q", err.Error())
+	}
+}
+
+func TestResolveAcceptsBareIdentifierWithExtension(t *testing.T) {
+	// "ship.yaml" passed as the name should still match the saved
+	// chain at .gaia/chains/ship.yaml — but the looksLikePath
+	// heuristic short-circuits to literal-path interpretation, so
+	// it's tried as a path first. With a relative path that doesn't
+	// exist in cwd, the fallback project lookup kicks in.
+	root := t.TempDir()
+	chains := filepath.Join(root, ".gaia", "chains")
+	if err := os.MkdirAll(chains, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(chains, "ship.yaml")
+	if err := os.WriteFile(want, []byte("name: ship\nsteps:\n  - id: a\n    run: echo a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := chain.Resolve("ship.yaml", chain.ResolveOptions{ProjectRoot: root})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestResolveEmptyName(t *testing.T) {
+	if _, err := chain.Resolve("", chain.ResolveOptions{}); err == nil {
+		t.Fatal("expected error on empty name")
 	}
 }

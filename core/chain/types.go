@@ -28,10 +28,13 @@
 //     (check_failed, merge_conflict, ...) ship later as the
 //     underlying gaia commands gain structured exits.
 //
-// Phase B-2 (later): per-step timeout + retry, chain-level
+// Phase B-2 (shipped): per-step timeout + retry, chain-level
 // default_yield_on, cleanup: block.
-// Phase B-3 (later): saved chains in .gaia/chains/, dogfood
-// pr-create-and-land canned chain.
+// Phase B-3 (shipped, this commit family): saved chains in
+// .gaia/chains/<name>.yaml, structured exit codes for `gaia pr
+// merge` (409 conflict / 405 review-required / policy violation)
+// and a new `gaia pr ci-wait` (timeout / flaky / failed), and
+// the canned `pr-create-and-land` chain.
 // Phase C (later): parallel steps, named chain composition,
 // for_each.
 //
@@ -150,14 +153,18 @@ type RetrySpec struct {
 //	timeout          — step exceeded its own timeout, or chain hit
 //	                   total_timeout while waiting on this step.
 //	unknown_error    — exitcode.Generic (1) or any unmapped non-zero.
-//	check_failed     — non-flaky CI check failed (Phase B-3+, requires
-//	                   gaia pr ci-wait support).
-//	check_flaky      — flaky/retryable CI check failed (Phase B-3+).
-//	merge_conflict   — gaia pr merge got 409 (Phase B-3+, requires
-//	                   structured exits from gaia pr merge).
-//	review_required  — protected branch needs human review (Phase B-3+).
-//	policy_violation — write op blocked by branch protection or similar
-//	                   (Phase B-3+).
+//	check_failed     — exitcode.CheckFailed (10): a non-flaky CI check
+//	                   failed during `gaia pr ci-wait`.
+//	check_flaky      — exitcode.CheckFlaky (11): `gaia pr ci-wait`
+//	                   timed out while pending OR saw only flaky /
+//	                   retryable failures.
+//	merge_conflict   — exitcode.MergeConflict (7): `gaia pr merge`
+//	                   got 409 (head ref diverged from base).
+//	review_required  — exitcode.ReviewRequired (8): protected branch
+//	                   needs human review approvals.
+//	policy_violation — exitcode.PolicyViolation (9): write op blocked
+//	                   by branch protection for another reason (e.g.
+//	                   missing required status check).
 type YieldCondition string
 
 // Vocabulary constants. Keep lower_snake_case to match YAML idiom

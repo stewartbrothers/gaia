@@ -3,11 +3,14 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/stewartbrothers/gaia/core/auth"
 	"github.com/stewartbrothers/gaia/core/chain"
 	"github.com/stewartbrothers/gaia/core/exitcode"
 )
@@ -67,27 +70,43 @@ func newChainRunCmd(flags *globalFlags) *cobra.Command {
 		verbose   bool
 	)
 	cmd := &cobra.Command{
-		Use:   "run",
-		Short: "Run a chain from a YAML file",
+		Use:   "run [<name-or-path>]",
+		Short: "Run a chain by saved name or YAML file path",
 		Long: `Run a chain definition.
 
-  gaia chain run --chain-file ci.yaml \
+  gaia chain run pr-create-and-land \
     --var title="feat: thing" \
     --var body="description" \
-    [--dry-run]
+    --var head=feature/x
+
+  gaia chain run --chain-file ./ci.yaml      # ad-hoc, file by path
+  gaia chain run ./ci.yaml                   # equivalent positional
+
+The positional argument resolves in this order:
+
+  1. literal path (separator or .yaml/.yml suffix) → use as-is
+  2. project saved chain → .gaia/chains/<name>.yaml
+  3. global saved chain  → ~/.config/gaia/chains/<name>.yaml
+  4. none found → usage error listing the attempted paths
+
+--chain-file is the explicit, scriptable form: it always takes a
+path and bypasses the saved-chain lookup. When both --chain-file
+and a positional argument are supplied, --chain-file wins.
 
 --var is repeatable; values containing '=' split on the first one
 only ('--var msg=a=b' → key=msg, value=a=b).
 
 Exit codes:
-  0  chain succeeded
-  1  chain failed (Result.Failure has details)
-  2  usage error (bad flags, missing chain file, var validation)`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if chainFile == "" {
-				return exitcode.Errorf(exitcode.Usage, "--chain-file is required")
+  0  chain succeeded (or yielded — agent reads the envelope)
+  1  chain failed (Result.Failure has details) or aborted
+  2  usage error (no chain specified, missing file, var validation)`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			resolved, err := resolveChainArg(chainFile, args)
+			if err != nil {
+				return err
 			}
-			c, err := chain.ParseFile(chainFile)
+			c, err := chain.ParseFile(resolved)
 			if err != nil {
 				return exitcode.Wrap(err, exitcode.Usage, "load chain")
 			}
@@ -118,11 +137,53 @@ Exit codes:
 			return chainExitFromStatus(res)
 		},
 	}
-	cmd.Flags().StringVar(&chainFile, "chain-file", "", "path to a chain YAML definition (required)")
+	cmd.Flags().StringVar(&chainFile, "chain-file", "", "path to a chain YAML definition (overrides positional name)")
 	cmd.Flags().StringSliceVar(&varFlags, "var", nil, "chain input as key=value (repeatable)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "substitute vars + render the resolved plan, but don't execute")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "stream per-step progress to stderr while the chain runs")
 	return cmd
+}
+
+// resolveChainArg resolves the chain argument supplied on the
+// command line. --chain-file (explicit) takes precedence; otherwise
+// the positional argument is run through chain.Resolve against the
+// current project root + global chain dir. Returns the resolved
+// filesystem path (suitable for chain.ParseFile).
+func resolveChainArg(chainFile string, args []string) (string, error) {
+	if chainFile != "" {
+		return chainFile, nil
+	}
+	if len(args) == 0 {
+		return "", exitcode.Errorf(exitcode.Usage,
+			"chain name or --chain-file is required (try `gaia chain run pr-create-and-land` or `gaia chain run --chain-file ./ci.yaml`)")
+	}
+	resolved, err := chain.Resolve(args[0], chainResolveOptions())
+	if err != nil {
+		// Surface the attempts list directly — the operator wants to
+		// see exactly which paths were tried.
+		return "", exitcode.Wrap(err, exitcode.Usage, "resolve chain")
+	}
+	return resolved, nil
+}
+
+// chainResolveOptions builds the project + global lookup directives
+// `chain.Resolve` consumes. ProjectRoot uses the same auth.ProjectRoot
+// helper credentials use; GlobalDir is `~/.config/gaia/chains/`.
+//
+// Either layer is silently skipped when the helper fails (no git
+// project / no resolvable home) — Resolve handles "" meaning
+// "skip this layer".
+func chainResolveOptions() chain.ResolveOptions {
+	opts := chain.ResolveOptions{}
+	if cwd, err := os.Getwd(); err == nil {
+		if root := auth.ProjectRoot(cwd); root != "" {
+			opts.ProjectRoot = root
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		opts.GlobalDir = filepath.Join(home, ".config", "gaia", "chains")
+	}
+	return opts
 }
 
 func newChainResumeCmd(flags *globalFlags) *cobra.Command {
