@@ -154,4 +154,31 @@ type Provider interface {
 
 	// DeletePackage removes one package version. 204 is success.
 	DeletePackage(ctx context.Context, owner, pkgType, name, version string) error
+
+	// --- Wikis (Phase 4 / #108) --------------------------------------
+
+	// ListWikiPages returns wiki page summaries (Title + Path +
+	// LastCommit + UpdatedAt; Body is left empty by the list
+	// endpoint).
+	ListWikiPages(ctx context.Context, owner, repo string, opts ListWikiPagesOptions) ([]types.WikiPage, *Page, error)
+
+	// GetWikiPage returns one wiki page by slug, including its
+	// markdown body.
+	GetWikiPage(ctx context.Context, owner, repo, slug string) (*types.WikiPage, error)
+
+	// SearchWikiPages performs client-side title + body matching
+	// across the repo's wiki pages. Forgejo has no native wiki-search
+	// endpoint; this implementation lists pages then fetches each one
+	// to scan its body, capped at opts.MaxPages (default 100). The
+	// returned slice length hitting the cap indicates the wiki was
+	// truncated mid-scan.
+	SearchWikiPages(ctx context.Context, owner, repo, query string, opts SearchWikiOptions) ([]types.WikiSearchHit, error)
+
+	// EditWikiPage upserts a wiki page: creates it if no page exists
+	// at that slug, replaces the body if it does. Returns the
+	// resulting WikiPage with its post-write body.
+	EditWikiPage(ctx context.Context, owner, repo, slug, body string) (*types.WikiPage, error)
+
+	// DeleteWikiPage removes a wiki page by slug. 204 is success.
+	DeleteWikiPage(ctx context.Context, owner, repo, slug string) error
 }

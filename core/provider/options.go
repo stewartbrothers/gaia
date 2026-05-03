@@ -213,3 +213,29 @@ type ListPackagesOptions struct {
 	Limit  int
 	Cursor string
 }
+
+// --- Wikis (Phase 4 / #108) --------------------------------------
+
+// ListWikiPagesOptions paginates a ListWikiPages call. Forgejo's wiki
+// pages endpoint paginates by `page` + `limit`; the provider layer
+// translates Cursor through the same pageFromCursor helper used
+// elsewhere. Bodies are not returned by the list endpoint — call
+// GetWikiPage for the markdown source.
+type ListWikiPagesOptions struct {
+	Limit  int    `json:"limit,omitempty"`
+	Cursor string `json:"cursor,omitempty"`
+}
+
+// SearchWikiOptions controls the client-side wiki search. Forgejo has
+// no native wiki-search endpoint, so the provider implementation lists
+// pages and matches `query` against title + body. MaxPages caps how
+// many pages we fetch before truncating; 0 means the provider's
+// documented default (currently 100). Larger wikis emit a truncation
+// signal via the returned slice's length matching the cap.
+//
+// SnippetWidth is the number of characters of context shown around
+// each match (split before/after). 0 means default (~200 chars).
+type SearchWikiOptions struct {
+	MaxPages     int
+	SnippetWidth int
+}

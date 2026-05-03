@@ -70,6 +70,23 @@ Gerwood/gaia, PR #75 with no comments)
 | | | | |
 | `gaia packages delete <spec> --confirm` (#107)     | ~50     | ~13     | n/a          |
 | `curl -X DELETE /packages/X/<t>/<n>/<v>`           | 0       | 0       | (204)        |
+| | | | |
+| `gaia wiki list` (10-page wiki, est.)              | ~600    | ~150    | **0.20×**    |
+| `curl /wiki/pages?limit=10` (10-page wiki, est.)   | ~3 000  | ~750    | 1×           |
+| | | | |
+| `gaia wiki view Home` (1KB markdown body, est.)    | ~1 200  | ~300    | **0.55×**    |
+| `curl /wiki/page/Home` (1KB body, base64 wrapped)  | ~2 200  | ~550    | 1×           |
+| | | | |
+| `gaia wiki search needle` (10 pages, 2 hits)       | ~500    | ~125    | **0.04×**    |
+| 1 list + 10 raw GETs (agent's WebFetch loop)       | ~13 000 | ~3 250  | 1×           |
+
+> Wiki rows are estimated against a typical 10-page wiki with ~1KB
+> markdown bodies. The Forgejo API wraps page bodies in
+> `content_base64` and includes URLs, full commit author/committer
+> objects, and HTML render hints that gaia drops; the estimated
+> ratios mirror what we measure on issue/release reads (5–25× on
+> defaults). The `scripts/dogfood-compare.sh` harness will surface
+> live numbers once we have a non-empty wiki to point it at.
 
 ## Takeaways
 
@@ -98,6 +115,17 @@ Gerwood/gaia, PR #75 with no comments)
 - **pr view**: 2.5× smaller than raw curl (and 1.7× smaller than
   `tea`). `--with-ci` adds an extra round-trip server-side but only
   ~3% to the response size.
+- **wiki search**: ~25× smaller than the equivalent agent flow of
+  `list pages → fetch each → match locally on the agent`. This is the
+  headline win for #108: a single MCP `gaia_wiki_search` call collapses
+  N WebFetches into one structured response with per-hit snippets.
+  The provider layer caps the scan at 100 pages by default
+  (`--max-pages`), so very large wikis surface a truncation signal
+  rather than spending an unbounded scan budget.
+- **wiki view / list**: same shape as releases — Forgejo's full
+  `WikiPage` carries `content_base64`, `html_url`, `sub_url`, and a
+  full commit author/commiter object; gaia drops everything except
+  `title`, `path`, decoded `body`, short SHA, and `updated_at`.
 
 ### Packages (#107, estimated)
 

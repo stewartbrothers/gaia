@@ -76,6 +76,7 @@ auth setup.`,
 	root.AddCommand(newReleaseCmd(flags))
 	root.AddCommand(newChainCmd(flags))
 	root.AddCommand(newPackagesCmd(flags))
+	root.AddCommand(newWikiCmd(flags))
 
 	return root
 }
