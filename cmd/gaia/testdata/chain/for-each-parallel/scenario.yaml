@@ -1,0 +1,26 @@
+description: |
+  for_each iteration with parallel: true. Two iterations run
+  concurrently — verifies the YAML decoder handles the boolean
+  variant of `parallel:` correctly alongside the iteration body.
+  Phase C / #149.
+
+chain_yaml: |
+  name: for-each-parallel
+  steps:
+    - id: list
+      run: 'echo ''["a","b"]'''
+      capture: items
+    - id: do
+      for_each: ${items}
+      parallel: true
+      max_concurrent: 2
+      run: echo handled ${item}
+
+stages:
+  - description: gaia chain run --chain-file <chainfile>
+    args:
+      - chain
+      - run
+      - --chain-file
+      - ${chainfile}
+    exit_code: 0

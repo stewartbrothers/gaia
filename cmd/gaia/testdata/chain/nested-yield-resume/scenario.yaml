@@ -1,0 +1,48 @@
+description: |
+  Nested yield + resume: an outer chain calls an inner chain whose
+  step yields on first run, succeeds on second. Stage 0 captures
+  the outer yield envelope (with sub_result.resume_token preserving
+  the inner state). Stage 1 resumes with the OUTER token and
+  observes the inner chain pick up at its yield point and finish.
+  Phase C / #149.
+
+saved_chains:
+  flaky-inner: |
+    name: flaky-inner
+    vars:
+      marker:
+        required: true
+    steps:
+      - id: transient
+        run: 'test -f ${marker} || (touch ${marker} && exit 5)'
+        yield_on:
+          - rate_limited
+
+chain_yaml: |
+  name: nested-yield
+  vars:
+    marker:
+      required: true
+  steps:
+    - id: nested
+      chain: flaky-inner
+      vars:
+        marker: ${marker}
+
+stages:
+  - description: outer run yields when inner yields
+    args:
+      - chain
+      - run
+      - --chain-file
+      - ${chainfile}
+      - --var
+      - marker=${tempdir}/marker
+    exit_code: 0
+
+  - description: resume — inner picks up, succeeds, outer succeeds
+    args:
+      - chain
+      - resume
+      - ${token:0}
+    exit_code: 0

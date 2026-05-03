@@ -1,0 +1,24 @@
+description: |
+  for_each iteration in serial mode: a captured array drives three
+  sequential sub-runs with ${item} / ${index} bound. The envelope
+  shape mirrors parallel-fanout: outer step gets a sub_steps array,
+  one entry per iteration, ordered by index. Phase C / #149.
+
+chain_yaml: |
+  name: for-each-serial
+  steps:
+    - id: list
+      run: 'echo ''["alpha","bravo","charlie"]'''
+      capture: items
+    - id: greet
+      for_each: ${items}
+      run: echo greet ${item} idx ${index}
+
+stages:
+  - description: gaia chain run --chain-file <chainfile>
+    args:
+      - chain
+      - run
+      - --chain-file
+      - ${chainfile}
+    exit_code: 0
