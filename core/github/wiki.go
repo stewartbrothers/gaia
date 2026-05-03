@@ -10,12 +10,14 @@ import (
 
 // GitHub wikis live in a separate git repo at {owner}/{repo}.wiki.git
 // rather than a REST endpoint, so a clone-cache implementation is
-// needed before these methods can do real work. The follow-up to #108
-// — tracked as a separate issue — implements the cache. Until then,
-// every method returns a clear NotImplemented error so callers fail
-// fast with a pointer to the tracking issue.
+// needed before these methods can do real work. Issue #120 tracks
+// that follow-up: shallow clone into ~/.cache/gaia/wikis/{owner}/{repo}/
+// with TTL refresh, and back the same five Provider methods that
+// Forgejo gets via REST in #108. Until that lands, every method here
+// returns a clear NotImplemented error so callers fail fast with a
+// pointer to the tracking issue.
 
-const githubWikiNotImplementedMsg = "GitHub wikis require a clone-cache implementation, tracked as a follow-up to #108; see the repo issue tracker"
+const githubWikiNotImplementedMsg = "GitHub wikis require a clone-cache implementation, tracked in #120 (follow-up to #108)"
 
 // ListWikiPages is not yet implemented on the GitHub provider.
 func (p *Provider) ListWikiPages(_ context.Context, _, _ string, _ provider.ListWikiPagesOptions) ([]types.WikiPage, *provider.Page, error) {
