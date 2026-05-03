@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "data": {
+    "chain": "failure-with-on-failure",
+    "status": "failure",
+    "failed_step": "boom",
+    "failure": {
+      "detail": "broken-state",
+      "reason": "custom-reason",
+      "step": "boom"
+    },
+    "steps": [
+      {
+        "id": "ok",
+        "run": "echo first",
+        "status": "ok",
+        "stdout": "first\n",
+        "duration_ms": 0
+      },
+      {
+        "id": "boom",
+        "run": "echo broken-state \u003e\u00262; exit 1",
+        "status": "failed",
+        "exit_code": 1,
+        "stderr": "broken-state\n",
+        "duration_ms": 0
+      }
+    ],
+    "duration_ms": 0
+  }
+}

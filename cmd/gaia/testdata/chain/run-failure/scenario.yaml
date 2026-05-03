@@ -1,0 +1,26 @@
+description: |
+  Step fails (exit 1) and on_failure.return surfaces a custom failure
+  envelope. Exercises buildFailure + on_failure substitution + the
+  Failure exit-code path through chainExitFromStatus.
+
+chain_yaml: |
+  name: failure-with-on-failure
+  steps:
+    - id: ok
+      run: echo first
+    - id: boom
+      run: 'echo broken-state >&2; exit 1'
+      on_failure:
+        return:
+          reason: custom-reason
+          step: ${error.step}
+          detail: ${error.message}
+
+stages:
+  - description: gaia chain run — failure surfaces with exit 1
+    args:
+      - chain
+      - run
+      - --chain-file
+      - ${chainfile}
+    exit_code: 1
