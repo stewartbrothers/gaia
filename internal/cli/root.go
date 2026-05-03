@@ -62,7 +62,7 @@ auth setup.`,
 	pf.StringVar(&flags.Provider, "provider", "", "provider: forgejo or github")
 	pf.StringVar(&flags.APIURL, "api-url", "", "API base URL override")
 	pf.StringVar(&flags.Repo, "repo", "", "owner/name (overrides git-remote autodetect)")
-	pf.StringVarP(&flags.Format, "format", "F", "json", "output format: json or pretty")
+	pf.StringVarP(&flags.Format, "format", "F", "json", "output format: json, pretty, or ndjson (ndjson streams list commands one item per line; rejected on single-resource commands)")
 	pf.StringVar(&flags.Fields, "fields", "", "field projection, e.g. number,title,labels.name")
 	pf.IntVar(&flags.Limit, "limit", 0, "page limit (0 = default 30)")
 	pf.StringVar(&flags.Cursor, "cursor", "", "pagination cursor from previous response")

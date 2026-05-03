@@ -30,7 +30,7 @@ These are hard rules. Apply them on every change.
    URL.** Pattern (token never echoed):
 
    ```bash
-   curl -sSf -H "Authorization: token $GIT_FORGE_GITEA_TOKEN" \
+   curl -sSf -H "Authorization: token $GITEA_TOKEN" \
         -H "Content-Type: application/json" \
         -X POST "https://your-forge.example.com/api/v1/repos/Gerwood/gaia/pulls" \
         -d '{"title":"...","body":"...","head":"feature/<slug>","base":"main"}'
@@ -182,8 +182,10 @@ tight when scripting):
 - Webhooks: `list | view | create | edit | delete | deliveries | redeliver | test`
 
 For read paths, gaia is consistently smaller (often 5–25×, sometimes
-~400× with `--fields`) than the raw API response — see
-`docs/dogfood-comparison.md` for the per-command numbers.
+~400× with `--fields`) than the raw API response. Headline summary:
+`docs/dogfood-comparison.md`. Per-resource measured baselines:
+`bench/dogfood-*.md` (one file per resource — never a shared table,
+that's a merge-conflict generator).
 
 **Falling back to curl is acceptable only for operations gaia cannot do
 yet.** As of #85 there are NO known gaps — webhook config (the
@@ -222,10 +224,20 @@ fastest — every workaround compounds. Filing + fixing immediately
 is cheaper than the cumulative cost of "I'll just add the env-var
 prefix one more time."
 
-When a new gaia command lands, **update `docs/dogfood-comparison.md`**
-with a row showing gaia bytes vs. the closest curl/tea equivalent. The
-script at `scripts/dogfood-compare.sh` produces the numbers; the point is
-to keep evidence that gaia is shrinking output, not just claiming it.
+When a new gaia command lands, **add the measurement to the
+relevant `bench/dogfood-<resource>.md`** file (or create a new
+per-resource file). The script at `scripts/dogfood-compare.sh`
+produces the numbers; the point is to keep evidence that gaia is
+shrinking output, not just claiming it.
+
+**One file per resource is the rule, not a suggestion.** A shared
+table is a merge-conflict generator — every parallel PR appends rows
+at the same place. The hand-curated headline summary in
+`docs/dogfood-comparison.md` shouldn't grow per-command; only the
+per-resource bench files do. Estimates (`~140`, `(est.)`) belong
+in PR descriptions, not in committed baselines — if a feature has
+no real forge state to measure against yet, hold the row until it
+does.
 
 ### Raw API for gaps
 

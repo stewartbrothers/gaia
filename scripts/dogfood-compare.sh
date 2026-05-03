@@ -5,7 +5,7 @@
 # command is shaping output the way agents need it.
 #
 # Usage:
-#   GIT_FORGE_GITEA_TOKEN=... ./scripts/dogfood-compare.sh
+#   GITEA_TOKEN=... ./scripts/dogfood-compare.sh
 #   REPO=Gerwood/gaia API=https://your-forge.example.com/api/v1 \
 #     ./scripts/dogfood-compare.sh
 #
@@ -17,13 +17,13 @@ set -euo pipefail
 
 REPO="${REPO:-Gerwood/gaia}"
 API="${API:-https://your-forge.example.com/api/v1}"
-TOKEN="${TOKEN:-${GIT_FORGE_GITEA_TOKEN:-}}"
+TOKEN="${TOKEN:-${GITEA_TOKEN:-${FORGEJO_TOKEN:-${GIT_FORGE_GITEA_TOKEN:-}}}}"
 GAIA_BIN="${GAIA_BIN:-./bin/gaia}"
 PR_NUMBER="${PR_NUMBER:-75}"
 SEARCH_QUERY="${SEARCH_QUERY:-MVP}"
 
 if [ -z "$TOKEN" ]; then
-  echo "set GIT_FORGE_GITEA_TOKEN or TOKEN" >&2
+  echo "set GITEA_TOKEN, FORGEJO_TOKEN, or TOKEN" >&2
   exit 1
 fi
 if [ ! -x "$GAIA_BIN" ]; then
@@ -130,7 +130,7 @@ echo
 # Wiki rows are skipped when the repo has no wiki content yet
 # (Forgejo returns 404 on the pages endpoint for empty wikis). Set
 # WIKI_PATH= and WIKI_QUERY= when running against a wiki-bearing
-# repo to populate these rows in docs/dogfood-comparison.md.
+# repo to populate bench/dogfood-wiki.md.
 WIKI_PATH="${WIKI_PATH:-}"
 WIKI_QUERY="${WIKI_QUERY:-}"
 if [ -n "$WIKI_PATH" ]; then
@@ -146,4 +146,5 @@ if [ -n "$WIKI_PATH" ]; then
 fi
 
 echo "Tip: re-run with REPO=, PR_NUMBER=, SEARCH_QUERY=, WIKI_PATH=, WIKI_QUERY="
-echo "overrides for different baselines. Numbers go into docs/dogfood-comparison.md."
+echo "overrides for different baselines. Numbers go into bench/dogfood-baseline.md"
+echo "(or the relevant per-resource bench/dogfood-<resource>.md file)."

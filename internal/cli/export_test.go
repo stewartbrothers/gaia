@@ -56,3 +56,21 @@ func PrettyChainListForTest(w io.Writer, data any) error {
 func ResolveStateDirForTest() (string, error) {
 	return resolveStateDir()
 }
+
+// PageFetcherForTest mirrors the unexported PageFetcher type so the
+// cli_test package can drive renderListStreaming without depending on
+// cobra wiring.
+type PageFetcherForTest = PageFetcher
+
+// RenderListStreamingForTest exposes the unexported helper for direct
+// driving from cli_test. Wraps cobra for the in-process test harness.
+func RenderListStreamingForTest(format, cursor string, fetch PageFetcherForTest, w io.Writer) error {
+	return renderListStreamingForTest(format, cursor, fetch, w)
+}
+
+// RenderEnvelopeRejectsNDJSONForTest invokes renderEnvelope with a
+// minimal harness so cli_test can verify the single-resource ndjson
+// rejection path.
+func RenderEnvelopeRejectsNDJSONForTest(w io.Writer) error {
+	return renderEnvelopeRejectsNDJSONForTest(w)
+}

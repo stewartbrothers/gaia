@@ -69,6 +69,19 @@ func newIssueListCmd(flags *globalFlags) *cobra.Command {
 				}
 				po.Since = t
 			}
+			if flags.Format == "ndjson" {
+				// Streaming path: each page's issues emit as
+				// {"item": ...} lines, then a `_metadata` trailer.
+				return renderListStreaming(cmd, flags, func(cursor string) ([]any, *provider.Page, error) {
+					ppo := po
+					ppo.Cursor = cursor
+					issues, page, err := p.ListIssues(cmd.Context(), owner, repo, ppo)
+					if err != nil {
+						return nil, nil, err
+					}
+					return toAnySlice(issues), page, nil
+				})
+			}
 			issues, page, err := p.ListIssues(cmd.Context(), owner, repo, po)
 			if err != nil {
 				return err

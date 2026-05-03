@@ -89,8 +89,9 @@ gaia whoami | version
 - [`docs/deploy-mcp.md`](docs/deploy-mcp.md) — `gaia-mcp --http` container deploy
 - [`docs/chain.md`](docs/chain.md) — `gaia chain run` for multi-step workflows
 - [`docs/agent-guide.md`](docs/agent-guide.md) — dense pointers for AI agents
-- [`docs/dogfood-comparison.md`](docs/dogfood-comparison.md) — empirical
-  byte/token comparisons vs raw curl + tea
+- [`docs/dogfood-comparison.md`](docs/dogfood-comparison.md) — headline
+  byte/token wins vs raw curl + tea; per-resource measurements live
+  under [`bench/`](bench/README.md)
 
 ## Status
 

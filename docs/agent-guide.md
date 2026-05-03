@@ -151,6 +151,14 @@ Mitigations gaia owns:
    `--no-external-markers` suppresses them for shell pipelines that
    want raw content.
 
+3. **NDJSON streaming preserves trust markers per line.**
+   `--format ndjson` (the per-line streaming output for list-style
+   commands; see `output-format.md`) emits each item with its
+   trust-tagged fields in the same `{"_trust": ...}` shape, on every
+   line. An agent reading `gaia issue list --format ndjson | head -10`
+   sees the same tag on the first body it processes that it would
+   see on the 1000th — there is no degraded path.
+
 What gaia can't do: stop the model from interpreting persuasive
 text, detect novel social-engineering payloads, or sanitise content
 beyond marker-wrapping.

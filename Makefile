@@ -80,7 +80,8 @@ release-snapshot:
 # agent flow. Doesn't gate CI; the script does enforce a 50%
 # reduction floor (override via DOGFOOD_THRESHOLD) so a regression
 # trips loudly if anyone runs it locally. See
-# docs/chain-dogfood-comparison.md for the methodology.
+# bench/dogfood-chain.md for the per-step measurements and
+# docs/chain-dogfood-comparison.md for the headline summary.
 #
 # Usage:
 #   make dogfood-chain                                   # offline

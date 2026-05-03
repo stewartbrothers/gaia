@@ -89,6 +89,94 @@ shape-stable; an agent that asks for many `--fields` projections on the
 same underlying object benefits from cache hits even though the wire
 output differs per request.
 
+## Streaming output (NDJSON)
+
+For long list-style commands (`gaia issue list`, `gaia pr list`,
+`gaia pr comments`, `gaia search`, etc.), `--format ndjson` switches
+the output from the standard envelope to **newline-delimited JSON**:
+each item emits as one self-contained JSON object on its own line, and
+the final line is a trailer carrying the schema version and pagination
+state.
+
+### Wire shape
+
+```jsonc
+{"item": {"number": 1, "title": {"_trust":"external","_value":"first"}, ...}}
+{"item": {"number": 2, "title": {"_trust":"external","_value":"second"}, ...}}
+{"item": {"number": 3, "title": {"_trust":"external","_value":"third"}, ...}}
+{"_metadata": {"total": 3, "next_cursor": null, "schema_version": "1.0"}}
+```
+
+Each line is independently valid JSON. The `"item"` / `"_metadata"`
+key on each line discriminates content from trailer — agents branch on
+the leading key without peeking at offsets.
+
+### When to use it
+
+- **Time-to-first-byte**: an agent reads the first matching item
+  before the full list arrives. For a 100-issue list, the first
+  ~250 bytes deliver one issue; standard `--format json` buffers
+  ~25 KB before the agent sees anything.
+- **Memory bound**: agent processes one item at a time, doesn't
+  hold the full array.
+- **Pipeline-friendly**:
+
+  ```bash
+  gaia issue list --format ndjson | jq -c 'select(.item.state=="open") | .item.number'
+  ```
+
+  works without `jq --stream` mode tricks.
+- **Cancel-friendly**: `gaia issue list --format ndjson | head -1`
+  stops gaia from fetching subsequent pages once the consumer's pipe
+  closes (broken-pipe → pagination loop exits).
+
+### Pagination semantics
+
+- Without `--cursor`: gaia auto-paginates and streams every item
+  until the upstream exhausts. The trailer's `next_cursor` is `null`.
+- With `--cursor`: gaia fetches one page from that cursor and
+  surfaces the next cursor in the trailer for the caller to resume.
+- `--limit` clamps each page (default 30, max 200) the same way the
+  envelope path does.
+
+### Trust markers persist per line
+
+Fields tagged `gaia:"trust=external"` (issue bodies, comments, wiki
+content, etc.) emit as `{"_trust":"external","_value":"<text>"}` on
+**every** streamed line — same shape `--format json` produces. The
+indirect-prompt-injection mitigation (#146) carries over to NDJSON
+output without any per-call wiring.
+
+`--no-external-markers` only suppresses the pretty-render
+`<<<EXTERNAL ... EXTERNAL>>>` delimiters; JSON `_trust` tags persist
+in both `--format json` and `--format ndjson` output.
+
+### Single-resource commands reject `--format ndjson`
+
+`gaia issue view`, `gaia pr view`, `gaia release view`, and any other
+single-object fetch error with exit code 2 (Usage) when given
+`--format ndjson` — streaming a single object is silly. Use
+`--format json` (the default) for single-resource output.
+
+### Streaming-enabled commands
+
+| Command | Per-line shape |
+|---|---|
+| `gaia issue list` | trimmed Issue |
+| `gaia pr list` | trimmed PullRequest |
+| `gaia pr comments` | trimmed Comment (issue + review + inline) |
+| `gaia label list` | trimmed Label |
+| `gaia release list` | trimmed Release |
+| `gaia wiki list` | trimmed WikiPage (no body) |
+| `gaia packages list` | trimmed Package |
+| `gaia webhook list` | trimmed Webhook |
+| `gaia webhook deliveries <id>` | trimmed WebhookDelivery (no payload body) |
+| `gaia search <q>` | trimmed SearchResult (kind, number, title, repo) |
+
+`gaia chain run --format ndjson` (per-step envelope streaming) is
+out of scope for the initial NDJSON cut. File a follow-up against
+`#46` if you need it.
+
 ## Schema versions
 
 | Version | Notes                              |

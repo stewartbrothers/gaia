@@ -41,6 +41,15 @@ func newLabelListCmd(flags *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if flags.Format == "ndjson" {
+				// ListLabels is single-shot (no pagination on
+				// either forge), so just emit one fake "page"
+				// through the streaming helper and let the
+				// trailer wrap up.
+				return renderListStreaming(cmd, flags, func(_ string) ([]any, *provider.Page, error) {
+					return toAnySlice(labels), &provider.Page{}, nil
+				})
+			}
 			return renderEnvelope(cmd, flags, labels, nil, prettyLabelList)
 		},
 	}
