@@ -87,6 +87,20 @@ func TestParseVarFlags(t *testing.T) {
 			in:   []string{"foo-bar=baz"},
 			want: want{errCode: exitcode.Usage, errSub: "must be"},
 		},
+		{
+			// #154 regression: cobra StringSliceVar would split values
+			// on commas, breaking JSON / list literals passed as a
+			// single --var. StringArrayVar preserves them verbatim.
+			// parseVarFlags itself never splits, but this case pins
+			// the contract end-to-end (the slice gaia receives must
+			// already contain unsplit values).
+			name: "comma-bearing value preserved (no splitting)",
+			in:   []string{"issues_json=[1,2,3]", "msg=a,b,c"},
+			want: want{out: map[string]string{
+				"issues_json": "[1,2,3]",
+				"msg":         "a,b,c",
+			}},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -351,5 +365,44 @@ func TestResolveStateDirHomeError(t *testing.T) {
 	var unwrapped *exitcode.Error
 	if !errors.As(err, &unwrapped) {
 		t.Fatal("expected wrapped *exitcode.Error")
+	}
+}
+
+// TestChainRunVarFlagPreservesCommas pins the cobra-flag binding for
+// `gaia chain run --var`: it must be StringArrayVar (which preserves
+// commas) not StringSliceVar (which splits on them). #154.
+//
+// A future revert that swaps the flag type back to StringSliceVar
+// would trip this test — the cobra Value.Type() string is the
+// contract.
+func TestChainRunVarFlagPreservesCommas(t *testing.T) {
+	root := cli.NewRootCmd()
+	chainCmd, _, err := root.Find([]string{"chain", "run"})
+	if err != nil {
+		t.Fatalf("find chain run cmd: %v", err)
+	}
+	flag := chainCmd.Flags().Lookup("var")
+	if flag == nil {
+		t.Fatal("chain run has no --var flag")
+	}
+	if got := flag.Value.Type(); got != "stringArray" {
+		t.Errorf("--var flag type: got %q want %q (StringSliceVar splits commas; StringArrayVar preserves them; #154)",
+			got, "stringArray")
+	}
+
+	// Same check on chain resume --modify-vars: the Phase B-2 modify
+	// directive accepts vars too and shares the comma-preservation
+	// requirement.
+	resumeCmd, _, err := root.Find([]string{"chain", "resume"})
+	if err != nil {
+		t.Fatalf("find chain resume cmd: %v", err)
+	}
+	mvFlag := resumeCmd.Flags().Lookup("modify-vars")
+	if mvFlag == nil {
+		t.Fatal("chain resume has no --modify-vars flag")
+	}
+	if got := mvFlag.Value.Type(); got != "stringArray" {
+		t.Errorf("--modify-vars flag type: got %q want %q (#154)",
+			got, "stringArray")
 	}
 }
