@@ -28,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stewartbrothers/gaia/core/cache"
 	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/internal/version"
 )
@@ -51,6 +52,9 @@ type Client struct {
 	userAgent  string
 	httpClient *http.Client
 	retryWait  time.Duration
+	// cache is the optional read cache (#42). When non-nil GetCached
+	// consults it before each request; nil disables caching.
+	cache *cache.Cache
 }
 
 // Options configure a Client. BaseURL defaults to api.github.com when
@@ -67,6 +71,9 @@ type Options struct {
 	HTTPClient     *http.Client
 	RetryWait      time.Duration
 	WikiRemoteFunc func(owner, repo string) string
+	// Cache, when non-nil, enables the read cache (#42) for this
+	// client. Leave nil to disable.
+	Cache *cache.Cache
 }
 
 // New constructs a Client with sensible defaults.
@@ -92,6 +99,7 @@ func New(opts Options) *Client {
 		userAgent:  ua,
 		httpClient: httpClient,
 		retryWait:  rw,
+		cache:      opts.Cache,
 	}
 }
 
