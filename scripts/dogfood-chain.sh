@@ -52,7 +52,7 @@ if [ "$DOGFOOD_LIVE" = "1" ]; then
   prview_bytes=$(bytes_of "$view_out")
   withci_bytes=$(bytes_of "$withci_out")
 else
-  # Offline estimates from the existing dogfood-comparison.md baseline.
+  # Offline estimates from the bench/dogfood-baseline.md numbers.
   prview_bytes=4255    # gaia pr view 75 (no CI)
   withci_bytes=4387    # gaia pr view 75 --with-ci
 fi

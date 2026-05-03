@@ -22,7 +22,7 @@ profiles:
   stewartbrothers:
     provider: forgejo
     api_url: https://your-forge.example.com/api/v1
-    token_env: GIT_FORGE_GITEA_TOKEN
+    token_env: WORK_FORGEJO_TOKEN
 
   github:
     provider: github
@@ -81,7 +81,7 @@ gaia --provider forgejo --api-url https://git.example/api/v1 pr list
 ### Profile from config, override token env
 
 ```bash
-export GIT_FORGE_GITEA_TOKEN=glat_xxx
+export WORK_FORGEJO_TOKEN=glat_xxx
 gaia pr list                       # uses default_profile
 gaia --profile github pr list      # explicit override
 ```
