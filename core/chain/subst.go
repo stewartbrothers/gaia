@@ -139,14 +139,22 @@ func shellQuote(s string) string {
 // (value, true) on success, (nil, false) on miss.
 //
 // Resolution mirrors lookup(): single-segment refs try Vars then
-// Captures; dotted refs descend Captures.
+// Captures; dotted refs descend Captures. Phase C also supports
+// array-index segments — purely numeric segments index into a
+// `[]any` (used by for_each captures: `${comment-fanout.0.field}`).
 func lookupRaw(ref string, scope Scope) (any, bool) {
 	if ref == "" {
 		return nil, false
 	}
 	parts := strings.Split(ref, ".")
-	for _, p := range parts {
-		if p == "" || !isValidIdent(p) {
+	// First segment must be a valid identifier — that's the var /
+	// capture key. Subsequent segments may be identifiers (map
+	// keys) or pure-digit (array indices).
+	if !isValidIdent(parts[0]) {
+		return nil, false
+	}
+	for _, p := range parts[1:] {
+		if !isValidLookupSegment(p) {
 			return nil, false
 		}
 	}
@@ -165,64 +173,87 @@ func lookupRaw(ref string, scope Scope) (any, bool) {
 	}
 	cur := root
 	for _, p := range parts[1:] {
-		m, ok := cur.(map[string]any)
+		next, ok := descendOne(cur, p)
 		if !ok {
 			return nil, false
 		}
-		cur, ok = m[p]
-		if !ok {
-			return nil, false
-		}
+		cur = next
 	}
 	return cur, true
 }
 
+// descendOne handles a single segment of dotted lookup. Maps
+// match by key; slices match by 0-based index when the segment
+// is purely numeric. Anything else fails.
+func descendOne(cur any, seg string) (any, bool) {
+	if m, ok := cur.(map[string]any); ok {
+		v, ok := m[seg]
+		return v, ok
+	}
+	if arr, ok := cur.([]any); ok {
+		idx, ok := parseIndex(seg)
+		if !ok || idx < 0 || idx >= len(arr) {
+			return nil, false
+		}
+		return arr[idx], true
+	}
+	return nil, false
+}
+
+// isValidLookupSegment accepts identifiers (a-z, _, ...) or pure
+// digit strings (array indices). Phase C — for_each captures land
+// under numeric subscripts so chain authors write
+// `${comment-fanout.0.exit_code}` to reach the first iteration.
+func isValidLookupSegment(s string) bool {
+	if s == "" {
+		return false
+	}
+	if isValidIdent(s) {
+		return true
+	}
+	// All-digits → numeric index.
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// parseIndex converts a digit-only segment to int. Returns -1 +
+// false on overflow / non-digit (defensive — isValidLookupSegment
+// has already filtered, so this is mostly an "i guess if Go's int
+// overflows that's a fail" check).
+func parseIndex(s string) (int, bool) {
+	n := 0
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return -1, false
+		}
+		n = n*10 + int(r-'0')
+		if n < 0 {
+			return -1, false
+		}
+	}
+	return n, true
+}
+
 // lookup resolves a single ref string (the contents of `${...}`)
 // against the scope. Returns (value, true) on success, ("", false)
-// on miss.
+// on miss. Stringifies the resolved value for shell substitution.
+//
+// Phase C: shares descent logic with lookupRaw — segments may be
+// identifiers (map keys) or pure-digit (slice indices). The numeric
+// path lights up `${for-each-step.0.field}` lookups.
 func lookup(ref string, scope Scope) (string, bool) {
-	// Validate the ref looks like a name or name.path. Anything else
-	// (spaces, weird chars) is unresolvable — callers see it in the
-	// unresolved list.
-	if ref == "" {
-		return "", false
-	}
-	parts := strings.Split(ref, ".")
-	for _, p := range parts {
-		if p == "" || !isValidIdent(p) {
-			return "", false
-		}
-	}
-
-	// Single segment: try vars, then captures.
-	if len(parts) == 1 {
-		if v, ok := scope.Vars[parts[0]]; ok {
-			return v, true
-		}
-		if v, ok := scope.Captures[parts[0]]; ok {
-			return stringify(v), true
-		}
-		return "", false
-	}
-
-	// Dotted: capture lookup. First segment names the capture, rest
-	// descends.
-	root, ok := scope.Captures[parts[0]]
+	v, ok := lookupRaw(ref, scope)
 	if !ok {
 		return "", false
 	}
-	cur := root
-	for _, p := range parts[1:] {
-		m, ok := cur.(map[string]any)
-		if !ok {
-			return "", false
-		}
-		cur, ok = m[p]
-		if !ok {
-			return "", false
-		}
+	if s, ok := v.(string); ok {
+		return s, true
 	}
-	return stringify(cur), true
+	return stringify(v), true
 }
 
 // stringify renders a captured value for shell-substitution context.
