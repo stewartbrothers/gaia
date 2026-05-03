@@ -8,7 +8,7 @@ import "time"
 // than reconstructing it from {state,merged_at}.
 type PullRequest struct {
 	Number    int        `json:"number"`
-	Title     string     `json:"title"`
+	Title     string     `json:"title" gaia:"trust=external"`
 	State     string     `json:"state"`
 	Author    User       `json:"author"`
 	Labels    []Label    `json:"labels,omitempty"`
@@ -16,7 +16,7 @@ type PullRequest struct {
 	Base      BranchRef  `json:"base"`
 	Mergeable *bool      `json:"mergeable,omitempty"`
 	Draft     bool       `json:"draft"`
-	Body      string     `json:"body,omitempty"`
+	Body      string     `json:"body,omitempty" gaia:"trust=external"`
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	ClosedAt  *time.Time `json:"closed_at,omitempty"`

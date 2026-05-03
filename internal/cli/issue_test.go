@@ -48,17 +48,20 @@ func TestIssueListJSON(t *testing.T) {
 		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
 	}
 
+	// Title carries `gaia:"trust=external"` — emits a trust-tagged
+	// object on the wire (#146) so decode through trustExternal
+	// rather than a plain string.
 	var env struct {
 		Data []struct {
-			Number int    `json:"number"`
-			Title  string `json:"title"`
-			State  string `json:"state"`
+			Number int           `json:"number"`
+			Title  trustExternal `json:"title"`
+			State  string        `json:"state"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 		t.Fatalf("decode: %v\nstdout: %s", err, stdout.String())
 	}
-	if len(env.Data) != 2 || env.Data[0].Number != 1 || env.Data[1].Title != "second" {
+	if len(env.Data) != 2 || env.Data[0].Number != 1 || env.Data[1].Title.Value != "second" {
 		t.Errorf("got %+v", env.Data)
 	}
 }
@@ -160,18 +163,36 @@ func TestIssueViewJSON(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
 	}
+	// Title now serialises as a trust-tagged object (#146): the
+	// envelope marshaler rewrites Issue.Body / Issue.Title into
+	// {"_trust":"external","_value":"<text>"} so agents can
+	// distinguish operator input from forge-supplied content.
 	var env struct {
 		Data struct {
-			Number int    `json:"number"`
-			Title  string `json:"title"`
+			Number int           `json:"number"`
+			Title  trustExternal `json:"title"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 		t.Fatalf("decode: %v\nstdout: %s", err, stdout.String())
 	}
-	if env.Data.Number != 42 || env.Data.Title != "answer" {
+	if env.Data.Number != 42 || env.Data.Title.Value != "answer" {
 		t.Errorf("got %+v", env.Data)
 	}
+	if env.Data.Title.Trust != "external" {
+		t.Errorf("title trust marker missing: %+v", env.Data.Title)
+	}
+}
+
+// trustExternal is the test-side mirror of the wire shape produced
+// by core/envelope/trust.go: every string field tagged with
+// `gaia:"trust=external"` lands on the wire as
+// {"_trust":"external","_value":"<original string>"}. Tests that
+// exercise such fields decode them through this helper rather than a
+// plain string.
+type trustExternal struct {
+	Trust string `json:"_trust"`
+	Value string `json:"_value"`
 }
 
 func TestIssueViewWithCommentsTriggersTwoCalls(t *testing.T) {

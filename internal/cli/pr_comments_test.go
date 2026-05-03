@@ -74,11 +74,13 @@ func TestPRCommentsJSON(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
 	}
+	// Comment.Body carries the trust-external tag (#146) so it
+	// emits as {"_trust":"external","_value":"…"} on the wire.
 	var env struct {
 		Data []struct {
-			Source string `json:"source"`
-			Body   string `json:"body"`
-			Path   string `json:"path"`
+			Source string        `json:"source"`
+			Body   trustExternal `json:"body"`
+			Path   string        `json:"path"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {

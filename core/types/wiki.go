@@ -14,9 +14,9 @@ import "time"
 // the version I read?" checks. Forgejo returns the full SHA; we trim
 // at the provider layer.
 type WikiPage struct {
-	Title      string    `json:"title"`
+	Title      string    `json:"title" gaia:"trust=external"`
 	Path       string    `json:"path"`
-	Body       string    `json:"body,omitempty"`
+	Body       string    `json:"body,omitempty" gaia:"trust=external"`
 	LastCommit string    `json:"last_commit,omitempty"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
@@ -25,8 +25,12 @@ type WikiPage struct {
 // is a window of ~200 chars centred on the first match in either the
 // title or the body, with the matched substring left intact for the
 // caller to highlight as it sees fit.
+//
+// Title and Snippet are forge-supplied user content; tagged
+// `gaia:"trust=external"` for the indirect-prompt-injection
+// mitigation (#146).
 type WikiSearchHit struct {
 	Path    string `json:"path"`
-	Title   string `json:"title"`
-	Snippet string `json:"snippet,omitempty"`
+	Title   string `json:"title" gaia:"trust=external"`
+	Snippet string `json:"snippet,omitempty" gaia:"trust=external"`
 }

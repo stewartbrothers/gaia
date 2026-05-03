@@ -11,8 +11,8 @@ import "time"
 type Release struct {
 	ID              int64      `json:"id"`
 	TagName         string     `json:"tag_name"`
-	Name            string     `json:"name,omitempty"`
-	Body            string     `json:"body,omitempty"`
+	Name            string     `json:"name,omitempty" gaia:"trust=external"`
+	Body            string     `json:"body,omitempty" gaia:"trust=external"`
 	Draft           bool       `json:"draft"`
 	Prerelease      bool       `json:"prerelease"`
 	Author          User       `json:"author"`

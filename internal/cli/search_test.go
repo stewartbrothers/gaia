@@ -50,11 +50,12 @@ func TestSearchJSON(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
 	}
+	// SearchResult.Title is trust-tagged (#146).
 	var env struct {
 		Data []struct {
-			Kind   string `json:"kind"`
-			Number int    `json:"number"`
-			Title  string `json:"title"`
+			Kind   string        `json:"kind"`
+			Number int           `json:"number"`
+			Title  trustExternal `json:"title"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {

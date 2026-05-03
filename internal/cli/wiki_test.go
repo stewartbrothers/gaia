@@ -75,17 +75,18 @@ func TestWikiList(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
 	}
+	// WikiPage.Title carries the trust-external tag (#146).
 	var env struct {
 		Data []struct {
-			Title      string `json:"title"`
-			Path       string `json:"path"`
-			LastCommit string `json:"last_commit"`
+			Title      trustExternal `json:"title"`
+			Path       string        `json:"path"`
+			LastCommit string        `json:"last_commit"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 		t.Fatalf("decode: %v\nstdout: %s", err, stdout.String())
 	}
-	if len(env.Data) != 2 || env.Data[0].Title != "Home" {
+	if len(env.Data) != 2 || env.Data[0].Title.Value != "Home" {
 		t.Errorf("data: %+v", env.Data)
 	}
 	if env.Data[0].LastCommit != "deadbee" {
@@ -117,18 +118,23 @@ func TestWikiView(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
 	}
+	// WikiPage.Title and WikiPage.Body both carry the trust-external
+	// tag (#146).
 	var env struct {
 		Data struct {
-			Title string `json:"title"`
-			Path  string `json:"path"`
-			Body  string `json:"body"`
+			Title trustExternal `json:"title"`
+			Path  string        `json:"path"`
+			Body  trustExternal `json:"body"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 		t.Fatalf("decode: %v\nstdout: %s", err, stdout.String())
 	}
-	if env.Data.Title != "Home" || !strings.Contains(env.Data.Body, "Welcome") {
+	if env.Data.Title.Value != "Home" || !strings.Contains(env.Data.Body.Value, "Welcome") {
 		t.Errorf("data: %+v", env.Data)
+	}
+	if env.Data.Title.Trust != "external" || env.Data.Body.Trust != "external" {
+		t.Errorf("trust marker missing: %+v", env.Data)
 	}
 }
 
@@ -190,11 +196,13 @@ func TestWikiSearchReturnsHits(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
 	}
+	// WikiSearchHit.Title and WikiSearchHit.Snippet carry the
+	// trust-external tag (#146).
 	var env struct {
 		Data []struct {
-			Path    string `json:"path"`
-			Title   string `json:"title"`
-			Snippet string `json:"snippet"`
+			Path    string        `json:"path"`
+			Title   trustExternal `json:"title"`
+			Snippet trustExternal `json:"snippet"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
@@ -204,8 +212,8 @@ func TestWikiSearchReturnsHits(t *testing.T) {
 		t.Errorf("hit count: %d (data=%+v)", len(env.Data), env.Data)
 	}
 	for _, h := range env.Data {
-		if h.Snippet == "" || !strings.Contains(h.Snippet, "FOO") {
-			t.Errorf("snippet should contain match; got %q", h.Snippet)
+		if h.Snippet.Value == "" || !strings.Contains(h.Snippet.Value, "FOO") {
+			t.Errorf("snippet should contain match; got %+v", h.Snippet)
 		}
 	}
 }
