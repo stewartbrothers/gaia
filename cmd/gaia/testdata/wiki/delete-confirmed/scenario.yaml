@@ -1,0 +1,26 @@
+description: |
+  `gaia wiki delete Home --confirm` → DELETE /wiki/page/Home.
+
+mocks:
+  - method: DELETE
+    path: /repos/o/r/wiki/page/Home
+    status: 204
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - wiki
+      - delete
+      - Home
+      - --confirm
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: DELETE
+      path: /repos/o/r/wiki/page/Home

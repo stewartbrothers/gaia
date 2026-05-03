@@ -1,0 +1,41 @@
+description: |
+  `gaia wiki edit NewPage --body ...` against a page that doesn't
+  exist: GET → 404, POST /wiki/new with content_base64.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/wiki/page/NewPage
+    status: 404
+    body: |
+      {"message": "Not Found"}
+  - method: POST
+    path: /repos/o/r/wiki/new
+    status: 201
+    body: |
+      {
+        "title": "NewPage",
+        "sub_url": "NewPage",
+        "html_url": "https://example/wiki/NewPage",
+        "content_base64": "ZnJlc2ggcGFnZQ=="
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - wiki
+      - edit
+      - NewPage
+      - --body
+      - "fresh page"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: POST
+      path: /repos/o/r/wiki/new
+      body_contains: '"title":"NewPage"'

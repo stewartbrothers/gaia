@@ -1,0 +1,38 @@
+description: |
+  `gaia wiki search Setup` — title match against page "Setup".
+  No body fetch needed for title hits; the second page's body is
+  fetched but its content doesn't match.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/wiki/pages
+    status: 200
+    body: |
+      [
+        {"title": "Home",  "sub_url": "Home"},
+        {"title": "Setup", "sub_url": "Setup"}
+      ]
+  - method: GET
+    path: /repos/o/r/wiki/page/Home
+    status: 200
+    body: |
+      {
+        "title": "Home",
+        "sub_url": "Home",
+        "content_base64": "Tm8gbWF0Y2ggaGVyZS4="
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - wiki
+      - search
+      - Setup
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

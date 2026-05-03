@@ -1,0 +1,44 @@
+description: |
+  `gaia wiki edit Home --body ...` against an existing page: GET
+  → 200, then PATCH /wiki/page/Home with the new content_base64.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/wiki/page/Home
+    status: 200
+    body: |
+      {
+        "title": "Home",
+        "sub_url": "Home",
+        "content_base64": "b2xkIGJvZHk="
+      }
+  - method: PATCH
+    path: /repos/o/r/wiki/page/Home
+    status: 200
+    body: |
+      {
+        "title": "Home",
+        "sub_url": "Home",
+        "content_base64": "bmV3IGJvZHk="
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - wiki
+      - edit
+      - Home
+      - --body
+      - "new body"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: PATCH
+      path: /repos/o/r/wiki/page/Home
+      body_contains: '"title":"Home"'
