@@ -56,6 +56,15 @@ provider source to know what to expect.
 | `EditWikiPage` | ✓ | ✓ | Forgejo: `POST /wiki/new` (create) or `PATCH /wiki/page/{slug}` (replace). GitHub: refresh clone, write `{slug}.md`, commit, push. Both upsert. |
 | `DeleteWikiPage` | ✓ | ✓ | Forgejo: `DELETE /wiki/page/{slug}`. GitHub: refresh clone, `os.Remove`, commit, push. Missing slug → `exitcode.NotFound` on both. |
 | `UploadPackage` | △ | × | Forgejo: `PUT /packages/{owner}/generic/{name}/{version}/{file}` with the body streamed as the request body — only `pkgType=generic` is shipped in #122; npm/maven/container/... return a usage error at the boundary because each has a per-protocol publish flow that doesn't share the generic endpoint. GitHub: per-registry publish (npm publish, GHCR Docker v2 push, ...) is genuinely heterogeneous and doesn't fold into one provider method; returns a documented "not implemented" error until per-kind dispatch lands as a follow-up. |
+| `ListWebhooks` | ✓ | ✓ | `GET /repos/{o}/{r}/hooks` on both. Forgejo paginates by `?limit=&page=`; GitHub by `?per_page=&page=`. Same trimmed `Webhook` shape (URL/ContentType promoted from each forge's `config.{url,content_type}` nest). |
+| `GetWebhook` | ✓ | ✓ | `GET /repos/{o}/{r}/hooks/{id}` on both. 404 → `exitcode.NotFound` on both. Secret is always redacted on read. |
+| `CreateWebhook` | ✓ | ✓ | `POST /repos/{o}/{r}/hooks`. Body shape differs: Forgejo uses `{type:"gitea", config, events, active}`; GitHub uses `{name:"web", config, events, active}`. gaia maps both into a single `CreateWebhookOptions`. |
+| `EditWebhook` | ✓ | ✓ | `PATCH /repos/{o}/{r}/hooks/{id}`. **Different merge semantics**: GitHub accepts `add_events`/`remove_events` directly so gaia passes them through verbatim; Forgejo only accepts a full `events` list, so gaia pre-fetches and merges client-side. Same callable contract (`AddEvents`/`RemoveEvents` on options); one extra round-trip on Forgejo only. |
+| `DeleteWebhook` | ✓ | ✓ | `DELETE /repos/{o}/{r}/hooks/{id}`; 204 success on both. |
+| `ListWebhookDeliveries` | ✓ | ✓ | `GET /repos/{o}/{r}/hooks/{id}/deliveries`. Both forges return delivery summaries; bodies are NOT inlined (use `GetWebhookDelivery` for the per-delivery full payload). Forgejo's `duration` field has shipped both as seconds-as-float and ns-as-int across versions; gaia normalizes to integer milliseconds via `durationToMs`. |
+| `GetWebhookDelivery` | ✓ | ✓ | `GET /repos/{o}/{r}/hooks/{id}/deliveries/{delivery_id}`. Carries full request + response headers/body. Forgejo flattens into `request_headers`/`request_body`/`response_headers`/`response_body`; GitHub nests under `request.{headers,payload}` and `response.{headers,payload}`. gaia maps both into the unified `WebhookDeliveryDetail`. |
+| `RedeliverWebhook` | ✓ | ✓ | **Different paths**: Forgejo uses `POST /hooks/{id}/deliveries/{delivery_id}` (post-to-the-resource); GitHub uses `POST /hooks/{id}/deliveries/{delivery_id}/attempts`. GitHub returns 202 (async); Forgejo returns 204 (sync). Both mapped to nil error on success. |
+| `TestWebhook` | ✓ | ✓ | `POST /repos/{o}/{r}/hooks/{id}/tests` on both. Forgejo dispatches a synthetic ping payload; GitHub dispatches a `push` event using the repo's most recent commit. 204 success. |
 
 ## Cross-cutting differences
 
@@ -152,6 +161,45 @@ push.
 at `Setup-Guide.md` on disk and `/wiki/Setup-Guide` on the web; the
 provider expects callers to pass `Setup-Guide` as the slug, matching
 both Forgejo's and the web UI's URL form.
+
+### Webhooks
+
+Both forges expose CRUD + delivery history + redeliver + test under
+the same `/repos/{o}/{r}/hooks` URL family, but the wire shapes differ
+at three points worth knowing about:
+
+1. **Edit-time event-list merge.** GitHub's edit endpoint accepts
+   `add_events`/`remove_events` body fields directly; Forgejo's only
+   accepts a full new `events` list. gaia presents one unified
+   `EditWebhookOptions` shape (`AddEvents`/`RemoveEvents`); the
+   Forgejo provider does a pre-fetch round-trip to compute the
+   merged set client-side, the GitHub provider doesn't.
+
+2. **Redeliver path.** Forgejo: `POST /hooks/{id}/deliveries/{deliveryID}`
+   (sync, 204). GitHub: `POST /hooks/{id}/deliveries/{deliveryID}/attempts`
+   (async, 202).
+
+3. **Delivery payload shape.** Forgejo flattens request/response
+   headers + bodies onto the delivery record top-level
+   (`request_headers`, `request_body`, etc.). GitHub nests them
+   under `request.{headers,payload}` and `response.{headers,payload}`.
+   The unified `WebhookDeliveryDetail` shape carries flat
+   `RequestHeaders` + `RequestBody` + `ResponseHeaders` + `ResponseBody`;
+   the per-forge code unwraps as needed.
+
+**Secrets are write-only.** The trimmed `Webhook` type does NOT
+have a `Secret` field; both forges redact secret on read, and the
+gaia API surface preserves that — secrets travel only in
+`CreateWebhookOptions.Secret` / `EditWebhookOptions.Secret`. CLI
+`--dry-run` prints `<redacted>` rather than the actual value so it
+never lands in shell history or terminal scrollback.
+
+**Delivery payload sizes.** A single delivery for a busy repo's
+`push` event can be 50–200 KB. The `ListWebhookDeliveries` shape
+deliberately does NOT inline request/response bodies — agents
+inspect summaries first, fetch one detail with `GetWebhookDelivery`
+when they need the body. The CLI mirrors this with
+`gaia webhook deliveries <id> --get N`.
 
 ## What this guarantees for callers
 
