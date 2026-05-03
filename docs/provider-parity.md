@@ -55,6 +55,7 @@ provider source to know what to expect.
 | `SearchWikiPages` | ✓ | ✓ | Both client-side title+body match capped at `MaxPages` (default 100). Forgejo iterates `Get` per page; GitHub scans the clone (no per-page round-trip). Same `[]WikiSearchHit` shape on the way out. |
 | `EditWikiPage` | ✓ | ✓ | Forgejo: `POST /wiki/new` (create) or `PATCH /wiki/page/{slug}` (replace). GitHub: refresh clone, write `{slug}.md`, commit, push. Both upsert. |
 | `DeleteWikiPage` | ✓ | ✓ | Forgejo: `DELETE /wiki/page/{slug}`. GitHub: refresh clone, `os.Remove`, commit, push. Missing slug → `exitcode.NotFound` on both. |
+| `UploadPackage` | △ | × | Forgejo: `PUT /packages/{owner}/generic/{name}/{version}/{file}` with the body streamed as the request body — only `pkgType=generic` is shipped in #122; npm/maven/container/... return a usage error at the boundary because each has a per-protocol publish flow that doesn't share the generic endpoint. GitHub: per-registry publish (npm publish, GHCR Docker v2 push, ...) is genuinely heterogeneous and doesn't fold into one provider method; returns a documented "not implemented" error until per-kind dispatch lands as a follow-up. |
 
 ## Cross-cutting differences
 
