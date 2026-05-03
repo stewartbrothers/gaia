@@ -54,7 +54,12 @@ type Client struct {
 	retryWait  time.Duration
 	// cache is the optional read cache (#42). When non-nil GetCached
 	// consults it before each request; nil disables caching.
-	cache *cache.Cache
+	//
+	// Typed as the [cache.Cache] interface (not the concrete SQLite
+	// type) so this package doesn't compile `modernc.org/sqlite` —
+	// see #158. Production callers pass in a *sqlite.Store via
+	// internal/forgebuilder; tests pass in a *cache.Memory.
+	cache cache.Cache
 }
 
 // Options configure a Client. BaseURL defaults to api.github.com when
@@ -72,8 +77,10 @@ type Options struct {
 	RetryWait      time.Duration
 	WikiRemoteFunc func(owner, repo string) string
 	// Cache, when non-nil, enables the read cache (#42) for this
-	// client. Leave nil to disable.
-	Cache *cache.Cache
+	// client. Leave nil to disable. Any [cache.Cache] implementation
+	// works — production wires `core/cache/sqlite`, tests use
+	// [cache.Memory].
+	Cache cache.Cache
 }
 
 // New constructs a Client with sensible defaults.

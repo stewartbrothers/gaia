@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/stewartbrothers/gaia/core/cache"
 	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/core/types"
@@ -17,7 +18,7 @@ func (p *Provider) CreatePullRequest(ctx context.Context, owner, repo string, op
 	if err := p.client.Post(ctx, fmt.Sprintf("/repos/%s/%s/pulls", owner, repo), opts, &raw); err != nil {
 		return nil, err
 	}
-	p.client.cache.Invalidator().AfterCreate(ctx, kindPR, owner, repo)
+	cache.NewInvalidator(p.client.cache).AfterCreate(ctx, kindPR, owner, repo)
 	out := raw.toType()
 	return &out, nil
 }
@@ -29,7 +30,7 @@ func (p *Provider) EditPullRequest(ctx context.Context, owner, repo string, n in
 	if err := p.client.Patch(ctx, fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, n), opts, &raw); err != nil {
 		return nil, err
 	}
-	p.client.cache.Invalidator().AfterObjectMutation(ctx, kindPR, owner, repo, itoa(n))
+	cache.NewInvalidator(p.client.cache).AfterObjectMutation(ctx, kindPR, owner, repo, itoa(n))
 	out := raw.toType()
 	return &out, nil
 }
@@ -78,7 +79,7 @@ func (p *Provider) MergePullRequest(ctx context.Context, owner, repo string, n i
 	// api.github.com per current docs.
 	err := p.client.Post(ctx, fmt.Sprintf("/repos/%s/%s/pulls/%d/merge", owner, repo, n), body, nil)
 	if err == nil {
-		p.client.cache.Invalidator().AfterObjectMutation(ctx, kindPR, owner, repo, itoa(n))
+		cache.NewInvalidator(p.client.cache).AfterObjectMutation(ctx, kindPR, owner, repo, itoa(n))
 	}
 	return classifyMergeError(err)
 }

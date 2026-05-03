@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -25,11 +24,7 @@ func TestEditIssueEvictsCachedRow(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := cache.Open(filepath.Join(t.TempDir(), "cache.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = c.Close() }()
+	c := cache.NewMemory()
 
 	prov := forgejo.NewProvider(forgejo.Options{BaseURL: srv.URL, Token: "X", RetryWait: time.Millisecond, Cache: c})
 
@@ -61,11 +56,7 @@ func TestCreateIssueFlushesRepoListIndex(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := cache.Open(filepath.Join(t.TempDir(), "cache.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = c.Close() }()
+	c := cache.NewMemory()
 
 	prov := forgejo.NewProvider(forgejo.Options{BaseURL: srv.URL, Token: "X", RetryWait: time.Millisecond, Cache: c})
 
@@ -96,11 +87,7 @@ func TestEditIssueFlushesLists(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c, err := cache.Open(filepath.Join(t.TempDir(), "cache.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = c.Close() }()
+	c := cache.NewMemory()
 
 	prov := forgejo.NewProvider(forgejo.Options{BaseURL: srv.URL, Token: "X", RetryWait: time.Millisecond, Cache: c})
 	listKey := cache.ListKey{Kind: "issue", Owner: "o", Repo: "r", QueryHash: "abc"}

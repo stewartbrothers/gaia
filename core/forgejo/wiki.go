@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stewartbrothers/gaia/core/cache"
 	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/core/types"
@@ -203,7 +204,7 @@ func (p *Provider) EditWikiPage(ctx context.Context, owner, repo, slug, body str
 			return nil, err
 		}
 		// New page may show up in any wiki list query.
-		p.client.cache.Invalidator().AfterCreate(ctx, kindWiki, owner, repo)
+		cache.NewInvalidator(p.client.cache).AfterCreate(ctx, kindWiki, owner, repo)
 		out, derr := raw.toType()
 		if derr != nil {
 			return nil, derr
@@ -219,7 +220,7 @@ func (p *Provider) EditWikiPage(ctx context.Context, owner, repo, slug, body str
 	if err := p.client.Patch(ctx, path, wireBody, &raw); err != nil {
 		return nil, err
 	}
-	p.client.cache.Invalidator().AfterObjectMutation(ctx, kindWiki, owner, repo, slug)
+	cache.NewInvalidator(p.client.cache).AfterObjectMutation(ctx, kindWiki, owner, repo, slug)
 	out, derr := raw.toType()
 	if derr != nil {
 		return nil, derr
@@ -234,7 +235,7 @@ func (p *Provider) DeleteWikiPage(ctx context.Context, owner, repo, slug string)
 	if err := p.client.Delete(ctx, path); err != nil {
 		return err
 	}
-	p.client.cache.Invalidator().AfterDelete(ctx, kindWiki, owner, repo, slug)
+	cache.NewInvalidator(p.client.cache).AfterDelete(ctx, kindWiki, owner, repo, slug)
 	return nil
 }
 

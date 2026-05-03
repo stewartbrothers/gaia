@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stewartbrothers/gaia/core/cache"
 	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/core/types"
@@ -79,7 +80,7 @@ func (p *Provider) CreateRelease(ctx context.Context, owner, repo string, opts p
 	if err := p.client.Post(ctx, fmt.Sprintf("/repos/%s/%s/releases", owner, repo), opts, &raw); err != nil {
 		return nil, err
 	}
-	p.client.cache.Invalidator().AfterCreate(ctx, kindRelease, owner, repo)
+	cache.NewInvalidator(p.client.cache).AfterCreate(ctx, kindRelease, owner, repo)
 	out := raw.toType()
 	return &out, nil
 }
@@ -95,7 +96,7 @@ func (p *Provider) EditRelease(ctx context.Context, owner, repo, tag string, opt
 	if err := p.client.Patch(ctx, path, opts, &raw); err != nil {
 		return nil, err
 	}
-	p.client.cache.Invalidator().AfterObjectMutation(ctx, kindRelease, owner, repo, tag)
+	cache.NewInvalidator(p.client.cache).AfterObjectMutation(ctx, kindRelease, owner, repo, tag)
 	out := raw.toType()
 	return &out, nil
 }
@@ -109,7 +110,7 @@ func (p *Provider) DeleteRelease(ctx context.Context, owner, repo, tag string) e
 	if err := p.client.Delete(ctx, fmt.Sprintf("/repos/%s/%s/releases/%d", owner, repo, current.ID)); err != nil {
 		return err
 	}
-	p.client.cache.Invalidator().AfterDelete(ctx, kindRelease, owner, repo, tag)
+	cache.NewInvalidator(p.client.cache).AfterDelete(ctx, kindRelease, owner, repo, tag)
 	return nil
 }
 

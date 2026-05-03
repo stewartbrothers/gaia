@@ -1375,6 +1375,23 @@ func copyAnyMap(in map[string]any) map[string]any {
 func execShell(ctx context.Context, cmd string) (stdout, stderr string, exitCode int, err error) {
 	c := exec.CommandContext(ctx, "sh", "-c", cmd)
 	c.Env = scrubbedChildEnv()
+	// Place the child sh (and anything it forks) into its own process
+	// group so context cancellation can kill the entire tree, not just
+	// sh itself. Without this, `parallel: { fail_fast: true }` fails
+	// to cancel a sibling running `sh -c "sleep 5"` on Linux: the
+	// default exec.CommandContext sends SIGKILL to sh, sh dies, but
+	// the orphaned `sleep 5` runs to completion. macOS happens to
+	// propagate the signal more aggressively under bash, masking the
+	// bug locally; Linux/dash is the cross-platform truth-teller.
+	//
+	// Override Cancel to kill the whole group via negative PID.
+	c.SysProcAttr = procAttrNewSession()
+	c.Cancel = func() error {
+		if c.Process == nil {
+			return nil
+		}
+		return killProcessGroup(c.Process.Pid)
+	}
 	var outBuf, errBuf bytes.Buffer
 	c.Stdout = &outBuf
 	c.Stderr = &errBuf

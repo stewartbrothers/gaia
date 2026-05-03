@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/stewartbrothers/gaia/core/cache"
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/core/types"
 )
@@ -44,7 +45,7 @@ func (p *Provider) CreateIssue(ctx context.Context, owner, repo string, opts pro
 	}
 	// New issue could appear in any cached list query for this repo;
 	// flush the issue list_index (#42).
-	p.client.cache.Invalidator().AfterCreate(ctx, kindIssue, owner, repo)
+	cache.NewInvalidator(p.client.cache).AfterCreate(ctx, kindIssue, owner, repo)
 	out := raw.toType()
 	return &out, nil
 }
@@ -68,7 +69,7 @@ func (p *Provider) EditIssue(ctx context.Context, owner, repo string, n int, opt
 	}
 	// State/title/body change can move the issue between lists; flush
 	// both the object row and the repo's issue list_index (#42).
-	p.client.cache.Invalidator().AfterObjectMutation(ctx, kindIssue, owner, repo, itoa(n))
+	cache.NewInvalidator(p.client.cache).AfterObjectMutation(ctx, kindIssue, owner, repo, itoa(n))
 	out := raw.toType()
 	return &out, nil
 }
