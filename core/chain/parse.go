@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -46,6 +47,9 @@ func ParseFile(path string) (*Chain, error) {
 //   - non-empty step.run
 //   - capture names are valid identifiers (no spaces / dots; later
 //     steps reference them as ${name.field})
+//   - timeout / retry shapes are well-formed (Phase B-2)
+//   - default_yield_on conditions are in the vocabulary (Phase B-2)
+//   - cleanup steps satisfy the same rules as regular steps (Phase B-2)
 func (c *Chain) Validate() error {
 	if strings.TrimSpace(c.Name) == "" {
 		return errors.New("chain: name is required")
@@ -53,21 +57,44 @@ func (c *Chain) Validate() error {
 	if len(c.Steps) == 0 {
 		return errors.New("chain: at least one step is required")
 	}
+	if err := validateSteps(c.Steps, "step"); err != nil {
+		return err
+	}
+	for _, y := range c.DefaultYieldOn {
+		if !y.IsKnown() {
+			return fmt.Errorf("chain: default_yield_on contains unknown condition %q (see chain.AllYieldConditions for the vocabulary)", y)
+		}
+	}
+	if len(c.Cleanup) > 0 {
+		if err := validateSteps(c.Cleanup, "cleanup step"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateSteps walks a slice of steps (regular or cleanup) and
+// applies the per-step structural rules: unique non-empty IDs,
+// non-empty run, valid capture identifier, known yield/abort
+// conditions, no overlap between yield_on and abort_on, well-formed
+// timeout + retry. The kind label distinguishes "step" vs "cleanup
+// step" in error messages so an operator can find the bad block.
+func validateSteps(steps []Step, kind string) error {
 	seen := map[string]struct{}{}
-	for i, s := range c.Steps {
+	for i, s := range steps {
 		if strings.TrimSpace(s.ID) == "" {
-			return fmt.Errorf("chain: step %d: id is required", i)
+			return fmt.Errorf("chain: %s %d: id is required", kind, i)
 		}
 		if _, dup := seen[s.ID]; dup {
-			return fmt.Errorf("chain: step %d: duplicate id %q", i, s.ID)
+			return fmt.Errorf("chain: %s %d: duplicate id %q", kind, i, s.ID)
 		}
 		seen[s.ID] = struct{}{}
 		if strings.TrimSpace(s.Run) == "" {
-			return fmt.Errorf("chain: step %q: run is required", s.ID)
+			return fmt.Errorf("chain: %s %q: run is required", kind, s.ID)
 		}
 		if s.Capture != "" {
 			if !isValidIdent(s.Capture) {
-				return fmt.Errorf("chain: step %q: capture %q must be a simple identifier (letters/digits/underscore, no dots)", s.ID, s.Capture)
+				return fmt.Errorf("chain: %s %q: capture %q must be a simple identifier (letters/digits/underscore, no dots)", kind, s.ID, s.Capture)
 			}
 		}
 		// yield_on / abort_on entries must be in the fixed vocabulary
@@ -75,12 +102,12 @@ func (c *Chain) Validate() error {
 		// so operators get an immediate red flag.
 		for _, y := range s.YieldOn {
 			if !y.IsKnown() {
-				return fmt.Errorf("chain: step %q: yield_on contains unknown condition %q (see chain.AllYieldConditions for the vocabulary)", s.ID, y)
+				return fmt.Errorf("chain: %s %q: yield_on contains unknown condition %q (see chain.AllYieldConditions for the vocabulary)", kind, s.ID, y)
 			}
 		}
 		for _, a := range s.AbortOn {
 			if !a.IsKnown() {
-				return fmt.Errorf("chain: step %q: abort_on contains unknown condition %q (see chain.AllYieldConditions for the vocabulary)", s.ID, a)
+				return fmt.Errorf("chain: %s %q: abort_on contains unknown condition %q (see chain.AllYieldConditions for the vocabulary)", kind, s.ID, a)
 			}
 		}
 		// Same condition can't be in both yield_on AND abort_on for the
@@ -88,8 +115,29 @@ func (c *Chain) Validate() error {
 		for _, y := range s.YieldOn {
 			for _, a := range s.AbortOn {
 				if y == a {
-					return fmt.Errorf("chain: step %q: condition %q can't be in both yield_on and abort_on", s.ID, y)
+					return fmt.Errorf("chain: %s %q: condition %q can't be in both yield_on and abort_on", kind, s.ID, y)
 				}
+			}
+		}
+		if s.Timeout != "" {
+			if _, err := time.ParseDuration(s.Timeout); err != nil {
+				return fmt.Errorf("chain: %s %q: timeout %q is not a valid duration: %w", kind, s.ID, s.Timeout, err)
+			}
+		}
+		if s.Retry != nil {
+			if s.Retry.Max < 0 {
+				return fmt.Errorf("chain: %s %q: retry.max must be ≥ 0 (got %d)", kind, s.ID, s.Retry.Max)
+			}
+			if s.Retry.Delay != "" {
+				if _, err := time.ParseDuration(s.Retry.Delay); err != nil {
+					return fmt.Errorf("chain: %s %q: retry.delay %q is not a valid duration: %w", kind, s.ID, s.Retry.Delay, err)
+				}
+			}
+			switch s.Retry.Backoff {
+			case "", "constant", "linear", "exponential":
+				// ok
+			default:
+				return fmt.Errorf("chain: %s %q: retry.backoff %q must be one of constant|linear|exponential", kind, s.ID, s.Retry.Backoff)
 			}
 		}
 	}

@@ -195,3 +195,144 @@ func TestAllYieldConditionsCoversIsKnown(t *testing.T) {
 		t.Error("invented condition should not be IsKnown")
 	}
 }
+
+// --- Phase B-2 parse tests ---
+
+func TestParseAcceptsTimeoutAndRetry(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: x
+    run: echo hi
+    timeout: 5m
+    retry:
+      max: 3
+      delay: 30s
+      backoff: exponential
+`
+	c, err := chain.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if c.Steps[0].Timeout != "5m" {
+		t.Errorf("timeout: %q", c.Steps[0].Timeout)
+	}
+	if c.Steps[0].Retry == nil || c.Steps[0].Retry.Max != 3 ||
+		c.Steps[0].Retry.Delay != "30s" || c.Steps[0].Retry.Backoff != "exponential" {
+		t.Errorf("retry: %+v", c.Steps[0].Retry)
+	}
+}
+
+func TestParseRejectsBadTimeoutDuration(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: x
+    run: echo
+    timeout: nonsense
+`
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "timeout") {
+		t.Errorf("expected timeout-format error; got %v", err)
+	}
+}
+
+func TestParseRejectsBadRetryDelay(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: x
+    run: echo
+    retry:
+      max: 2
+      delay: forever
+`
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "delay") {
+		t.Errorf("expected retry.delay error; got %v", err)
+	}
+}
+
+func TestParseRejectsNegativeRetryMax(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: x
+    run: echo
+    retry:
+      max: -1
+`
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "max") {
+		t.Errorf("expected retry.max error; got %v", err)
+	}
+}
+
+func TestParseRejectsBadRetryBackoff(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: x
+    run: echo
+    retry:
+      max: 2
+      backoff: weird
+`
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "backoff") {
+		t.Errorf("expected retry.backoff error; got %v", err)
+	}
+}
+
+func TestParseAcceptsDefaultYieldOn(t *testing.T) {
+	yaml := `name: c
+default_yield_on: [rate_limited, timeout]
+steps:
+  - id: x
+    run: echo
+`
+	c, err := chain.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(c.DefaultYieldOn) != 2 {
+		t.Errorf("default_yield_on: %+v", c.DefaultYieldOn)
+	}
+}
+
+func TestParseRejectsUnknownDefaultYieldOn(t *testing.T) {
+	yaml := `name: c
+default_yield_on: [bogus]
+steps:
+  - id: x
+    run: echo
+`
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "bogus") {
+		t.Errorf("expected unknown-condition error; got %v", err)
+	}
+}
+
+func TestParseAcceptsCleanupBlock(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: open
+    run: 'echo open'
+cleanup:
+  - id: close
+    run: 'echo close'
+`
+	c, err := chain.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(c.Cleanup) != 1 || c.Cleanup[0].ID != "close" {
+		t.Errorf("cleanup: %+v", c.Cleanup)
+	}
+}
+
+func TestParseRejectsCleanupWithDuplicateID(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: open
+    run: echo open
+cleanup:
+  - id: cleanup1
+    run: echo a
+  - id: cleanup1
+    run: echo b
+`
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Errorf("expected duplicate-id error in cleanup; got %v", err)
+	}
+}
