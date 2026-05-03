@@ -45,6 +45,20 @@ both included by default). Each result is {kind, number, title, repo}.`,
 				// If autodetect failed, fall through with empty repoSlug → cross-repo search.
 			}
 
+			if flags.Format == "ndjson" {
+				return renderListStreaming(cmd, flags, func(cursor string) ([]any, *provider.Page, error) {
+					results, page, err := p.Search(cmd.Context(), query, provider.SearchOptions{
+						Kinds:  kind,
+						Repo:   repoSlug,
+						Limit:  flags.Limit,
+						Cursor: cursor,
+					})
+					if err != nil {
+						return nil, nil, err
+					}
+					return toAnySlice(results), page, nil
+				})
+			}
 			results, page, err := p.Search(cmd.Context(), query, provider.SearchOptions{
 				Kinds:  kind,
 				Repo:   repoSlug,

@@ -17,6 +17,7 @@ func (p *Provider) CreatePullRequest(ctx context.Context, owner, repo string, op
 	if err := p.client.Post(ctx, fmt.Sprintf("/repos/%s/%s/pulls", owner, repo), opts, &raw); err != nil {
 		return nil, err
 	}
+	p.client.cache.Invalidator().AfterCreate(ctx, kindPR, owner, repo)
 	out := raw.toType()
 	return &out, nil
 }
@@ -28,6 +29,7 @@ func (p *Provider) EditPullRequest(ctx context.Context, owner, repo string, n in
 	if err := p.client.Patch(ctx, fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, n), opts, &raw); err != nil {
 		return nil, err
 	}
+	p.client.cache.Invalidator().AfterObjectMutation(ctx, kindPR, owner, repo, itoa(n))
 	out := raw.toType()
 	return &out, nil
 }
@@ -75,6 +77,9 @@ func (p *Provider) MergePullRequest(ctx context.Context, owner, repo string, n i
 	// as follow-up; for now the Post path works against
 	// api.github.com per current docs.
 	err := p.client.Post(ctx, fmt.Sprintf("/repos/%s/%s/pulls/%d/merge", owner, repo, n), body, nil)
+	if err == nil {
+		p.client.cache.Invalidator().AfterObjectMutation(ctx, kindPR, owner, repo, itoa(n))
+	}
 	return classifyMergeError(err)
 }
 

@@ -39,6 +39,25 @@ inline.`,
 			if err != nil {
 				return err
 			}
+			if flags.Format == "ndjson" {
+				// ListComments returns the merged stream as a
+				// single slice; there's no per-page cursor at the
+				// provider boundary today (it reconciles 3
+				// endpoints internally). Stream it through the
+				// helper as one fake "page" so the wire shape
+				// matches list commands that DO paginate.
+				return renderListStreaming(cmd, flags, func(_ string) ([]any, *provider.Page, error) {
+					comments, err := p.ListComments(cmd.Context(), owner, repo, n, provider.ListCommentsOptions{
+						Sources: sources,
+						Limit:   flags.Limit,
+						Cursor:  flags.Cursor,
+					})
+					if err != nil {
+						return nil, nil, err
+					}
+					return toAnySlice(comments), &provider.Page{}, nil
+				})
+			}
 			comments, err := p.ListComments(cmd.Context(), owner, repo, n, provider.ListCommentsOptions{
 				Sources: sources,
 				Limit:   flags.Limit,

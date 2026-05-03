@@ -142,7 +142,7 @@ Exit codes:
 		},
 	}
 	cmd.Flags().StringVar(&chainFile, "chain-file", "", "path to a chain YAML definition (overrides positional name)")
-	cmd.Flags().StringSliceVar(&varFlags, "var", nil, "chain input as key=value (repeatable)")
+	cmd.Flags().StringArrayVar(&varFlags, "var", nil, "chain input as key=value (repeatable; commas in values are preserved)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "substitute vars + render the resolved plan, but don't execute")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "stream per-step progress to stderr while the chain runs")
 	return cmd
@@ -283,7 +283,7 @@ abort + start a fresh chain with new --var inputs.`,
 	}
 	cmd.Flags().StringVar(&decision, "decision", "continue", "continue, abort, or modify")
 	cmd.Flags().StringVar(&modifyStep, "modify-step", "", "step id to modify (must match the yielded step; required for --decision modify)")
-	cmd.Flags().StringSliceVar(&modifyVars, "modify-vars", nil, "var overrides as key=value (repeatable; required for --decision modify)")
+	cmd.Flags().StringArrayVar(&modifyVars, "modify-vars", nil, "var overrides as key=value (repeatable; commas in values are preserved; required for --decision modify)")
 	return cmd
 }
 

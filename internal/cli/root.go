@@ -31,6 +31,12 @@ type globalFlags struct {
 	Limit             int
 	Cursor            string
 	NoExternalMarkers bool
+	// NoCache, when true, bypasses the local read cache for this
+	// invocation only. Useful for an agent that needs an authoritative
+	// read after a known mutation it didn't drive itself (e.g. a forge
+	// admin closed an issue out-of-band). Persistent flag — applies
+	// to every subcommand on the call. (#42)
+	NoCache bool
 }
 
 // NewRootCmd constructs a fresh root command tree. Each call returns
@@ -62,11 +68,12 @@ auth setup.`,
 	pf.StringVar(&flags.Provider, "provider", "", "provider: forgejo or github")
 	pf.StringVar(&flags.APIURL, "api-url", "", "API base URL override")
 	pf.StringVar(&flags.Repo, "repo", "", "owner/name (overrides git-remote autodetect)")
-	pf.StringVarP(&flags.Format, "format", "F", "json", "output format: json or pretty")
+	pf.StringVarP(&flags.Format, "format", "F", "json", "output format: json, pretty, or ndjson (ndjson streams list commands one item per line; rejected on single-resource commands)")
 	pf.StringVar(&flags.Fields, "fields", "", "field projection, e.g. number,title,labels.name")
 	pf.IntVar(&flags.Limit, "limit", 0, "page limit (0 = default 30)")
 	pf.StringVar(&flags.Cursor, "cursor", "", "pagination cursor from previous response")
 	pf.BoolVar(&flags.NoExternalMarkers, "no-external-markers", false, "in --format pretty, render forge-supplied user content (issue/PR/wiki bodies, comments, etc.) verbatim instead of wrapping in <<<EXTERNAL / EXTERNAL>>> delimiters; JSON output is unaffected (#146)")
+	pf.BoolVar(&flags.NoCache, "no-cache", false, "bypass the local read cache for this call — every read goes upstream (#42)")
 
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newWhoamiCmd(flags))
@@ -80,6 +87,7 @@ auth setup.`,
 	root.AddCommand(newPackagesCmd(flags))
 	root.AddCommand(newWikiCmd(flags))
 	root.AddCommand(newWebhookCmd(flags))
+	root.AddCommand(newCacheCmd(flags))
 
 	return root
 }

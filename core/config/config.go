@@ -38,6 +38,63 @@ type Config struct {
 	DefaultProfile string             `yaml:"default_profile"`
 	DefaultRepo    string             `yaml:"default_repo,omitempty"`
 	Profiles       map[string]Profile `yaml:"profiles"`
+	// Cache holds the optional read-cache settings. nil → use the
+	// documented defaults (enabled, 5-min single TTL, 30s list TTL,
+	// 100 MB cap). See CacheEnabled, CacheTTLSingleSeconds,
+	// CacheTTLListSeconds, and the docs/cache.md operator guide. (#42)
+	Cache *Cache `yaml:"cache,omitempty"`
+}
+
+// Cache configures gaia's local read cache. All fields are
+// optional; defaults documented per-helper.
+type Cache struct {
+	// Enabled is a tri-state via *bool: nil → default-enabled,
+	// pointer-to-true → enabled, pointer-to-false → bypass.
+	// `*bool` instead of bool so the operator can write
+	// `enabled: false` and have it actually take effect even though
+	// `false` is Go's zero value.
+	Enabled    *bool    `yaml:"enabled,omitempty"`
+	TTLSeconds CacheTTL `yaml:"ttl_seconds,omitempty"`
+	MaxSizeMB  int      `yaml:"max_size_mb,omitempty"`
+}
+
+// CacheTTL holds per-shape TTL overrides. Single applies to
+// single-resource reads (issue view, PR view, etc.); List applies to
+// list-style reads (issue list, search, etc.). Zero means
+// "use the default".
+type CacheTTL struct {
+	Single int `yaml:"single,omitempty"`
+	List   int `yaml:"list,omitempty"`
+}
+
+// CacheEnabled reports whether the cache should be active given a
+// Cache config block. Nil block or empty Enabled → true (default-on);
+// only an explicit `enabled: false` flips to false.
+func CacheEnabled(c *Cache) bool {
+	if c == nil || c.Enabled == nil {
+		return true
+	}
+	return *c.Enabled
+}
+
+// CacheTTLSingleSeconds returns the configured single-resource TTL
+// in seconds, or the documented default (300 = 5 min) when absent.
+func CacheTTLSingleSeconds(c *Cache) int {
+	const def = 300
+	if c == nil || c.TTLSeconds.Single == 0 {
+		return def
+	}
+	return c.TTLSeconds.Single
+}
+
+// CacheTTLListSeconds returns the configured list-read TTL in
+// seconds, or the documented default (30) when absent.
+func CacheTTLListSeconds(c *Cache) int {
+	const def = 30
+	if c == nil || c.TTLSeconds.List == 0 {
+		return def
+	}
+	return c.TTLSeconds.List
 }
 
 // Profile describes one provider context — typically one forge
@@ -102,6 +159,7 @@ func Merge(global, project *Config) *Config {
 	if global != nil {
 		out.DefaultProfile = global.DefaultProfile
 		out.DefaultRepo = global.DefaultRepo
+		out.Cache = global.Cache
 		for k, v := range global.Profiles {
 			out.Profiles[k] = v
 		}
@@ -112,6 +170,12 @@ func Merge(global, project *Config) *Config {
 		}
 		if project.DefaultRepo != "" {
 			out.DefaultRepo = project.DefaultRepo
+		}
+		// Project cache config wholly replaces global when set —
+		// otherwise a project that wants `enabled: false` couldn't
+		// override an inherited `enabled: true`.
+		if project.Cache != nil {
+			out.Cache = project.Cache
 		}
 		for k, v := range project.Profiles {
 			out.Profiles[k] = v // project shadows global on key collision
