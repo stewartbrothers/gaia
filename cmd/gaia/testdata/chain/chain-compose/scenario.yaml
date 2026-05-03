@@ -1,0 +1,38 @@
+description: |
+  Chain composition: an outer chain calls a saved chain as a single
+  step, passing vars in and capturing the inner chain's final
+  captures. Verifies the SubChainResolver wiring + the SubResult
+  envelope nesting. Phase C / #149.
+
+saved_chains:
+  inner: |
+    name: inner
+    vars:
+      who:
+        required: true
+    steps:
+      - id: greet
+        run: 'echo ''{"data":{"hello":"world"}}'''
+        capture: msg
+
+chain_yaml: |
+  name: outer-compose
+  steps:
+    - id: call
+      chain: inner
+      vars:
+        who: ${who}
+      capture: result
+    - id: after
+      run: echo done ${result.msg.hello}
+
+stages:
+  - description: gaia chain run --chain-file <chainfile> --var who=test
+    args:
+      - chain
+      - run
+      - --chain-file
+      - ${chainfile}
+      - --var
+      - who=test
+    exit_code: 0

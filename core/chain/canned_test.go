@@ -69,3 +69,34 @@ func containsCondition(list []chain.YieldCondition, c chain.YieldCondition) bool
 	}
 	return false
 }
+
+// TestCannedCommentFanoutParses guards the Phase C / #149 fan-out
+// canned chain. Demonstrates for_each + parallel: true in a
+// shippable shape; a parse-time regression here would break agents
+// that depend on the canned-chain catalog.
+func TestCannedCommentFanoutParses(t *testing.T) {
+	path, err := filepath.Abs(filepath.Join("..", "..", ".gaia", "chains", "comment-fanout.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := chain.ParseFile(path)
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+	if c.Name != "comment-fanout" {
+		t.Errorf("name: %q", c.Name)
+	}
+	// Two steps: bootstrap (decode JSON list) + comments (fan-out).
+	if len(c.Steps) != 2 {
+		t.Fatalf("steps: %d", len(c.Steps))
+	}
+	if c.Steps[1].ForEach == "" {
+		t.Errorf("step 1 should declare for_each")
+	}
+	if !c.Steps[1].ParallelIter {
+		t.Errorf("step 1 should set parallel: true")
+	}
+	if c.Steps[1].MaxConcurrent <= 0 {
+		t.Errorf("step 1 max_concurrent should be positive; got %d", c.Steps[1].MaxConcurrent)
+	}
+}

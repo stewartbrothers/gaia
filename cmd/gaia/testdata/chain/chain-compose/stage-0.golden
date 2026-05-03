@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "data": {
+    "chain": "outer-compose",
+    "status": "success",
+    "steps": [
+      {
+        "id": "call",
+        "status": "ok",
+        "duration_ms": 0,
+        "sub_result": {
+          "chain": "inner",
+          "status": "success",
+          "steps": [
+            {
+              "id": "greet",
+              "run": "echo '{\"data\":{\"hello\":\"world\"}}'",
+              "status": "ok",
+              "stdout": "{\"data\":{\"hello\":\"world\"}}\n",
+              "duration_ms": 0
+            }
+          ],
+          "captured": {
+            "msg": {
+              "hello": "world"
+            }
+          },
+          "duration_ms": 0
+        }
+      },
+      {
+        "id": "after",
+        "run": "echo done 'world'",
+        "status": "ok",
+        "stdout": "done world\n",
+        "duration_ms": 0
+      }
+    ],
+    "captured": {
+      "result": {
+        "msg": {
+          "hello": "world"
+        }
+      }
+    },
+    "duration_ms": 0
+  }
+}

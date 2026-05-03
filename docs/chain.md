@@ -11,10 +11,11 @@ disk-backed state (Phase B-1) + per-step timeout/retry +
 default_yield_on + cleanup: + `--decision modify` (Phase B-2) +
 saved chains under `.gaia/chains/<name>.yaml` + the canned
 `pr-create-and-land` chain + structured exits on
-`gaia pr ci-wait` / `gaia pr merge` (Phase B-3). Linear-only — no
-parallel, no for-each, no chain composition yet. See
+`gaia pr ci-wait` / `gaia pr merge` (Phase B-3) + parallel steps,
+for_each iteration, and named chain composition (Phase C / #149).
+See
 [`#112`](https://github.com/stewartbrothers/gaia/issues/112)
-for the broader design + phasing.
+for the broader design.
 
 ## Subcommands
 
@@ -706,11 +707,116 @@ and "needs passing checks." Marker lists in the provider source are
 intentionally narrow on the review side — false positives would push
 `abort_on: [policy_violation]` to never fire when it should.
 
+## Parallel steps (Phase C)
+
+A step's `parallel:` block declares a fixed roster of sub-steps
+that run concurrently. Capture is by sub-step ID; downstream
+references look like `${outer-step.<sub-id>.<field>}`.
+
+```yaml
+- id: open-three-prs
+  parallel:
+    max_concurrent: 3       # default 5
+    fail_fast: false        # default false; collect every sibling's outcome
+    steps:
+      - id: pr-a
+        run: gaia pr create --title ${title_a} --head feature-a --base main
+        capture: pr_a
+      - id: pr-b
+        run: gaia pr create --title ${title_b} --head feature-b --base main
+        capture: pr_b
+      - id: pr-c
+        run: gaia pr create --title ${title_c} --head feature-c --base main
+        capture: pr_c
+```
+
+Routing inside the block follows the same priority chains use:
+**abort > yield > fail > ok**. The first sub-step in declaration
+order to hit the highest-priority outcome wins. Examples:
+
+  - One sibling yields on `rate_limited` → outer step yields with
+    that condition; resume of the outer token re-runs only the
+    yielded sub-step (other sub-steps' results are preserved in
+    state).
+  - One sibling fails non-routed and `fail_fast: true` → still-
+    running siblings get cancelled via context cancellation;
+    `failed_substep` lands on the chain's `failure` payload.
+
+Sub-steps see the chain's `vars:` and any captures from earlier
+**outer** steps. They do NOT see each other's captures — siblings
+have no ordering guarantee, so any data dependency must be a
+serial step before/after the parallel block.
+
+## for_each iteration (Phase C)
+
+A step with `for_each:` iterates a captured array, running the
+step's body (`run:` or `chain:`) once per element. `${item}` and
+`${index}` are bound in each iteration's scope.
+
+```yaml
+- id: list-issues
+  run: gaia issue list --state open --format json --fields number
+  capture: issues
+
+- id: comment-on-each
+  for_each: ${issues}
+  parallel: true                # default false (serial)
+  max_concurrent: 5
+  run: gaia issue comment ${item.number} --body "shipping today"
+  capture: comments
+```
+
+  - The iterable must resolve to a JSON array. A non-array
+    (string / object / scalar) trips a hard failure with reason
+    `for_each_not_iterable` and the resolved type named.
+  - Empty array → step OK with no work, downstream steps run.
+  - `parallel: true` is the boolean shorthand for "fan iterations
+    out concurrently"; `max_concurrent` caps the goroutine pool
+    (default 5).
+  - Per-iteration captures land under the step's capture name as
+    a list — `${comment-on-each.0.number}`, `${comment-on-each.1.number}`,
+    etc. Numeric path segments index the slice.
+
+## Named chain composition (Phase C)
+
+A step with `chain:` invokes a saved chain by name. `vars:` map
+into the inner chain's `vars:` schema; the inner chain's final
+`captured:` map becomes the outer step's captured value.
+
+```yaml
+- id: open-and-land
+  chain: pr-create-and-land   # resolves via .gaia/chains/<name>.yaml
+  vars:
+    title: feat: thing
+    body: ${input_body}        # outer scope substitution
+    head: feature/x
+  capture: landed
+
+- id: announce
+  run: echo "merged PR ${landed.merge.merged_pr.number}"
+```
+
+  - Resolution: same lookup order saved-chain dispatch uses
+    (literal path → project `.gaia/chains/<name>.yaml` → global
+    `~/.config/gaia/chains/<name>.yaml`).
+  - Recursion limit: 5 deep by default; configurable via
+    `RunOptions.MaxChainDepth`. Cycle detection (chain A → B → A)
+    catches cycles before they hit the depth cap with reason
+    `chain_cycle` and the stack listed.
+  - Inner chain yields bubble up: the outer chain yields with the
+    inner condition, the resume token covers the WHOLE
+    composition. On `gaia chain resume <outer-token>`, the inner
+    chain picks up at its yield point — pre-yield captures are
+    preserved.
+  - Inner chain failure / abort surfaces at the outer level with
+    `inner_failed_step` + `inner_failure` keys for richer agent
+    introspection.
+
 ## Limitations (current)
 
-- **Parallel steps + for_each** (Phase C): no parallel fan-out
-  for "5 comments at once" patterns.
-- **Named chain composition** (Phase C): one chain calling
-  another saved chain as a step.
+Phase C closed the major gaps. Remaining limitations are tracked
+on the [Phase 4 epic](https://github.com/stewartbrothers/gaia/issues/4) —
+local SQLite cache, indexed search, webhook helpers.
 
-Tracked under [#112](https://github.com/stewartbrothers/gaia/issues/112).
+Tracked under [#112](https://github.com/stewartbrothers/gaia/issues/112)
+and [#149](https://github.com/stewartbrothers/gaia/issues/149).

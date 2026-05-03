@@ -1,0 +1,27 @@
+description: |
+  Parallel block fan-out: three sub-steps run concurrently. Verifies
+  the envelope shape for the new `sub_steps:` field on the outer
+  StepResult and that the chain finishes success when every sub-step
+  is OK. Phase C / #149.
+
+chain_yaml: |
+  name: parallel-fanout
+  steps:
+    - id: fan
+      parallel:
+        steps:
+          - id: a
+            run: echo a
+          - id: b
+            run: echo b
+          - id: c
+            run: echo c
+
+stages:
+  - description: gaia chain run --chain-file <chainfile>
+    args:
+      - chain
+      - run
+      - --chain-file
+      - ${chainfile}
+    exit_code: 0

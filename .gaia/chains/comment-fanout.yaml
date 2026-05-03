@@ -1,0 +1,56 @@
+name: comment-fanout
+description: |
+  Comment on a set of issues concurrently. The classic Phase C
+  example: an agent that previously made 5 serial `gaia issue
+  comment` calls (5 forge round-trips, ~2s wall time) collapses
+  to one chain envelope with for_each + parallel: true (5
+  concurrent calls, ~400ms wall time).
+
+  Inputs:
+
+    issues_json — a JSON-array string of issue numbers, e.g.
+                  '[42, 43, 44]'. The chain decodes it once via
+                  the bootstrap step's capture, then fans out.
+    body        — the comment body to post on every issue.
+                  Substituted shell-safe at run time, so
+                  metacharacters don't escape.
+
+  Output captures:
+
+    issues   — the parsed list (whatever the operator passed)
+    comments — the per-issue gaia comment-create envelope, indexed
+               by iteration number. Reach the third comment's id
+               via ${comments.2.id}.
+
+  Phase C / #149.
+
+vars:
+  issues_json:
+    required: true
+  body:
+    required: true
+
+steps:
+  - id: bootstrap
+    # Decode the JSON-array string into a typed list capture so
+    # for_each can iterate. The trick: echo the raw JSON, the
+    # capture decoder parses it.
+    run: echo ${issues_json}
+    capture: issues
+
+  - id: comments
+    for_each: ${issues}
+    parallel: true
+    max_concurrent: 5
+    run: gaia issue comment ${item} --body ${body}
+    capture: comment
+
+    # Yield on rate-limit so the agent can wait + resume rather
+    # than failing the chain. Per-iteration retry handles
+    # transient network blips.
+    yield_on:
+      - rate_limited
+    retry:
+      max: 2
+      delay: 5s
+      backoff: exponential
