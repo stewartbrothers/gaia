@@ -14,13 +14,18 @@ func TestConstantsHaveDocumentedValues(t *testing.T) {
 	cases := map[string]struct {
 		got, want int
 	}{
-		"OK":        {exitcode.OK, 0},
-		"Generic":   {exitcode.Generic, 1},
-		"Usage":     {exitcode.Usage, 2},
-		"NotFound":  {exitcode.NotFound, 3},
-		"Auth":      {exitcode.Auth, 4},
-		"RateLimit": {exitcode.RateLimit, 5},
-		"Network":   {exitcode.Network, 6},
+		"OK":              {exitcode.OK, 0},
+		"Generic":         {exitcode.Generic, 1},
+		"Usage":           {exitcode.Usage, 2},
+		"NotFound":        {exitcode.NotFound, 3},
+		"Auth":            {exitcode.Auth, 4},
+		"RateLimit":       {exitcode.RateLimit, 5},
+		"Network":         {exitcode.Network, 6},
+		"MergeConflict":   {exitcode.MergeConflict, 7},
+		"ReviewRequired":  {exitcode.ReviewRequired, 8},
+		"PolicyViolation": {exitcode.PolicyViolation, 9},
+		"CheckFailed":     {exitcode.CheckFailed, 10},
+		"CheckFlaky":      {exitcode.CheckFlaky, 11},
 	}
 	for name, c := range cases {
 		if c.got != c.want {

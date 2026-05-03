@@ -5,13 +5,26 @@
 // Agents branch on these codes without parsing stderr. The full table
 // is documented in docs/exit-codes.md; in short:
 //
-//	0  OK
-//	1  Generic / unexpected
-//	2  Usage / bad request shape
-//	3  NotFound
-//	4  Auth (401, 403)
-//	5  RateLimit (429)
-//	6  Network / transient (408, 5xx)
+//	0   OK
+//	1   Generic / unexpected
+//	2   Usage / bad request shape
+//	3   NotFound
+//	4   Auth (401, 403)
+//	5   RateLimit (429)
+//	6   Network / transient (408, 5xx)
+//	7   MergeConflict (PR merge 409)
+//	8   ReviewRequired (branch protection: missing required reviews)
+//	9   PolicyViolation (branch protection: other policy block, e.g.
+//	    required-status-check missing)
+//	10  CheckFailed (CI checks finished, ≥1 non-flaky failure)
+//	11  CheckFlaky (CI checks finished, only flaky/retryable failures
+//	    seen, OR `gaia pr ci-wait` reached its deadline while still
+//	    pending — caller is expected to wait + retry)
+//
+// Codes 7–11 ship with chain Phase B-3 (#112) so chains can route on
+// merge / CI / policy outcomes via structured `yield_on:` /
+// `abort_on:` conditions rather than parsing free text. The chain
+// vocabulary maps in core/chain/conditions.go (`MapExitCode`).
 package exitcode
 
 import (
@@ -29,6 +42,31 @@ const (
 	Auth      = 4
 	RateLimit = 5
 	Network   = 6
+	// MergeConflict — PR merge endpoint returned 409 (or the upstream's
+	// equivalent "head ref has diverged from base, can't fast-forward").
+	// Maps to chain.YieldMergeConflict so a chain can pause + let the
+	// agent push a rebase commit before resuming.
+	MergeConflict = 7
+	// ReviewRequired — write op blocked because the branch-protection
+	// rule needs human review approvals that aren't present yet. Maps
+	// to chain.YieldReviewRequired.
+	ReviewRequired = 8
+	// PolicyViolation — write op blocked by branch protection or repo
+	// policy for a reason OTHER than missing reviews (e.g., a required
+	// status check is missing or failed). Maps to chain.YieldPolicyViolation.
+	PolicyViolation = 9
+	// CheckFailed — `gaia pr ci-wait` saw at least one non-flaky CI
+	// check fail. Maps to chain.YieldCheckFailed; agents typically
+	// declare this in `abort_on:` because a real test failure
+	// shouldn't be silently retried.
+	CheckFailed = 10
+	// CheckFlaky — `gaia pr ci-wait` either timed out while still
+	// pending, or saw only flaky/transient failures (a check went
+	// pending → failure → success during the window, or its name
+	// matches a known retry-marker pattern). Maps to
+	// chain.YieldCheckFlaky; agents typically declare this in
+	// `yield_on:` so the chain can pause + the agent re-trigger CI.
+	CheckFlaky = 11
 )
 
 // Error is the carrier type that lets a deep call site surface an exit
