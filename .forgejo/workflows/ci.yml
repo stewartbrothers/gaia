@@ -51,5 +51,70 @@ jobs:
       - name: Coverage summary
         run: go tool cover -func=coverage.out
 
+      # Post the coverage summary as a PR comment so reviewers see drift
+      # without clicking into the CI run. Uses a marker so re-runs update
+      # the same comment instead of stacking. Forgejo Actions auto-injects
+      # `GITHUB_TOKEN` scoped to this repo (same env-var name as GitHub
+      # Actions). Skipped on push events because there is no PR to comment
+      # on. No third-party action — Forgejo runner does not mirror them.
+      - name: Post coverage to PR
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          API_BASE: ${{ github.server_url }}/api/v1
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -eu
+          MARKER='<!-- gaia-coverage-comment -->'
+          summary=$(go tool cover -func=coverage.out | tail -30)
+          {
+            printf '%s\n' "$MARKER"
+            printf '## Coverage summary\n\n'
+            printf '```\n%s\n```\n\n' "$summary"
+            printf '_Auto-posted by CI; updated on every push to this branch._\n'
+          } > comment-body.md
+
+          # jq -Rs reads the whole file as a JSON string (escaping newlines
+          # / quotes / backticks correctly); building the JSON envelope
+          # with --arg keeps shell quoting out of the picture.
+          payload=$(jq -Rs '{body: .}' < comment-body.md)
+
+          # Find an existing marker-tagged comment (paginate; PR comment
+          # threads can exceed the default 50-per-page limit on busy PRs).
+          existing_id=""
+          page=1
+          while :; do
+            chunk=$(curl -fsS \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              -H "Accept: application/json" \
+              "${API_BASE}/repos/${REPO}/issues/${PR_NUMBER}/comments?page=${page}&limit=50")
+            count=$(printf '%s' "$chunk" | jq 'length')
+            if [ "$count" -eq 0 ]; then break; fi
+            match=$(printf '%s' "$chunk" | jq -r --arg m "$MARKER" \
+              'map(select(.body | startswith($m))) | .[0].id // empty')
+            if [ -n "$match" ]; then existing_id="$match"; break; fi
+            if [ "$count" -lt 50 ]; then break; fi
+            page=$((page + 1))
+          done
+
+          if [ -n "$existing_id" ]; then
+            echo "Updating existing coverage comment id=${existing_id}"
+            curl -fsS -X PATCH \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$payload" \
+              "${API_BASE}/repos/${REPO}/issues/comments/${existing_id}" \
+              > /dev/null
+          else
+            echo "Creating new coverage comment on PR #${PR_NUMBER}"
+            curl -fsS -X POST \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$payload" \
+              "${API_BASE}/repos/${REPO}/issues/${PR_NUMBER}/comments" \
+              > /dev/null
+          fi
+
       - name: go build
         run: make build
