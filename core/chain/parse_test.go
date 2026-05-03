@@ -134,3 +134,64 @@ func TestParseFailsOnMalformedYAML(t *testing.T) {
 		t.Error("expected yaml parse error")
 	}
 }
+
+func TestParseAcceptsKnownYieldConditions(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: x
+    run: echo hi
+    yield_on:
+      - auth_error
+      - not_found
+      - rate_limited
+    abort_on:
+      - timeout
+`
+	c, err := chain.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(c.Steps[0].YieldOn) != 3 {
+		t.Errorf("yield_on count: %d", len(c.Steps[0].YieldOn))
+	}
+	if len(c.Steps[0].AbortOn) != 1 {
+		t.Errorf("abort_on count: %d", len(c.Steps[0].AbortOn))
+	}
+}
+
+func TestParseRejectsUnknownYieldCondition(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: x
+    run: echo hi
+    yield_on:
+      - typo_here
+`
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "typo_here") {
+		t.Errorf("expected rejection of unknown condition; got %v", err)
+	}
+}
+
+func TestParseRejectsConditionInBothYieldAndAbort(t *testing.T) {
+	yaml := `name: c
+steps:
+  - id: x
+    run: echo hi
+    yield_on: [timeout]
+    abort_on: [timeout]
+`
+	if _, err := chain.Parse([]byte(yaml)); err == nil || !strings.Contains(err.Error(), "both") {
+		t.Errorf("expected rejection of duplicate; got %v", err)
+	}
+}
+
+func TestAllYieldConditionsCoversIsKnown(t *testing.T) {
+	for _, c := range chain.AllYieldConditions() {
+		if !c.IsKnown() {
+			t.Errorf("condition %q not in IsKnown", c)
+		}
+	}
+	if chain.YieldCondition("invented").IsKnown() {
+		t.Error("invented condition should not be IsKnown")
+	}
+}

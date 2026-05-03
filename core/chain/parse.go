@@ -70,6 +70,28 @@ func (c *Chain) Validate() error {
 				return fmt.Errorf("chain: step %q: capture %q must be a simple identifier (letters/digits/underscore, no dots)", s.ID, s.Capture)
 			}
 		}
+		// yield_on / abort_on entries must be in the fixed vocabulary
+		// — typos otherwise silently never fire. Reject at parse time
+		// so operators get an immediate red flag.
+		for _, y := range s.YieldOn {
+			if !y.IsKnown() {
+				return fmt.Errorf("chain: step %q: yield_on contains unknown condition %q (see chain.AllYieldConditions for the vocabulary)", s.ID, y)
+			}
+		}
+		for _, a := range s.AbortOn {
+			if !a.IsKnown() {
+				return fmt.Errorf("chain: step %q: abort_on contains unknown condition %q (see chain.AllYieldConditions for the vocabulary)", s.ID, a)
+			}
+		}
+		// Same condition can't be in both yield_on AND abort_on for the
+		// same step — that's a contradiction.
+		for _, y := range s.YieldOn {
+			for _, a := range s.AbortOn {
+				if y == a {
+					return fmt.Errorf("chain: step %q: condition %q can't be in both yield_on and abort_on", s.ID, y)
+				}
+			}
+		}
 	}
 	return nil
 }
