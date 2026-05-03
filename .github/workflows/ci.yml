@@ -1,6 +1,11 @@
 # Mirror of .forgejo/workflows/ci.yml for the eventual GitHub mirror (#47).
 # Keep these two files in lock-step — the GitHub mirror is a publishing
 # target, not a separate test surface.
+#
+# CI actions are pinned by commit SHA (not floating tag) so a
+# compromised actions/* org can't push a malicious update under a
+# tag we already trust. Bump the SHA and the trailing version
+# comment together when updating. (#140 part 2.)
 
 name: CI
 
@@ -17,9 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
         with:
           # Pinned to match the floor in go.mod. mcp-go v0.50.x
           # (#138) bumped its own toolchain requirement to 1.25.5,
