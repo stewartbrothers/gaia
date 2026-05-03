@@ -104,6 +104,15 @@ fi
 
 # 6. Local gate. CI re-runs the same on the tagged commit, but
 # catching a failure here saves the operator a 5-minute round-trip.
+#
+# Put $(go env GOPATH)/bin on PATH the same way CI's workflow does
+# (`export PATH="$(go env GOPATH)/bin:$PATH"` before `make lint`).
+# golangci-lint and govulncheck both `go install` to that dir; on a
+# default macOS shell they aren't on PATH, so `make lint` fails with
+# "golangci-lint not found" before the gate has a chance to report
+# anything useful. Operators were getting bitten on every cut.
+export PATH="$(go env GOPATH)/bin:$PATH"
+
 echo "==> Running local gate (fmt vet lint cover build)…"
 if ! make fmt vet lint cover build; then
   echo "error: local gate failed. Fix it before tagging." >&2
