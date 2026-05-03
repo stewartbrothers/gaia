@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0",
+  "data": {
+    "chain": "for-each-parallel",
+    "status": "success",
+    "steps": [
+      {
+        "id": "list",
+        "run": "echo '[\"a\",\"b\"]'",
+        "status": "ok",
+        "stdout": "[\"a\",\"b\"]\n",
+        "duration_ms": 0
+      },
+      {
+        "id": "do",
+        "status": "ok",
+        "duration_ms": 0,
+        "sub_steps": [
+          {
+            "id": "do[0]",
+            "run": "echo handled 'a'",
+            "status": "ok",
+            "stdout": "handled a\n",
+            "duration_ms": 0
+          },
+          {
+            "id": "do[1]",
+            "run": "echo handled 'b'",
+            "status": "ok",
+            "stdout": "handled b\n",
+            "duration_ms": 0
+          }
+        ]
+      }
+    ],
+    "captured": {
+      "items": [
+        "a",
+        "b"
+      ]
+    },
+    "duration_ms": 0
+  }
+}

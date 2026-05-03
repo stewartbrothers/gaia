@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "data": {
+    "chain": "parallel-fanout",
+    "status": "success",
+    "steps": [
+      {
+        "id": "fan",
+        "status": "ok",
+        "duration_ms": 0,
+        "sub_steps": [
+          {
+            "id": "a",
+            "run": "echo a",
+            "status": "ok",
+            "stdout": "a\n",
+            "duration_ms": 0
+          },
+          {
+            "id": "b",
+            "run": "echo b",
+            "status": "ok",
+            "stdout": "b\n",
+            "duration_ms": 0
+          },
+          {
+            "id": "c",
+            "run": "echo c",
+            "status": "ok",
+            "stdout": "c\n",
+            "duration_ms": 0
+          }
+        ]
+      }
+    ],
+    "duration_ms": 0
+  }
+}
