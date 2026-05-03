@@ -179,7 +179,7 @@ type Result struct {
 	Failure    map[string]any `json:"failure,omitempty"`
 	Steps      []StepResult   `json:"steps"`
 	Captured   map[string]any `json:"captured,omitempty"`
-	DurationMs int64          `json:"duration_ms,omitempty"`
+	DurationMs int64          `json:"duration_ms"`
 	DryRun     bool           `json:"dry_run,omitempty"`
 
 	// Yield fields (Status == "yielded")
@@ -204,7 +204,7 @@ type StepResult struct {
 	ExitCode   int    `json:"exit_code,omitempty"`
 	Stdout     string `json:"stdout,omitempty"`
 	Stderr     string `json:"stderr,omitempty"`
-	DurationMs int64  `json:"duration_ms,omitempty"`
+	DurationMs int64  `json:"duration_ms"`
 }
 
 // Result.Status values.
