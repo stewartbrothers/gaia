@@ -214,6 +214,26 @@ type ListPackagesOptions struct {
 	Cursor string
 }
 
+// --- Packages (Phase 4 / #122) -----------------------------------
+
+// UploadPackageOptions configures UploadPackage. ContentType is the
+// optional MIME type of the upload body; "" lets the implementation
+// default ("application/octet-stream"). FileName becomes the final
+// URL segment in Forgejo's generic-package endpoint
+// PUT /packages/{owner}/generic/{name}/{version}/{file}.
+//
+// On GitHub, package upload semantics are per-registry (npm publish,
+// container manifest push, ...) and don't fold into a single struct —
+// the GitHub provider returns a documented "not implemented" error
+// (see provider-parity.md) until follow-up dispatch lands. Forgejo's
+// generic-package endpoint is what this struct targets; npm/maven/
+// container kinds on Forgejo have their own endpoints and are out of
+// scope for #122.
+type UploadPackageOptions struct {
+	FileName    string
+	ContentType string
+}
+
 // --- Wikis (Phase 4 / #108) --------------------------------------
 
 // ListWikiPagesOptions paginates a ListWikiPages call. Forgejo's wiki

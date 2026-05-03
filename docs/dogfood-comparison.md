@@ -71,6 +71,9 @@ Gerwood/gaia, PR #75 with no comments)
 | `gaia packages delete <spec> --confirm` (#107)     | ~50     | ~13     | n/a          |
 | `curl -X DELETE /packages/X/<t>/<n>/<v>`           | 0       | 0       | (204)        |
 | | | | |
+| `gaia packages upload generic n v ./a.tgz` (#122)  | ~60     | ~15     | n/a          |
+| `curl -T a.tgz /packages/X/generic/n/v/a.tgz`      | 0       | 0       | (201)        |
+| | | | |
 | `gaia wiki list` (10-page wiki, est.)              | ~600    | ~150    | **0.20×**    |
 | `curl /wiki/pages?limit=10` (10-page wiki, est.)   | ~3 000  | ~750    | 1×           |
 | | | | |

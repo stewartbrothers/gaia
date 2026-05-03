@@ -3,6 +3,7 @@ package forgejo_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -196,6 +197,165 @@ func TestListPackagesWithFilters(t *testing.T) {
 		if !strings.Contains(capturedQuery, want) {
 			t.Errorf("query %q missing %q", capturedQuery, want)
 		}
+	}
+}
+
+// TestUploadPackage covers the happy-path PUT to the generic-package
+// endpoint. Body is streamed verbatim; the path includes filename as
+// the last segment.
+func TestUploadPackage(t *testing.T) {
+	var (
+		gotPath        string
+		gotMethod      string
+		gotContentType string
+		gotBody        []byte
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		gotContentType = r.Header.Get("Content-Type")
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(201)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	err := p.UploadPackage(
+		context.Background(),
+		"o", "generic", "myapp", "1.2.0",
+		provider.UploadPackageOptions{
+			FileName:    "release.tar.gz",
+			ContentType: "application/gzip",
+		},
+		strings.NewReader("BINARY-PAYLOAD"),
+	)
+	if err != nil {
+		t.Fatalf("UploadPackage: %v", err)
+	}
+	if gotMethod != http.MethodPut {
+		t.Errorf("method: %q, want PUT", gotMethod)
+	}
+	if gotPath != "/packages/o/generic/myapp/1.2.0/release.tar.gz" {
+		t.Errorf("path: got %q", gotPath)
+	}
+	if gotContentType != "application/gzip" {
+		t.Errorf("content-type: %q", gotContentType)
+	}
+	if string(gotBody) != "BINARY-PAYLOAD" {
+		t.Errorf("body: got %q", string(gotBody))
+	}
+}
+
+// TestUploadPackageDefaultsContentType covers the empty-content-type
+// branch — implementation defaults to application/octet-stream.
+func TestUploadPackageDefaultsContentType(t *testing.T) {
+	var gotContentType string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotContentType = r.Header.Get("Content-Type")
+		w.WriteHeader(201)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	err := p.UploadPackage(
+		context.Background(),
+		"o", "generic", "x", "1", provider.UploadPackageOptions{FileName: "f"},
+		strings.NewReader("d"),
+	)
+	if err != nil {
+		t.Fatalf("UploadPackage: %v", err)
+	}
+	if gotContentType != "application/octet-stream" {
+		t.Errorf("default content-type: %q", gotContentType)
+	}
+}
+
+// TestUploadPackageRejectsNonGeneric pins the scope: only "generic"
+// is supported in #122. Other kinds return a usage error so the
+// caller sees a clear "not supported" rather than a 404 from the
+// upstream.
+func TestUploadPackageRejectsNonGeneric(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Error("non-generic upload must not reach the upstream")
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	err := p.UploadPackage(
+		context.Background(),
+		"o", "npm", "x", "1.0.0", provider.UploadPackageOptions{FileName: "x.tgz"},
+		strings.NewReader("data"),
+	)
+	if err == nil {
+		t.Fatal("expected error for npm pkgType")
+	}
+	if got := exitcode.Of(err); got != exitcode.Usage {
+		t.Errorf("exit code: got %d, want Usage", got)
+	}
+}
+
+// TestUploadPackageRequiresFileName: empty FileName is a usage error.
+func TestUploadPackageRequiresFileName(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Error("missing FileName must not reach upstream")
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	err := p.UploadPackage(
+		context.Background(),
+		"o", "generic", "x", "1.0.0", provider.UploadPackageOptions{},
+		strings.NewReader("data"),
+	)
+	if got := exitcode.Of(err); got != exitcode.Usage {
+		t.Errorf("exit code: got %d, want Usage", got)
+	}
+}
+
+// TestUploadPackageBadStatus maps non-2xx upstream responses to the
+// matching exit code.
+func TestUploadPackageBadStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(409)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	err := p.UploadPackage(
+		context.Background(),
+		"o", "generic", "x", "1", provider.UploadPackageOptions{FileName: "f"},
+		strings.NewReader("data"),
+	)
+	if err == nil {
+		t.Fatal("expected error for 409")
+	}
+}
+
+// TestUploadPackageEscapesFileName: filenames with reserved chars
+// (notably "/") need URL-escaping so they don't split the path into
+// extra segments. Forgejo treats "release/v1.tgz" as a directory in
+// the URL, which silently 404s; escape forces a single final
+// segment.
+func TestUploadPackageEscapesFileName(t *testing.T) {
+	var capturedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.EscapedPath()
+		w.WriteHeader(201)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	err := p.UploadPackage(
+		context.Background(),
+		"o", "generic", "x", "1.0",
+		provider.UploadPackageOptions{FileName: "release/v1.tgz"},
+		strings.NewReader("d"),
+	)
+	if err != nil {
+		t.Fatalf("UploadPackage: %v", err)
+	}
+	if !strings.Contains(capturedPath, "%2F") {
+		t.Errorf("path should escape '/' inside filename; got %q", capturedPath)
 	}
 }
 

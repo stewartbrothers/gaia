@@ -143,6 +143,9 @@ func (*noopProvider) GetPackage(_ context.Context, _, _, _, _ string) (*types.Pa
 func (*noopProvider) DeletePackage(_ context.Context, _, _, _, _ string) error {
 	return errNotImplemented
 }
+func (*noopProvider) UploadPackage(_ context.Context, _, _, _, _ string, _ provider.UploadPackageOptions, _ io.Reader) error {
+	return errNotImplemented
+}
 func (*noopProvider) ListWikiPages(_ context.Context, _, _ string, _ provider.ListWikiPagesOptions) ([]types.WikiPage, *provider.Page, error) {
 	return nil, nil, errNotImplemented
 }
