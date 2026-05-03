@@ -109,7 +109,7 @@ body to scan it. The scan is capped at --max-pages (default 100).
 Larger wikis should narrow the query rather than raise the cap.
 
 The agent-cost win is that one ` + "`gaia wiki search`" + ` call
-replaces N WebFetch calls — see docs/dogfood-comparison.md.`,
+replaces N WebFetch calls — see bench/dogfood-wiki.md.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			p, _, err := buildForgejoProvider(flags)
