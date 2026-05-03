@@ -258,11 +258,21 @@ func TestDefaultWikiCacheRootFallsBackToHome(t *testing.T) {
 	}
 }
 
-func TestWikiRemoteURLEmbedsTokenWhenPresent(t *testing.T) {
+// TestWikiRemoteURLNeverEmbedsToken pins the #137 fix: the URL
+// returned by wikiRemoteURL must NEVER contain the token, even when
+// one is supplied. Auth travels via gitEnv()'s GIT_CONFIG_* triple
+// instead so the credential stays out of argv / process listings.
+func TestWikiRemoteURLNeverEmbedsToken(t *testing.T) {
 	got := wikiRemoteURL("", "alice", "myrepo", "secrettoken")
-	want := "https://x-access-token:secrettoken@github.com/alice/myrepo.wiki.git"
+	want := "https://github.com/alice/myrepo.wiki.git"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+	if strings.Contains(got, "secrettoken") {
+		t.Errorf("URL leaked token: %q", got)
+	}
+	if strings.Contains(got, "x-access-token") {
+		t.Errorf("URL still uses x-access-token credential prefix: %q", got)
 	}
 }
 
@@ -276,8 +286,69 @@ func TestWikiRemoteURLOmitsAuthWhenTokenEmpty(t *testing.T) {
 
 func TestWikiRemoteURLAllowsCustomHost(t *testing.T) {
 	got := wikiRemoteURL("ghe.example.com", "o", "r", "t")
-	if !strings.HasPrefix(got, "https://x-access-token:t@ghe.example.com/") {
-		t.Errorf("got %q", got)
+	want := "https://ghe.example.com/o/r.wiki.git"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// TestGitEnvCarriesAuthHeaderWhenTokenSet — the boundary test for
+// the env-var-based auth path. With a token present, gitEnv must
+// emit the GIT_CONFIG_* triple so git picks up
+// `http.extraHeader=Authorization: Bearer <token>` for clone/fetch/
+// push. With no token, the triple is absent.
+func TestGitEnvCarriesAuthHeaderWhenTokenSet(t *testing.T) {
+	c := &wikiCache{token: "TOK_42"}
+	env := c.gitEnv()
+	if !envContains(env, "GIT_CONFIG_COUNT=1") {
+		t.Error("GIT_CONFIG_COUNT=1 missing")
+	}
+	if !envContains(env, "GIT_CONFIG_KEY_0=http.extraHeader") {
+		t.Error("GIT_CONFIG_KEY_0=http.extraHeader missing")
+	}
+	if !envContains(env, "GIT_CONFIG_VALUE_0=Authorization: Bearer TOK_42") {
+		t.Errorf("GIT_CONFIG_VALUE_0 missing or malformed: %q", env)
+	}
+}
+
+func TestGitEnvOmitsAuthHeaderWhenTokenEmpty(t *testing.T) {
+	c := &wikiCache{token: ""}
+	env := c.gitEnv()
+	for _, e := range env {
+		if strings.HasPrefix(e, "GIT_CONFIG_") {
+			t.Errorf("unexpected GIT_CONFIG_* entry with empty token: %q", e)
+		}
+	}
+}
+
+func envContains(env []string, want string) bool {
+	for _, e := range env {
+		if e == want {
+			return true
+		}
+	}
+	return false
+}
+
+// TestRunGitErrorScrubsTokenFromArgs runs a deliberately-failing
+// `git` invocation whose argv hypothetically contained the token
+// (we pass the token verbatim as an arg) and asserts the returned
+// error string has the token replaced. Defence-in-depth for #137 —
+// even if a future code path puts the token somewhere argv-visible,
+// the error logger won't leak it.
+func TestRunGitErrorScrubsTokenFromArgs(t *testing.T) {
+	c := &wikiCache{token: "SECRETXYZ"}
+	// Ask git for a non-existent subcommand whose argv carries the
+	// token. git will fail; runGit's error formatting must scrub.
+	err := c.runGit(context.Background(), "", "doesnotexist", "SECRETXYZ")
+	if err == nil {
+		t.Fatal("expected error from bogus git subcommand")
+	}
+	if strings.Contains(err.Error(), "SECRETXYZ") {
+		t.Errorf("error string leaked token: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "<redacted>") {
+		t.Errorf("expected redacted marker in error: %q", err.Error())
 	}
 }
 

@@ -314,6 +314,12 @@ func (c *wikiCache) hasStagedChanges(ctx context.Context, dir string) (bool, err
 // (use "" for "no chdir", e.g. clone). stderr is captured into the
 // returned error so failures are diagnosable; stdout is discarded
 // (none of our git invocations consume it).
+//
+// The error message routes both the joined argv AND git's combined
+// output through scrubToken before formatting (#137): even though
+// the token never enters argv since the env-vars-for-auth fix, a
+// future config mistake or git internals tweak that surfaces the
+// token in either field shouldn't exfiltrate it through error logs.
 func (c *wikiCache) runGit(ctx context.Context, dir string, args ...string) error {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	if dir != "" {
@@ -322,7 +328,9 @@ func (c *wikiCache) runGit(ctx context.Context, dir string, args ...string) erro
 	cmd.Env = c.gitEnv()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("git %s: %w (output: %s)", strings.Join(args, " "), err, scrubToken(string(out), c.token))
+		joinedArgs := scrubToken(strings.Join(args, " "), c.token)
+		scrubbedOut := scrubToken(string(out), c.token)
+		return fmt.Errorf("git %s: %w (output: %s)", joinedArgs, err, scrubbedOut)
 	}
 	return nil
 }
@@ -332,12 +340,29 @@ func (c *wikiCache) runGit(ctx context.Context, dir string, args ...string) erro
 //   - GIT_TERMINAL_PROMPT=0 prevents an interactive prompt if a remote
 //     auth fails (we want a fast hard-error in that case).
 //   - GIT_ASKPASS=/bin/echo suppresses any password helper invocation.
+//   - GIT_CONFIG_COUNT / GIT_CONFIG_KEY_0 / GIT_CONFIG_VALUE_0
+//     (only when c.token is non-empty): pushes an
+//     `http.extraHeader=Authorization: Bearer <token>` config into
+//     git via env vars rather than via the URL or `git -c …` argv.
+//     `git -c` would expose the bearer header in argv, which is
+//     visible to other users on multi-user hosts via `ps` and to
+//     process accounting; the env-var path keeps the secret in
+//     /proc/<pid>/environ which is mode 0400 (owner-only) on
+//     Linux. Requires git 2.31+ for GIT_CONFIG_COUNT support.
 //
-// The token is embedded directly in the remote URL, so no env-based
-// credential plumbing is needed.
+// Mitigation for #137: every wikiRemoteURL now carries no
+// credential, and the auth header travels via this env channel so
+// the token never enters argv.
 func (c *wikiCache) gitEnv() []string {
 	env := os.Environ()
 	env = append(env, "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=/bin/echo")
+	if c.token != "" {
+		env = append(env,
+			"GIT_CONFIG_COUNT=1",
+			"GIT_CONFIG_KEY_0=http.extraHeader",
+			fmt.Sprintf("GIT_CONFIG_VALUE_0=Authorization: Bearer %s", c.token),
+		)
+	}
 	return env
 }
 
@@ -351,16 +376,20 @@ func scrubToken(s, token string) string {
 	return strings.ReplaceAll(s, token, "<redacted>")
 }
 
-// wikiRemoteURL returns the authenticated clone/push URL for a GitHub
-// wiki. Empty token → unauthenticated (works for read of public
-// wikis, fails on push — the caller's commitAndPush surfaces that as
-// a hard error).
-func wikiRemoteURL(host, owner, repo, token string) string {
+// wikiRemoteURL returns the unauthenticated clone/push URL for a
+// GitHub wiki. The token argument is accepted for API
+// backwards-compat but is intentionally ignored: auth travels via
+// gitEnv()'s GIT_CONFIG_* triple (http.extraHeader=Authorization:
+// Bearer <token>) so the credential never enters argv.
+//
+// Mitigation for #137: previously this function embedded the PAT
+// directly in the URL, which made the token visible to any process
+// on the host that could read /proc/<pid>/cmdline or run `ps`.
+// That value is now never serialised — it lives only in the per-
+// invocation env where /proc/<pid>/environ is mode 0400.
+func wikiRemoteURL(host, owner, repo, _ string) string {
 	if host == "" {
 		host = "github.com"
 	}
-	if token == "" {
-		return fmt.Sprintf("https://%s/%s/%s.wiki.git", host, owner, repo)
-	}
-	return fmt.Sprintf("https://x-access-token:%s@%s/%s/%s.wiki.git", token, host, owner, repo)
+	return fmt.Sprintf("https://%s/%s/%s.wiki.git", host, owner, repo)
 }
