@@ -1,0 +1,45 @@
+description: |
+  `gaia pr view 42 --with-ci` triggers an extra GET on /commits/<sha>/status.
+  ci_summary is rolled up from the per-context entries.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/pulls/42
+    status: 200
+    body: |
+      {
+        "number": 42, "title": "ship it", "state": "open",
+        "user": {"login": "alice"},
+        "head": {"ref": "feature/x", "sha": "deadbeef", "repo": {"full_name": "o/r"}},
+        "base": {"ref": "main",      "sha": "cafebabe", "repo": {"full_name": "o/r"}},
+        "merged": false,
+        "created_at": "2026-04-01T00:00:00Z",
+        "updated_at": "2026-04-02T00:00:00Z"
+      }
+  - method: GET
+    path: /repos/o/r/commits/deadbeef/status
+    status: 200
+    body: |
+      {
+        "state": "success",
+        "statuses": [
+          {"state": "success", "context": "build"},
+          {"state": "success", "context": "test"}
+        ]
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - pr
+      - view
+      - "42"
+      - --with-ci
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

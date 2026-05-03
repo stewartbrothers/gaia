@@ -1,0 +1,39 @@
+description: |
+  `gaia wiki view Home` returns the page with its body decoded from
+  content_base64.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/wiki/page/Home
+    status: 200
+    body: |
+      {
+        "title": "Home",
+        "sub_url": "Home",
+        "html_url": "https://example/wiki/Home",
+        "content_base64": "IyBIb21lCgpXZWxjb21lIHRvIHRoZSB3aWtpLgo=",
+        "last_commit": {
+          "sha": "abc1234deadbeef",
+          "commiter": {"name": "alice", "email": "a@x", "date": "2026-04-01T00:00:00Z"},
+          "author":   {"date": "2026-04-01T00:00:00Z"},
+          "message":  "init"
+        }
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - wiki
+      - view
+      - Home
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: GET
+      path: /repos/o/r/wiki/page/Home

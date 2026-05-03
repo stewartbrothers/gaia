@@ -1,0 +1,47 @@
+description: |
+  `gaia wiki list` returns one summary per page (no body — bodies
+  fetched via view).
+
+mocks:
+  - method: GET
+    path: /repos/o/r/wiki/pages
+    status: 200
+    body: |
+      [
+        {
+          "title": "Home",
+          "sub_url": "Home",
+          "html_url": "https://example/wiki/Home",
+          "last_commit": {
+            "sha": "abc1234deadbeef",
+            "commiter": {"name": "alice", "email": "a@x", "date": "2026-04-01T00:00:00Z"},
+            "author":   {"date": "2026-04-01T00:00:00Z"},
+            "message":  "init"
+          }
+        },
+        {
+          "title": "Setup",
+          "sub_url": "Setup",
+          "html_url": "https://example/wiki/Setup",
+          "last_commit": {
+            "sha": "def5678baaa",
+            "commiter": {"name": "bob",   "email": "b@x", "date": "2026-04-02T00:00:00Z"},
+            "author":   {"date": "2026-04-02T00:00:00Z"},
+            "message":  "add setup"
+          }
+        }
+      ]
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - wiki
+      - list
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

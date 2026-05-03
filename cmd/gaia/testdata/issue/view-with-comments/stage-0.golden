@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "data": {
+    "number": 42,
+    "title": "answer",
+    "state": "open",
+    "author": {
+      "login": "alice"
+    },
+    "body": "discuss",
+    "created_at": "2026-04-01T00:00:00Z",
+    "updated_at": "2026-04-02T00:00:00Z",
+    "comments": [
+      {
+        "id": 1,
+        "source": "issue",
+        "author": {
+          "login": "bob"
+        },
+        "body": "lgtm",
+        "created_at": "2026-04-03T00:00:00Z",
+        "updated_at": "2026-04-03T00:00:00Z"
+      },
+      {
+        "id": 2,
+        "source": "issue",
+        "author": {
+          "login": "carol"
+        },
+        "body": "ship it",
+        "created_at": "2026-04-04T00:00:00Z",
+        "updated_at": "2026-04-04T00:00:00Z"
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+description: |
+  `gaia issue comment-delete 11` DELETEs the comment. Output is the
+  human "✓ Deleted comment 11" line, not an envelope.
+
+mocks:
+  - method: DELETE
+    path: /repos/o/r/issues/comments/11
+    status: 204
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - issue
+      - comment-delete
+      - "11"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: DELETE
+      path: /repos/o/r/issues/comments/11

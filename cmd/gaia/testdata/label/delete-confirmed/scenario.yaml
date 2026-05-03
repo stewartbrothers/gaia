@@ -1,0 +1,35 @@
+description: |
+  `gaia label delete bug --confirm` does GET (find by name) +
+  DELETE /labels/{id}.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/labels
+    status: 200
+    body: |
+      [
+        {"id": 7, "name": "bug",     "color": "ff0000", "description": ""},
+        {"id": 8, "name": "feature", "color": "00ff00", "description": ""}
+      ]
+  - method: DELETE
+    path: /repos/o/r/labels/7
+    status: 204
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - label
+      - delete
+      - bug
+      - --confirm
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: DELETE
+      path: /repos/o/r/labels/7

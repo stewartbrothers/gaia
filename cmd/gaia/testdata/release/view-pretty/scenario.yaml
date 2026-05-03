@@ -1,0 +1,37 @@
+description: |
+  `gaia release view v0.2.0 --format pretty` exercises prettyReleaseView.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/releases/tags/v0.2.0
+    status: 200
+    body: |
+      {
+        "id": 9,
+        "tag_name": "v0.2.0",
+        "name": "v0.2.0",
+        "body": "release notes here",
+        "draft": false,
+        "prerelease": true,
+        "author": {"login": "alice"},
+        "target_commitish": "main",
+        "created_at": "2026-04-10T00:00:00Z",
+        "published_at": "2026-04-10T00:00:00Z"
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - --format
+      - pretty
+      - release
+      - view
+      - v0.2.0
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

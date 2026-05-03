@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0",
+  "data": {
+    "tag": "v1.0.0",
+    "created": true,
+    "release": {
+      "id": 50,
+      "tag_name": "v1.0.0",
+      "name": "v1.0.0",
+      "body": "release notes",
+      "draft": false,
+      "prerelease": false,
+      "author": {
+        "login": "alice"
+      },
+      "target_commitish": "main",
+      "created_at": "2026-04-20T00:00:00Z",
+      "published_at": "2026-04-20T00:00:00Z"
+    },
+    "assets": [
+      {
+        "name": "gaia-darwin-amd64.tar.gz",
+        "path": "<SCENARIODIR>/assets/gaia-darwin-amd64.tar.gz",
+        "size": 20,
+        "content_type": "application/gzip",
+        "uploaded": true
+      },
+      {
+        "name": "gaia-linux-amd64.tar.gz",
+        "path": "<SCENARIODIR>/assets/gaia-linux-amd64.tar.gz",
+        "size": 19,
+        "content_type": "application/gzip",
+        "uploaded": true
+      }
+    ]
+  }
+}

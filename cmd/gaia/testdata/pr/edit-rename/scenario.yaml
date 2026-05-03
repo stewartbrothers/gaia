@@ -1,0 +1,41 @@
+description: |
+  `gaia pr edit 42 --title --draft false` PATCHes /pulls/42.
+
+mocks:
+  - method: PATCH
+    path: /repos/o/r/pulls/42
+    status: 200
+    body: |
+      {
+        "number": 42, "title": "renamed PR", "state": "open",
+        "user": {"login": "alice"},
+        "head": {"ref": "feature/x", "sha": "deadbeef", "repo": {"full_name": "o/r"}},
+        "base": {"ref": "main",      "sha": "cafebabe", "repo": {"full_name": "o/r"}},
+        "merged": false,
+        "draft": false,
+        "created_at": "2026-04-01T00:00:00Z",
+        "updated_at": "2026-04-05T00:00:00Z"
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - pr
+      - edit
+      - "42"
+      - --title
+      - "renamed PR"
+      - --draft
+      - "false"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: PATCH
+      path: /repos/o/r/pulls/42
+      body_contains: '"title":"renamed PR"'

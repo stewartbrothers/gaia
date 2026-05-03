@@ -1,0 +1,43 @@
+description: |
+  `gaia packages list --owner Gerwood` returns each (type, name,
+  version) tuple owned by Gerwood.
+
+mocks:
+  - method: GET
+    path: /packages/Gerwood
+    status: 200
+    body: |
+      [
+        {
+          "type": "generic",
+          "name": "myapp",
+          "version": "1.2.0",
+          "owner": {"login": "Gerwood"},
+          "created_at": "2026-04-01T00:00:00Z",
+          "size": 1024
+        },
+        {
+          "type": "generic",
+          "name": "myapp",
+          "version": "1.1.0",
+          "owner": {"login": "Gerwood"},
+          "created_at": "2026-03-15T00:00:00Z",
+          "size": 1023
+        }
+      ]
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - Gerwood/gaia
+      - packages
+      - list
+      - --owner
+      - Gerwood
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

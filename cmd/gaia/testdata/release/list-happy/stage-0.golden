@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "data": [
+    {
+      "id": 9,
+      "tag_name": "v0.2.0",
+      "name": "v0.2.0",
+      "body": "fixes + small features",
+      "draft": false,
+      "prerelease": false,
+      "author": {
+        "login": "alice"
+      },
+      "target_commitish": "main",
+      "created_at": "2026-04-10T00:00:00Z",
+      "published_at": "2026-04-10T00:00:00Z"
+    },
+    {
+      "id": 8,
+      "tag_name": "v0.1.0",
+      "name": "first",
+      "body": "first release",
+      "draft": false,
+      "prerelease": true,
+      "author": {
+        "login": "alice"
+      },
+      "target_commitish": "main",
+      "created_at": "2026-04-01T00:00:00Z",
+      "published_at": "2026-04-01T00:00:00Z"
+    }
+  ]
+}

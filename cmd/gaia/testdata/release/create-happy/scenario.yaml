@@ -1,0 +1,46 @@
+description: |
+  `gaia release create --tag v1.0.0 --name --body --prerelease`
+  POSTs to /releases.
+
+mocks:
+  - method: POST
+    path: /repos/o/r/releases
+    status: 201
+    body: |
+      {
+        "id": 12,
+        "tag_name": "v1.0.0",
+        "name": "First major",
+        "body": "shipped at last",
+        "draft": false,
+        "prerelease": true,
+        "author": {"login": "alice"},
+        "target_commitish": "main",
+        "created_at": "2026-04-15T00:00:00Z",
+        "published_at": "2026-04-15T00:00:00Z"
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - release
+      - create
+      - --tag
+      - v1.0.0
+      - --name
+      - "First major"
+      - --body
+      - "shipped at last"
+      - --prerelease
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: POST
+      path: /repos/o/r/releases
+      body_contains: '"tag_name":"v1.0.0"'

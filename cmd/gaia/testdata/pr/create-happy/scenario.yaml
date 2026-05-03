@@ -1,0 +1,45 @@
+description: |
+  `gaia pr create` POSTs to /repos/o/r/pulls and renders the
+  freshly-created PR.
+
+mocks:
+  - method: POST
+    path: /repos/o/r/pulls
+    status: 201
+    body: |
+      {
+        "number": 99, "title": "feat: new things", "state": "open",
+        "user": {"login": "alice"},
+        "head": {"ref": "feature/new", "sha": "abcd1234", "repo": {"full_name": "o/r"}},
+        "base": {"ref": "main",        "sha": "ffff0000", "repo": {"full_name": "o/r"}},
+        "merged": false,
+        "body": "the why",
+        "created_at": "2026-04-05T00:00:00Z",
+        "updated_at": "2026-04-05T00:00:00Z"
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - pr
+      - create
+      - --title
+      - "feat: new things"
+      - --body
+      - "the why"
+      - --head
+      - feature/new
+      - --base
+      - main
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: POST
+      path: /repos/o/r/pulls
+      body_contains: '"head":"feature/new"'

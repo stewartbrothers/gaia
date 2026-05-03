@@ -1,0 +1,34 @@
+description: |
+  `gaia issue comment 42 --format pretty` exercises prettyComment.
+
+mocks:
+  - method: POST
+    path: /repos/o/r/issues/42/comments
+    status: 201
+    body: |
+      {
+        "id": 11,
+        "user": {"login": "alice"},
+        "body": "lgtm",
+        "created_at": "2026-04-05T00:00:00Z",
+        "updated_at": "2026-04-05T00:00:00Z"
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - --format
+      - pretty
+      - issue
+      - comment
+      - "42"
+      - --body
+      - lgtm
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

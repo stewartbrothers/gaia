@@ -1,0 +1,19 @@
+description: |
+  `gaia label create --name foo` (no --color) returns Usage(2)
+  before any network call.
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - http://unused
+      - --repo
+      - o/r
+      - label
+      - create
+      - --name
+      - foo
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 2
