@@ -47,6 +47,9 @@ provider source to know what to expect.
 | `CreateRelease` | ✓ | ✓ | `POST /repos/{o}/{r}/releases`. Both accept `{tag_name, name, body, target_commitish, draft, prerelease}`. |
 | `EditRelease` | ✓ | ✓ | Same two-hop pattern as `EditLabel` — GET tag→ID, then PATCH `/releases/{id}`. Forge endpoints PATCH-by-id only on both forges. `Draft`/`Prerelease` are `*bool` so explicit `false` flips work. |
 | `DeleteRelease` | ✓ | ✓ | Two-hop: GET tag→ID, then DELETE `/releases/{id}`. 204 on success. |
+| `ListPackages` | ✓ | △ | Forgejo: `GET /packages/{owner}` with optional `?type=&q=`. GitHub: `GET /users/{owner}/packages` OR `GET /orgs/{owner}/packages` based on owner type (probe via `GET /users/{owner}` to read `type`); supports `?package_type=` filter only — `opts.Q` silently dropped on GitHub. |
+| `GetPackage` | ✓ | △ | Forgejo: direct path `/packages/{o}/{type}/{name}/{version}`. GitHub: keys versions by numeric `version_id`, not the human-readable tag. The provider accepts a `version` string and resolves it: pure-integer → version_id directly; otherwise list versions and match against `name` or `metadata.container.tags[]`. The trimmed `Version` field always carries the resolved `name` (e.g., `sha256:…` or semver), not the input. |
+| `DeletePackage` | ✓ | △ | Same two-hop resolution as `GetPackage` on GitHub (resolve to version_id, then DELETE). 204 on success on both forges. |
 
 ## Cross-cutting differences
 
