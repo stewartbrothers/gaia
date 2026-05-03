@@ -12,6 +12,17 @@ reserved for breaking changes only.
 
 ### Security
 
+- Chain runner: child processes run with a scrubbed env, not the
+  gaia process's full env (#140 part 4). Allowlist:
+  `PATH, HOME, USER, LOGNAME, LANG, LC_ALL, TERM`. Forge tokens
+  (`GITEA_TOKEN`, `FORGEJO_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`),
+  cloud credentials (`AWS_*`, `GCP_*`, `AZURE_*`), and any other
+  operator-scope vars are stripped. Combined with the shell-quoting
+  from #135, this closes the "hostile forge response →
+  shell-injection → `env` reads my forge token" exfiltration path
+  even if a future shell-injection regression sneaks past review.
+  See `docs/chain.md` "Security: env scrubbing" for the rationale
+  and the design contract.
 - CI now runs `govulncheck ./...` on every PR and push to `main`
   (#140 part 3). Known CVEs in transitive deps that touch reachable
   code paths gate the merge, surfacing the same risk class that the

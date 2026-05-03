@@ -273,6 +273,41 @@ its values are emitted into the failure envelope as JSON, not
 handed to a shell. Captures into a YAML map context keep their raw
 form.
 
+### Security: env scrubbing
+
+Chain step children inherit a **scrubbed** environment, not the
+gaia process's full env. The allowlist is intentionally short:
+
+| Var | Why it's allowed |
+|---|---|
+| `PATH` | Required so `sh -c` can find any binary at all |
+| `HOME` | `gaia` itself reads `~/.config/gaia/credentials.yaml`; child gaia invocations need it |
+| `USER`, `LOGNAME` | Tools like `git` use these; not secret |
+| `LANG`, `LC_ALL` | Locale; some tools change output without it |
+| `TERM` | Terminal type; CLIs that do colour respect it |
+
+Everything else — `GITEA_TOKEN`, `FORGEJO_TOKEN`, `GH_TOKEN`,
+`GITHUB_TOKEN`, `AWS_*`, `GCP_*`, `AZURE_*`, and any other
+operator-scope vars — is stripped from the child's view.
+
+Why: combined with the shell-quoting from #135, this closes the
+two-step exfiltration path "hostile forge response → shell-injection
+→ `env` reads my forge token". Even a future shell-injection
+regression cannot escalate to a token leak through the env: the
+token isn't in the child's env to read.
+
+If a chain step legitimately needs a forge token (rare — most
+forge calls go through `gaia` subcommands, which do their own
+credential resolution from `~/.config/gaia/credentials.yaml`), the
+correct path is to invoke `gaia` rather than to splice a token
+into a `run:` line. `gaia` reads the credential from disk; the
+token never appears in argv, env, or stdout.
+
+Per-step env declarations (`env: [GITEA_TOKEN, ...]`) are not
+implemented — a chain author who thinks they need that should
+file an issue describing the workflow so we can find the
+non-token-bearing path. (#140 part 4.)
+
 ## Capture semantics
 
 Setting `capture: pr` on a step makes its stdout available as
