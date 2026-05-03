@@ -138,8 +138,12 @@ func Build(ov Override) (provider.Provider, *Info, error) {
 	// error here doesn't block the read path. Errors degrade silently
 	// to "no cache" — the provider still works, just without the
 	// caching layer. (#42)
+	//
+	// Config knob (`cache.enabled: false` in ~/.config/gaia/config.yaml)
+	// also bypasses the cache, same as the per-call --no-cache flag.
+	cacheOff := ov.NoCache || !config.CacheEnabled(cfg.Cache)
 	var ch *cache.Cache
-	if !ov.NoCache {
+	if !cacheOff {
 		if path, perr := cache.PathFor(resolved.Provider, resolved.APIURL); perr == nil {
 			if c, oerr := cache.Open(path); oerr == nil {
 				ch = c
