@@ -1,7 +1,7 @@
 name: Mirror to GitHub
 
 # Mirrors `main` and every `v*` tag from the canonical Forgejo repo
-# to the public read-only mirror at github.com/stewartbrothers/gaia.
+# to the public mirror at github.com/stewartbrothers/gaia.
 #
 # Setup (one-time): see docs/mirroring.md. The TL;DR is that an SSH
 # deploy key with write access lives on the GitHub side, and the
@@ -79,7 +79,7 @@ jobs:
           # under a different org, change it here AND in
           # docs/mirroring.md + scripts/mirror-to-github.sh.
           if ! git remote get-url github >/dev/null 2>&1; then
-            git remote add github git@github.com:Gerwood/gaia.git
+            git remote add github git@github.com:stewartbrothers/gaia.git
           fi
 
       - name: Push main + v* tags

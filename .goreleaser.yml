@@ -125,7 +125,7 @@ release:
 # brews: maintain a Homebrew formula in this same repo at
 # Formula/gaia.rb so users can:
 #
-#   brew tap Gerwood/gaia https://github.com/stewartbrothers/gaia
+#   brew tap stewartbrothers/gaia https://github.com/stewartbrothers/gaia
 #   brew install gaia
 #
 # On every tagged release, goreleaser opens a commit against `main`
