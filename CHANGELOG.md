@@ -10,7 +10,14 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
-(no changes yet — next development cycle)
+### Added
+
+- `scripts/install.sh` — one-line installer for the prebuilt
+  `gaia` + `gaia-mcp` binaries. Detects OS/arch, sha256-verifies
+  before installing, idempotently wires `$PREFIX` into the user's
+  shell rc (bash/zsh/fish), and honours `GITEA_TOKEN` /
+  `FORGEJO_TOKEN` / `GAIA_TOKEN` for auth-gated forges. Works
+  via `curl ... | bash` from the canonical Forgejo URL. (#174)
 
 ## [0.2.0] — 2026-05-03
 

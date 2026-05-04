@@ -1,18 +1,58 @@
 # Installing gaia
 
-Four install paths, ordered roughly from "most users" to "fewest":
+Five install paths, ordered roughly from "most users" to "fewest":
 
-1. [**Homebrew**](#homebrew) (macOS + Linux): one-line install via
+1. [**One-line installer**](#one-line-installer) — `curl | bash`
+   wrapper that downloads, sha256-verifies, and installs the right
+   prebuilt archive for your platform.
+2. [**Homebrew**](#homebrew) (macOS + Linux): one-line install via
    `brew install`, formula auto-updated on every release.
-2. [**Pre-built binary**](#pre-built-binary) — fastest path on any
+3. [**Pre-built binary**](#pre-built-binary) — fastest path on any
    supported platform. One download, two binaries.
-3. [**`go install`**](#go-install) — for Go developers who already
+4. [**`go install`**](#go-install) — for Go developers who already
    have the toolchain set up. Always builds from latest `main`.
-4. [**Build from source**](#build-from-source) — for contributors
+5. [**Build from source**](#build-from-source) — for contributors
    or anyone running a fork.
 
 The container image (for `gaia-mcp --http` deployments) is a
 separate concern — see [`deploy-mcp.md`](deploy-mcp.md).
+
+## One-line installer
+
+`scripts/install.sh` (in this repo, also served raw from the
+canonical Forgejo URL) detects your OS + arch, downloads the
+matching release archive plus its checksum file, sha256-verifies
+before extracting, and drops both binaries into `~/.local/bin`
+(overridable via `--prefix`). It also wires `~/.local/bin` into
+the user's shell rc (bash, zsh, fish) idempotently — re-running
+the installer never duplicates the line.
+
+```bash
+curl -fsSL https://github.com/stewartbrothers/gaia/raw/branch/main/scripts/install.sh \
+  | TAG=v0.2.0 bash
+```
+
+Knobs:
+
+- `TAG=vX.Y.Z` (env or `--tag vX.Y.Z`) — pin a release. Omit only
+  if the API endpoint is reachable anonymously; on auth-gated
+  forges TAG is required.
+- `PREFIX=/path` (env or `--prefix /path`) — install destination.
+  Defaults to `$HOME/.local/bin`. Use `/usr/local` (or any other
+  system path) when you want a multi-user install; the script will
+  ask sudo only when the dir isn't writable as the current user.
+- `GITEA_TOKEN` / `FORGEJO_TOKEN` / `GAIA_TOKEN` (env) — Forgejo
+  PAT, sent as `Authorization: token ...`. Required when the
+  forge requires auth for asset downloads (e.g. a private
+  instance).
+- `-v` / `--verbose` — print each download URL and the resolved
+  sha256 instead of just the high-level `==>` markers.
+- `GAIA_DOWNLOAD_BASE` (env) — override the release-asset base
+  URL. Useful if you've mirrored the artifacts to your own host.
+
+To uninstall: `rm $PREFIX/gaia $PREFIX/gaia-mcp` and
+`sed -i '/# gaia$/d' ~/.zshrc` (or `~/.bashrc`/`~/.config/fish/config.fish`).
+The trailing `# gaia` marker on the rc edit is the anchor.
 
 ## Homebrew
 
