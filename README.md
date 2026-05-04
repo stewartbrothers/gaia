@@ -29,15 +29,14 @@ tokens on the bloat that comes with raw REST responses.
 ## Install
 
 ```bash
+# One-line installer (macOS + Linux, x86_64 + arm64):
+curl -fsSL https://github.com/stewartbrothers/gaia/raw/branch/main/scripts/install.sh \
+  | TAG=v0.2.0 bash
+# Add GITEA_TOKEN=… in the env if your forge requires auth for downloads.
+
 # Homebrew (macOS + Linux):
 brew tap Gerwood/gaia https://github.com/stewartbrothers/gaia
 brew install gaia
-
-# Or download a tagged release for your platform (replace TAG + PLATFORM):
-TAG=v0.2.0 PLATFORM=linux_x86_64
-curl -fsSLO "https://github.com/stewartbrothers/gaia/releases/download/${TAG}/gaia_${TAG}_${PLATFORM}.tar.gz"
-tar -xzf "gaia_${TAG}_${PLATFORM}.tar.gz"
-sudo install gaia gaia-mcp /usr/local/bin/
 
 # Or via go install (Go 1.25+):
 go install github.com/stewartbrothers/gaia/cmd/gaia@latest
