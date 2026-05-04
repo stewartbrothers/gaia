@@ -1,7 +1,7 @@
 # Mirroring gaia to GitHub
 
 `gaia` is hosted canonically on a self-hosted Forgejo instance at
-`github.com/stewartbrothers/gaia`. To make the project
+`your-forge.example.com/stewartbrothers/gaia`. To make the project
 discoverable to a wider audience and unblock contributions from people
 without an account on the forge, we maintain a public **read-only mirror**
 on GitHub at `github.com/stewartbrothers/gaia`.
@@ -16,14 +16,14 @@ interacts with the release pipeline (#50).
 
    ```bash
    gh auth login   # if not already
-   gh repo create Gerwood/gaia \
+   gh repo create stewartbrothers/gaia \
      --public \
      --description "Token-trimmed CLI + MCP for Forgejo and GitHub" \
      --homepage https://github.com/stewartbrothers/gaia
    ```
 
    If `Gerwood` is already taken on github.com, use a different owner
-   and update every `Gerwood/gaia` reference in `README.md`,
+   and update every `stewartbrothers/gaia` reference in `README.md`,
    `docs/install.md`, this file, and `.forgejo/workflows/mirror.yml` to
    match (filed as a follow-up issue if it comes to that).
 
@@ -32,7 +32,7 @@ interacts with the release pipeline (#50).
 
    ```bash
    cd ~/projects/forgejo-ai-adaption
-   git remote add github git@github.com:Gerwood/gaia.git
+   git remote add github git@github.com:stewartbrothers/gaia.git
    ```
 
 3. **Initial mirror push** (one shot):
@@ -108,14 +108,14 @@ with write access to the GitHub mirror.
 2. Add the **public** key (`gaia-mirror.pub`) to the GitHub mirror as
    a deploy key with **write** access:
 
-   - GitHub → `Gerwood/gaia` → Settings → Deploy keys → Add deploy key
+   - GitHub → `stewartbrothers/gaia` → Settings → Deploy keys → Add deploy key
    - Title: `forgejo-mirror`
    - Key: paste the contents of `~/.ssh/gaia-mirror.pub`
    - Tick "Allow write access"
 
 3. Add the **private** key as a Forgejo secret on the canonical repo:
 
-   - Forgejo → `Gerwood/gaia` → Settings → Secrets → Add secret
+   - Forgejo → `stewartbrothers/gaia` → Settings → Secrets → Add secret
    - Name: `GITHUB_MIRROR_SSH_KEY`
    - Value: paste the contents of `~/.ssh/gaia-mirror` (full PEM)
 
@@ -178,7 +178,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
-          git remote add forgejo https://github.com/stewartbrothers/gaia.git
+          git remote add forgejo https://your-forge.example.com/stewartbrothers/gaia.git
           git fetch forgejo --tags
           git push origin 'refs/remotes/forgejo/main:refs/heads/main' \
                           'refs/tags/v*:refs/tags/v*'
@@ -193,11 +193,11 @@ After the first manual or automated mirror push:
 
 ```bash
 # Should match the latest commit on the canonical repo:
-gh api repos/Gerwood/gaia/commits/main --jq '.sha[:7]'
+gh api repos/stewartbrothers/gaia/commits/main --jq '.sha[:7]'
 git -C ~/projects/forgejo-ai-adaption rev-parse --short main
 
 # Should list every released tag:
-gh api repos/Gerwood/gaia/tags --jq '.[].name'
+gh api repos/stewartbrothers/gaia/tags --jq '.[].name'
 git -C ~/projects/forgejo-ai-adaption tag --list 'v*'
 ```
 

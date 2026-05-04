@@ -1,15 +1,17 @@
 # gaia — Git AI Access
 
-> **Latest: v0.2.0** — released 2026-05-03. Phase 4 features (cache,
-> NDJSON streaming, webhooks, packages, wikis), chain primitives
-> (parallel + composition), substantial security hardening pass.
-> See [`CHANGELOG.md`](CHANGELOG.md#020--2026-05-03) for the full
-> notes and [`bench/`](bench/README.md) for measured byte/token wins.
+> **Latest: v0.2.0** — released 2026-05-03. See
+> [`CHANGELOG.md`](CHANGELOG.md#020--2026-05-03) for the release notes.
 
-Token-trimmed, agent-friendly CLI and MCP server for **Forgejo and
-GitHub**. Built so that LLM-driven agents can interact with a forge
-over either shell tools or the Model Context Protocol without burning
-tokens on the bloat that comes with raw REST responses.
+Token-trimmed, agent-friendly CLI and MCP server for **Forgejo,
+Gitea, and GitHub**. Built so that LLM-driven agents can interact with
+a forge over either shell tools or the Model Context Protocol without
+burning tokens on the bloat that comes with raw REST responses.
+
+> Forgejo is a hard fork of Gitea with a compatible REST API. gaia
+> ships a single `forgejo` provider that targets either —
+> `gaia auth forgejo https://your-gitea.example.com/api/v1` works the
+> same as it does against a Forgejo instance.
 
 `gaia` ships:
 
@@ -22,27 +24,22 @@ tokens on the bloat that comes with raw REST responses.
   and streamable HTTP transports, pass-through bearer auth (the
   client's forge PAT travels untouched; gaia-mcp stores nothing).
 - A shared **`core/`** Go library with a `Provider` interface that
-  backs both frontends. Forgejo and GitHub providers at parity for
-  issues, PRs, comments, labels, releases, search, packages, wikis,
-  webhooks.
+  backs both frontends. The same surface — issues, PRs, comments,
+  labels, releases, search, packages, wikis, webhooks — works
+  against Forgejo, Gitea, and GitHub.
 
 ## Install
 
 ```bash
 # One-line installer (macOS + Linux, x86_64 + arm64):
-curl -fsSL https://github.com/stewartbrothers/gaia/raw/branch/main/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/stewartbrothers/gaia/main/scripts/install.sh \
   | TAG=v0.2.0 bash
-# Add GITEA_TOKEN=… in the env if your forge requires auth for downloads.
 
 # Homebrew (macOS + Linux):
-brew tap Gerwood/gaia https://github.com/stewartbrothers/gaia
+brew tap stewartbrothers/gaia https://github.com/stewartbrothers/gaia
 brew install gaia
 
-# Or via go install (Go 1.25+):
-go install github.com/stewartbrothers/gaia/cmd/gaia@latest
-go install github.com/stewartbrothers/gaia/cmd/gaia-mcp@latest
-
-# Or build from source:
+# Build from source:
 git clone https://github.com/stewartbrothers/gaia.git
 cd gaia && make build
 ```
@@ -102,7 +99,7 @@ the structured exit-code matrix (0 success, 2 usage, 3 not-found,
 
 ## Docs
 
-- [`docs/install.md`](docs/install.md) — pre-built binaries, `go install`, source build
+- [`docs/install.md`](docs/install.md) — pre-built binaries, Homebrew, source build
 - [`docs/auth.md`](docs/auth.md) — `gaia auth ...` flow
 - [`docs/configuration.md`](docs/configuration.md) — config file layers
 - [`docs/output-format.md`](docs/output-format.md) — envelope, `--fields`, pagination
@@ -115,62 +112,46 @@ the structured exit-code matrix (0 success, 2 usage, 3 not-found,
   byte/token wins vs raw curl + tea; per-resource measurements live
   under [`bench/`](bench/README.md)
 
-## Status
+## What gaia does
 
-**v0.2.0** — second developer-preview release. Phases 1-3 complete +
-most of Phase 4 shipped:
-
-- **Forgejo + GitHub providers at parity** for issues, PRs, comments,
-  labels, releases, search, packages, wikis, webhooks (clone-cache
-  fallback for GitHub wikis since they aren't REST-served).
-- **CLI + MCP** with stdio + streamable HTTP transports, pass-through
-  bearer auth, healthz/readyz, container deploy.
-- **Local SQLite cache** with TTL + ETag/If-Modified-Since
-  conditional GET (~820× speedup on cache-bench).
-- **NDJSON streaming output** for list commands (~150× faster
-  time-to-first-byte).
-- **Chain primitives** complete (linear → yield/resume →
-  parallel/for_each/composition); `pr-create-and-land` canned
-  chain measures **81% byte / 86% tool-turn reduction** vs the
-  multi-call agent flow.
-- **Security hardening pass** — chain shell-injection closed,
-  prompt-injection markers, env scrub, govulncheck gate, SHA-pinned
-  CI actions, `SECURITY.md`.
-- **Distribution infrastructure** — Homebrew tap, GitHub mirror,
-  release workflow polish.
-- **Goreleaser-driven multi-arch binaries** + per-resource measured
-  byte/token baselines under [`bench/`](bench/README.md).
+- **Forgejo, Gitea, and GitHub** — the same CLI and MCP tool surface
+  works across all three. Issues, pull requests, comments, labels,
+  releases, search, packages, wikis, webhooks. (GitHub wikis use a
+  clone-cache fallback since they aren't REST-served upstream.)
+- **Token-cheap output** — JSON-by-default with `--fields` projection,
+  structured exit codes, paginated envelopes. Built so an LLM agent's
+  context window doesn't burn on REST bloat.
+- **MCP server** — `gaia-mcp` over stdio or streamable HTTP, with
+  pass-through bearer auth (the client's PAT travels untouched).
+- **Local cache** — read responses are cached with TTL + ETag
+  conditional GET. Repeat reads of the same resource are roughly an
+  order of magnitude faster.
+- **NDJSON streaming** for list commands — output starts flowing on
+  the first record instead of buffering until the last page.
+- **Multi-step chains** — `gaia chain run` orchestrates linear,
+  parallel, and conditional workflows so an agent isn't burning
+  tool turns on sequencing.
+- **Security-aware envelope** — forge-supplied content (issue/PR
+  bodies, comments, wikis) is tagged `_trust: "external"` and
+  wrapped in delimiters in pretty output, so agents can be told to
+  treat it as data, not instructions.
 
 ### Versioning
 
 [SemVer](https://semver.org). While on `0.x.y`, **breaking changes
 to the public surface (CLI flag names, MCP tool names, envelope
 shape, exit codes) may land at minor bumps**. See
-[`RELEASING.md`](RELEASING.md) for the full convention and the
-cut-a-release procedure; see [`CHANGELOG.md`](CHANGELOG.md) for
-release notes.
+[`RELEASING.md`](RELEASING.md) for the cut-a-release procedure and
+[`CHANGELOG.md`](CHANGELOG.md) for release-by-release notes.
 
-### What's next (v0.3.0 milestone)
+### Coming next
 
-Remaining Phase 4 work plus follow-ups from this cycle:
+- Cross-resource indexed search across issues + PRs (today's
+  `gaia search` hits the live forge each time).
+- `gaia ci runs` / `gaia ci logs` helpers for richer CI inspection
+  beyond `gaia pr ci-wait`.
 
-- **#43** Cross-resource indexed search (depends on the cache
-  layer that just landed).
-- **#45** `gaia ci runs` / `gaia ci logs` helpers.
-- **#51** Forgejo upstream submission (process work).
-- **#153** Wire remaining `Get<Resource>` methods through
-  `GetCached` (today only `GetIssue` and `GetPullRequest` are
-  cached).
-
-## Roadmap
-
-| Phase | Tracker | Goal | Status |
-| ----- | ------- | ---- | ------ |
-| 1     | [#1](../../issues/1) | Forgejo provider, full CLI surface, stdio MCP server | ✓ shipped (v0.1.0) |
-| 2     | [#2](../../issues/2) | GitHub provider parity | ✓ shipped (v0.1.0) |
-| 3     | [#3](../../issues/3) | Remote MCP transport (HTTP/SSE) | ✓ shipped (v0.1.0) |
-| 4     | [#4](../../issues/4) | Cache, indexed search, webhook + CI helpers | mostly shipped (v0.2.0); #43 + #45 remain |
-| —     | [#5](../../issues/5) | Distribution & upstreaming | mostly shipped (v0.2.0); #51 remains |
+The full backlog lives in the [issue tracker](https://github.com/stewartbrothers/gaia/issues).
 
 ## Build
 
@@ -182,22 +163,13 @@ make lint               # golangci-lint
 make release-snapshot   # local goreleaser dry-run → dist/
 ```
 
-## Mirror
+## Source
 
-The canonical repo lives on a self-hosted Forgejo instance at
+The project is hosted on GitHub at
 [`github.com/stewartbrothers/gaia`](https://github.com/stewartbrothers/gaia).
-A public, read-only mirror is maintained at
-[`github.com/stewartbrothers/gaia`](https://github.com/stewartbrothers/gaia) for
-discoverability.
 
-- **Issues, PRs, releases** — open on the Forgejo instance. The
-  GitHub mirror does not accept patches.
-- **Code browsing, `go install`, drive-by reading** — either side
-  works.
-- **Tags + main** mirror across to GitHub automatically (see
-  [`docs/mirroring.md`](docs/mirroring.md) for the operator runbook).
-  Release artifacts are attached to the Forgejo release; the Homebrew
-  tap (#49) consumes them directly.
+- **Issues, PRs, releases** — [github.com/stewartbrothers/gaia](https://github.com/stewartbrothers/gaia)
+- **Homebrew tap** — `brew tap stewartbrothers/gaia https://github.com/stewartbrothers/gaia`
 
 ## License
 

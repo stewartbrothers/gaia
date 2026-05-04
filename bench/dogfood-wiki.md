@@ -1,6 +1,6 @@
 # Wiki baseline
 
-No measured rows yet. The `Gerwood/gaia` wiki is empty at the time
+No measured rows yet. The test wiki is empty at the time
 of writing, so live harness numbers aren't reproducible. The wiki
 read commands (`gaia wiki list`, `gaia wiki view`, `gaia wiki search`)
 are wired through `scripts/dogfood-compare.sh` — re-run the harness

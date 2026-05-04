@@ -1,6 +1,6 @@
 # Chain primitives baseline
 
-Measured against `github.com/stewartbrothers/gaia`.
+Measured against a Forgejo instance.
 
 ## Phase B-3: pr-create-and-land canned chain
 

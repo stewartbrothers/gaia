@@ -439,5 +439,6 @@ Pre-v1.0, expect minor-bump churn at the public surface.
 - OS keychain backing for `credentials.yaml` (vs current 0600
   plaintext): `gh` does this, gaia doesn't yet.
 
-[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/stewartbrothers/gaia/releases/tag/v0.2.0
 [0.1.0]: https://github.com/stewartbrothers/gaia/releases/tag/v0.1.0

@@ -193,7 +193,7 @@ fresh entry.
 ```bash
 gaia cache nuke                              # everything
 gaia cache nuke --provider forgejo           # one provider
-gaia cache nuke --provider forgejo --host your-forge.example.com   # one host
+gaia cache nuke --provider forgejo --host your-forge.example.com       # one host
 ```
 
 The command also removes `*-wal` and `*-shm` SQLite sidecar files.

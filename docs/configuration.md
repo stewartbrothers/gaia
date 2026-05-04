@@ -16,10 +16,10 @@ supported.
 
 ```yaml
 # ~/.config/gaia/config.yaml
-default_profile: stewartbrothers
+default_profile: myforge
 
 profiles:
-  stewartbrothers:
+  myforge:
     provider: forgejo
     api_url: https://your-forge.example.com/api/v1
     token_env: WORK_FORGEJO_TOKEN

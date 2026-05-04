@@ -1,6 +1,6 @@
 # Webhooks baseline
 
-No measured rows yet. The `Gerwood/gaia` repo has no webhooks
+No measured rows yet. The test repo has no webhooks
 configured at the time of writing, so live numbers aren't
 reproducible. The webhook commands (`gaia webhook list`,
 `gaia webhook view`, `gaia webhook deliveries`,

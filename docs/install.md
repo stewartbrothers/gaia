@@ -1,6 +1,6 @@
 # Installing gaia
 
-Five install paths, ordered roughly from "most users" to "fewest":
+Four install paths, ordered roughly from "most users" to "fewest":
 
 1. [**One-line installer**](#one-line-installer) — `curl | bash`
    wrapper that downloads, sha256-verifies, and installs the right
@@ -9,9 +9,7 @@ Five install paths, ordered roughly from "most users" to "fewest":
    `brew install`, formula auto-updated on every release.
 3. [**Pre-built binary**](#pre-built-binary) — fastest path on any
    supported platform. One download, two binaries.
-4. [**`go install`**](#go-install) — for Go developers who already
-   have the toolchain set up. Always builds from latest `main`.
-5. [**Build from source**](#build-from-source) — for contributors
+4. [**Build from source**](#build-from-source) — for contributors
    or anyone running a fork.
 
 The container image (for `gaia-mcp --http` deployments) is a
@@ -28,7 +26,7 @@ the user's shell rc (bash, zsh, fish) idempotently — re-running
 the installer never duplicates the line.
 
 ```bash
-curl -fsSL https://github.com/stewartbrothers/gaia/raw/branch/main/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/stewartbrothers/gaia/main/scripts/install.sh \
   | TAG=v0.2.0 bash
 ```
 
@@ -41,10 +39,9 @@ Knobs:
   Defaults to `$HOME/.local/bin`. Use `/usr/local` (or any other
   system path) when you want a multi-user install; the script will
   ask sudo only when the dir isn't writable as the current user.
-- `GITEA_TOKEN` / `FORGEJO_TOKEN` / `GAIA_TOKEN` (env) — Forgejo
-  PAT, sent as `Authorization: token ...`. Required when the
-  forge requires auth for asset downloads (e.g. a private
-  instance).
+- `GH_TOKEN` / `GAIA_TOKEN` (env) — GitHub PAT. Not needed for
+  public release downloads; only required if you've pointed
+  `GAIA_DOWNLOAD_BASE` at a private host.
 - `-v` / `--verbose` — print each download URL and the resolved
   sha256 instead of just the high-level `==>` markers.
 - `GAIA_DOWNLOAD_BASE` (env) — override the release-asset base
@@ -56,29 +53,18 @@ The trailing `# gaia` marker on the rc edit is the anchor.
 
 ## Homebrew
 
-`gaia` ships a Homebrew formula in this repo, served as a tap
-straight off the canonical Forgejo instance:
+`gaia` ships a Homebrew formula served as a tap from the GitHub
+repo:
 
 ```bash
-brew tap Gerwood/gaia https://github.com/stewartbrothers/gaia
+brew tap stewartbrothers/gaia https://github.com/stewartbrothers/gaia
 brew install gaia
 ```
 
 The `https://...` URL form is required because Homebrew defaults
 to `github.com/<owner>/homebrew-<name>` — the explicit URL points
-the tap at the Forgejo repo instead. Both `gaia` and `gaia-mcp`
-land on `$PATH` after the install.
-
-After the [GitHub mirror](mirroring.md) is live, the tap also
-works against the mirror:
-
-```bash
-brew tap Gerwood/gaia https://github.com/stewartbrothers/gaia
-brew install gaia
-```
-
-(Same formula; the `Formula/gaia.rb` file is committed to both
-sides via the mirror push.)
+the tap at the correct repo. Both `gaia` and `gaia-mcp` land on
+`$PATH` after the install.
 
 To upgrade:
 
@@ -119,15 +105,13 @@ Each archive contains both `gaia` (CLI) and `gaia-mcp` (MCP
 server) plus LICENSE, README, and the `docs/` tree.
 
 ```bash
-# Replace v0.1.0 with the current tag, choose your arch.
-TAG=v0.1.0
+# Replace v0.2.0 with the current tag, choose your arch.
+TAG=v0.2.0
 PLATFORM=linux_x86_64       # or darwin_arm64, windows_x86_64, …
 
 curl -fsSLO "https://github.com/stewartbrothers/gaia/releases/download/${TAG}/gaia_${TAG}_${PLATFORM}.tar.gz"
 curl -fsSLO "https://github.com/stewartbrothers/gaia/releases/download/${TAG}/gaia_${TAG}_checksums.txt"
 
-# Verify before extracting — the checksums file is signed by the
-# release workflow's commit signature on Forgejo.
 sha256sum -c <(grep "${PLATFORM}" "gaia_${TAG}_checksums.txt")
 
 tar -xzf "gaia_${TAG}_${PLATFORM}.tar.gz"
@@ -161,29 +145,6 @@ binary from a release archive and one from a `gaia-mcp:v0.1.0`
 docker image report identical metadata — useful for confirming a
 prod incident reproduces against the same build.
 
-## `go install`
-
-For developers who have Go 1.25+ on PATH:
-
-```bash
-go install github.com/stewartbrothers/gaia/cmd/gaia@latest
-go install github.com/stewartbrothers/gaia/cmd/gaia-mcp@latest
-```
-
-This installs both binaries to `$(go env GOPATH)/bin/`. **Note**:
-`go install` doesn't run the goreleaser ldflags injection, so
-`gaia version` reports the Go module version (e.g. `v0.1.0`) but
-the `commit` field stays as the default `unknown`. For a build
-that reports the commit too, use the pre-built binary or build
-from source.
-
-`@latest` resolves to the most recent semver tag. Pin to a tag
-explicitly for reproducibility:
-
-```bash
-go install github.com/stewartbrothers/gaia/cmd/gaia@v0.1.0
-```
-
 ## Build from source
 
 For contributors and operators running a fork:
@@ -198,8 +159,7 @@ The Makefile injects `git describe` and the short SHA via
 `-ldflags`, so `gaia version` reports the exact build state
 (including a `-dirty` suffix when there are uncommitted changes).
 
-For a release-shaped local build (matching what `go install` and
-the release workflow produce):
+For a release-shaped local build:
 
 ```bash
 make release-snapshot   # → dist/gaia_v0.0.1-snapshot+SHORTSHA_*.tar.gz
@@ -223,10 +183,12 @@ produces.)
 After installing, configure forge access:
 
 ```bash
+# Forgejo or Gitea — replace with your instance's API URL:
 gaia auth forgejo https://your-forge.example.com/api/v1
-# Paste a Forgejo PAT with scopes: read:user, read:repository,
+# Paste a PAT with scopes: read:user, read:repository,
 # write:issue, write:pull_request
 
+# GitHub:
 gaia auth gh
 # Paste a GitHub fine-grained PAT
 ```
@@ -245,7 +207,7 @@ $ gaia whoami
 
 ## What about apt / Scoop?
 
-Homebrew is supported (above). `apt` and Scoop tracked under epic
-#5 (issue #49) — only if there's demand. Until those land, the
-pre-built binary covers Debian/Ubuntu and Windows; Homebrew
-covers macOS and Linux for users who already have it.
+Homebrew is supported (above). `apt` and Scoop are on the roadmap
+if there's demand. Until those land, the pre-built binary covers
+Debian/Ubuntu and Windows; Homebrew covers macOS and Linux for
+users who already have it.
