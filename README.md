@@ -30,23 +30,36 @@ burning tokens on the bloat that comes with raw REST responses.
 
 ## Install
 
+**One-line installer** (macOS + Linux, x86_64 + arm64):
+
 ```bash
-# One-line installer (macOS + Linux, x86_64 + arm64):
 curl -fsSL https://raw.githubusercontent.com/stewartbrothers/gaia/main/scripts/install.sh \
   | TAG=v0.2.0 bash
+```
 
-# Homebrew (macOS + Linux):
+**Homebrew** (macOS + Linux):
+
+```bash
 brew tap stewartbrothers/gaia https://github.com/stewartbrothers/gaia
 brew install gaia
+```
 
-# Build from source:
+**Container** (for `gaia-mcp --http` server deployments):
+
+```bash
+docker pull ghcr.io/stewartbrothers/gaia-mcp:v0.2.0
+```
+
+**Build from source**:
+
+```bash
 git clone https://github.com/stewartbrothers/gaia.git
 cd gaia && make build
 ```
 
 Full install guide including checksum verification:
-[`docs/install.md`](docs/install.md). For the `gaia-mcp --http`
-container deployment story: [`docs/deploy-mcp.md`](docs/deploy-mcp.md).
+[`docs/install.md`](docs/install.md). For `gaia-mcp --http`
+container deployments: [`docs/deploy-mcp.md`](docs/deploy-mcp.md).
 
 ## Quickstart
 

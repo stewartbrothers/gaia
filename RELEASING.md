@@ -204,6 +204,7 @@ Run through the checklist:
       `GH_RELEASE_TOKEN` was unset, the workflow skips this step
       with a notice.
 - [ ] **One-line installer** works: `curl -fsSL https://raw.githubusercontent.com/stewartbrothers/gaia/main/scripts/install.sh | TAG=vX.Y.Z bash`
+- [ ] **Container image** published: `docker pull ghcr.io/stewartbrothers/gaia-mcp:vX.Y.Z` and `docker pull ghcr.io/stewartbrothers/gaia-mcp:latest` both succeed. If `GH_RELEASE_TOKEN` lacked `write:packages`, the workflow skips with a notice.
 - [ ] **`brew upgrade gaia`** on a tap-installed Mac picks up the
       new version: `brew upgrade gaia && gaia version`. (Skip if
       the formula bump didn't run.)
@@ -267,10 +268,11 @@ Repository Settings → Secrets → Add Secret:
   on the previous tag until the next manual update.
 
 - **`GH_RELEASE_TOKEN`** — GitHub fine-grained PAT with
-  `write:contents` on `github.com/stewartbrothers/gaia`. Used by
-  the release workflow to create a matching GitHub release and
-  upload artifacts. **Strongly recommended** — the public one-line
-  installer downloads from GitHub releases.
+  `write:contents` **and** `write:packages` on
+  `github.com/stewartbrothers/gaia`. Used by the release workflow
+  to create the GitHub release, upload artifacts, and push the
+  container image to GHCR. **Strongly recommended** — the public
+  one-line installer and `docker pull` both depend on it.
 
 - **`GITHUB_MIRROR_SSH_KEY`** — SSH private key matching a deploy
   key with **write** access on `github.com/stewartbrothers/gaia`
