@@ -128,7 +128,7 @@ func (p *Provider) DeleteRelease(ctx context.Context, owner, repo, tag string) e
 // uploads.example.com), with the same /api/v3 prefix when present.
 //
 // Bypasses the JSON Post path because the body is binary.
-func (p *Provider) UploadReleaseAsset(ctx context.Context, owner, repo string, releaseID int64, name, contentType string, body io.Reader) error {
+func (p *Provider) UploadReleaseAsset(ctx context.Context, owner, repo string, releaseID int64, name, contentType string, size int64, body io.Reader) error {
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
@@ -142,6 +142,7 @@ func (p *Provider) UploadReleaseAsset(ctx context.Context, owner, repo string, r
 	if err != nil {
 		return exitcode.Wrap(err, exitcode.Generic, "build asset upload request")
 	}
+	req.ContentLength = size
 	if p.client.token != "" {
 		req.Header.Set("Authorization", "Bearer "+p.client.token)
 	}

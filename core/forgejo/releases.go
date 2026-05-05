@@ -133,7 +133,7 @@ func (p *Provider) DeleteRelease(ctx context.Context, owner, repo, tag string) e
 // to "application/octet-stream" when empty). Useful for binaries vs
 // text — in practice Forgejo doesn't act on it but it matters for
 // downstream consumers who inspect the asset metadata.
-func (p *Provider) UploadReleaseAsset(ctx context.Context, owner, repo string, releaseID int64, name, contentType string, body io.Reader) error {
+func (p *Provider) UploadReleaseAsset(ctx context.Context, owner, repo string, releaseID int64, name, contentType string, _ int64, body io.Reader) error {
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}

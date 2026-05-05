@@ -135,7 +135,7 @@ func (*noopProvider) EditRelease(_ context.Context, _, _, _ string, _ provider.E
 func (*noopProvider) DeleteRelease(_ context.Context, _, _, _ string) error {
 	return errNotImplemented
 }
-func (*noopProvider) UploadReleaseAsset(_ context.Context, _, _ string, _ int64, _, _ string, _ io.Reader) error {
+func (*noopProvider) UploadReleaseAsset(_ context.Context, _, _ string, _ int64, _, _ string, _ int64, _ io.Reader) error {
 	return errNotImplemented
 }
 func (*noopProvider) ListPackages(_ context.Context, _ string, _ provider.ListPackagesOptions) ([]types.Package, *provider.Page, error) {

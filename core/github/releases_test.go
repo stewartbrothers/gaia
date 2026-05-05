@@ -198,6 +198,10 @@ func TestUploadReleaseAssetGH(t *testing.T) {
 		if got := r.Header.Get("Content-Type"); got != "application/gzip" {
 			t.Errorf("Content-Type: %q", got)
 		}
+		// GitHub rejects uploads without Content-Length (HTTP 400).
+		if r.ContentLength != int64(len("binary-bytes")) {
+			t.Errorf("Content-Length: got %d, want %d", r.ContentLength, len("binary-bytes"))
+		}
 		body, _ := io.ReadAll(r.Body)
 		if string(body) != "binary-bytes" {
 			t.Errorf("body: %q", body)
@@ -214,7 +218,7 @@ func TestUploadReleaseAssetGH(t *testing.T) {
 	// the upload server URL; uploadHostFor falls through to the
 	// "non-github.com, no /api/v3" branch and returns it as-is.
 	p := newTestProvider(t, upload.URL)
-	if err := p.UploadReleaseAsset(context.Background(), "o", "r", 7, "x.tar.gz", "application/gzip", strings.NewReader("binary-bytes")); err != nil {
+	if err := p.UploadReleaseAsset(context.Background(), "o", "r", 7, "x.tar.gz", "application/gzip", int64(len("binary-bytes")), strings.NewReader("binary-bytes")); err != nil {
 		t.Fatalf("UploadReleaseAsset: %v", err)
 	}
 	if !uploadCalled {

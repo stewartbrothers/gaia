@@ -376,7 +376,7 @@ found).`,
 					continue
 				}
 				upErr := p.UploadReleaseAsset(cmd.Context(), owner, repo, rel.ID,
-					ar.Name, ar.ContentType, file)
+					ar.Name, ar.ContentType, ar.Size, file)
 				_ = file.Close()
 				if upErr != nil {
 					ar.Error = upErr.Error()

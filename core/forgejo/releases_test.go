@@ -256,7 +256,7 @@ func TestUploadReleaseAsset(t *testing.T) {
 
 	p := newTestProvider(t, srv.URL)
 	body := strings.NewReader("fake-archive-bytes")
-	if err := p.UploadReleaseAsset(context.Background(), "o", "r", 7, "release-v0.1.0.tar.gz", "application/gzip", body); err != nil {
+	if err := p.UploadReleaseAsset(context.Background(), "o", "r", 7, "release-v0.1.0.tar.gz", "application/gzip", int64(len("fake-archive-bytes")), body); err != nil {
 		t.Fatalf("UploadReleaseAsset: %v", err)
 	}
 
@@ -286,7 +286,7 @@ func TestUploadReleaseAssetDefaultsContentType(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
-	_ = p.UploadReleaseAsset(context.Background(), "o", "r", 1, "x", "", strings.NewReader("data"))
+	_ = p.UploadReleaseAsset(context.Background(), "o", "r", 1, "x", "", 4, strings.NewReader("data"))
 }
 
 func TestUploadReleaseAssetBadStatus(t *testing.T) {
@@ -296,7 +296,7 @@ func TestUploadReleaseAssetBadStatus(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
-	err := p.UploadReleaseAsset(context.Background(), "o", "r", 999, "x", "", strings.NewReader("data"))
+	err := p.UploadReleaseAsset(context.Background(), "o", "r", 999, "x", "", 4, strings.NewReader("data"))
 	if got := exitcode.Of(err); got != exitcode.NotFound {
 		t.Errorf("exit code: got %d, want NotFound(3)", got)
 	}
