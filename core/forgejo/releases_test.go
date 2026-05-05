@@ -28,6 +28,47 @@ func releaseJSON(id int64, tag, name string, draft, pre bool) map[string]any {
 	}
 }
 
+func TestListReleasesOmitsSummaryOnlyFields(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			releaseJSON(1, "v1.0.0", "First", false, false),
+		})
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, _, err := p.ListReleases(context.Background(), "o", "r", provider.ListReleasesOptions{})
+	if err != nil {
+		t.Fatalf("ListReleases: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("count: %d", len(got))
+	}
+	if got[0].TargetCommitish != "" {
+		t.Errorf("ListReleases must omit TargetCommitish; got %q", got[0].TargetCommitish)
+	}
+	b, _ := json.Marshal(got[0])
+	if strings.Contains(string(b), `"id"`) {
+		t.Errorf("ListReleases must not emit ID field; got %s", b)
+	}
+}
+
+func TestGetReleaseTargetCommitishPresent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(releaseJSON(1, "v1.0.0", "First", false, false))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, err := p.GetRelease(context.Background(), "o", "r", "v1.0.0")
+	if err != nil {
+		t.Fatalf("GetRelease: %v", err)
+	}
+	if got.TargetCommitish == "" {
+		t.Errorf("GetRelease must include TargetCommitish; got empty string")
+	}
+}
+
 func TestListReleasesBodyOmitted(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode([]map[string]any{

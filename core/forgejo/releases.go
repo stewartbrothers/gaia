@@ -64,6 +64,7 @@ func (p *Provider) ListReleases(ctx context.Context, owner, repo string, opts pr
 	for i := range raw {
 		item := raw[i].toType()
 		item.Body = ""
+		item.TargetCommitish = ""
 		out = append(out, item)
 	}
 	return out, makePage(len(raw), limit, opts.Cursor), nil
