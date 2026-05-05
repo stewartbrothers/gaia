@@ -136,9 +136,9 @@ jobs:
           skip_list="publish,${{ steps.brew_gate.outputs.skip }}"
           # Trim trailing comma if no extra skips.
           skip_list="${skip_list%,}"
-          if ! goreleaser release --clean --skip="$skip_list" 2> goreleaser.stderr; then
+          if ! goreleaser release --clean --skip="$skip_list" 2> "$RUNNER_TEMP/goreleaser.stderr"; then
             echo "::error::goreleaser failed — see stderr below."
-            sed 's/^/::error::  /' goreleaser.stderr
+            sed 's/^/::error::  /' "$RUNNER_TEMP/goreleaser.stderr"
             exit 1
           fi
 
@@ -147,9 +147,9 @@ jobs:
       - name: Build gaia
         run: |
           set -euo pipefail
-          if ! make build 2> build.stderr; then
+          if ! make build 2> "$RUNNER_TEMP/build.stderr"; then
             echo "::error::make build failed."
-            sed 's/^/::error::  /' build.stderr
+            sed 's/^/::error::  /' "$RUNNER_TEMP/build.stderr"
             exit 1
           fi
 
@@ -166,9 +166,9 @@ jobs:
               --asset 'dist/*.tar.gz' \
               --asset 'dist/*.zip' \
               --asset 'dist/*checksums.txt' \
-              --notes-from CHANGELOG.md 2> publish.stderr; then
+              --notes-from CHANGELOG.md 2> "$RUNNER_TEMP/publish.stderr"; then
             echo "::error::gaia release publish (Forgejo) failed — see stderr below."
-            sed 's/^/::error::  /' publish.stderr
+            sed 's/^/::error::  /' "$RUNNER_TEMP/publish.stderr"
             exit 1
           fi
           echo "::notice::Forgejo release ${{ github.ref_name }} published with all artifacts."
@@ -204,9 +204,9 @@ jobs:
               --asset 'dist/*.tar.gz' \
               --asset 'dist/*.zip' \
               --asset 'dist/*checksums.txt' \
-              --notes-from CHANGELOG.md 2> publish-gh.stderr; then
+              --notes-from CHANGELOG.md 2> "$RUNNER_TEMP/publish-gh.stderr"; then
             echo "::error::gaia release publish (GitHub) failed — see stderr below."
-            sed 's/^/::error::  /' publish-gh.stderr
+            sed 's/^/::error::  /' "$RUNNER_TEMP/publish-gh.stderr"
             exit 1
           fi
           echo "::notice::GitHub release ${{ github.ref_name }} published with all artifacts."
@@ -252,9 +252,9 @@ jobs:
               -t "ghcr.io/stewartbrothers/gaia-mcp:${TAG}" \
               -t "ghcr.io/stewartbrothers/gaia-mcp:latest" \
               --push \
-              . 2> ghcr.stderr; then
+              . 2> "$RUNNER_TEMP/ghcr.stderr"; then
             echo "::error::GHCR container push failed — see stderr below."
-            sed 's/^/::error::  /' ghcr.stderr
+            sed 's/^/::error::  /' "$RUNNER_TEMP/ghcr.stderr"
             exit 1
           fi
           echo "::notice::Container ghcr.io/stewartbrothers/gaia-mcp:${TAG} pushed."
@@ -298,9 +298,9 @@ jobs:
             git remote add github git@github.com:stewartbrothers/gaia.git
           fi
 
-          if ! git push github "refs/tags/$TAG:refs/tags/$TAG" 2> mirror.stderr; then
+          if ! git push github "refs/tags/$TAG:refs/tags/$TAG" 2> "$RUNNER_TEMP/mirror.stderr"; then
             echo "::error::Failed to push $TAG to GitHub mirror — see stderr below."
-            sed 's/^/::error::  /' mirror.stderr
+            sed 's/^/::error::  /' "$RUNNER_TEMP/mirror.stderr"
             exit 1
           fi
           echo "::notice::Tag $TAG mirrored to github.com/stewartbrothers/gaia."
