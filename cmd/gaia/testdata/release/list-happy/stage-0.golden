@@ -8,10 +8,6 @@
         "_trust": "external",
         "_value": "v0.2.0"
       },
-      "body": {
-        "_trust": "external",
-        "_value": "fixes + small features"
-      },
       "draft": false,
       "prerelease": false,
       "author": {
@@ -27,10 +23,6 @@
       "name": {
         "_trust": "external",
         "_value": "first"
-      },
-      "body": {
-        "_trust": "external",
-        "_value": "first release"
       },
       "draft": false,
       "prerelease": true,

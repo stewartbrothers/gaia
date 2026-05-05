@@ -161,7 +161,9 @@ func (p *Provider) ListPullRequests(ctx context.Context, owner, repo string, opt
 
 	out := make([]types.PullRequest, 0, len(raw))
 	for i := range raw {
-		out = append(out, raw[i].toType())
+		item := raw[i].toType()
+		item.Body = ""
+		out = append(out, item)
 	}
 	return out, makePage(len(raw), limit, opts.Cursor), nil
 }

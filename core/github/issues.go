@@ -122,7 +122,9 @@ func (p *Provider) ListIssues(ctx context.Context, owner, repo string, opts prov
 		if raw[i].PullRequest != nil {
 			continue // skip PRs
 		}
-		out = append(out, raw[i].toType())
+		item := raw[i].toType()
+		item.Body = ""
+		out = append(out, item)
 	}
 	return out, makePage(len(raw), limit, opts.Cursor), nil
 }

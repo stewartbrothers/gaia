@@ -40,6 +40,27 @@ func makePR(n int, title string) map[string]any {
 	return m
 }
 
+func TestListIssuesGHBodyOmitted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		issue := makeIssue(1, "has body", "open")
+		issue["body"] = "full description here"
+		_ = json.NewEncoder(w).Encode([]map[string]any{issue})
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, _, err := p.ListIssues(context.Background(), "o", "r", provider.ListIssuesOptions{})
+	if err != nil {
+		t.Fatalf("ListIssues: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("count: %d", len(got))
+	}
+	if got[0].Body != "" {
+		t.Errorf("ListIssues must omit Body; got %q", got[0].Body)
+	}
+}
+
 func TestListIssuesFiltersOutPRs(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode([]map[string]any{
