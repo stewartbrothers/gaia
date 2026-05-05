@@ -63,7 +63,7 @@ archives:
     # Both binaries land in the same archive per platform, so an
     # operator unpacking gaia_v0.1.0_linux_amd64.tar.gz gets both
     # gaia and gaia-mcp. Saves a download for the common case.
-    ids:
+    builds:
       - gaia
       - gaia-mcp
     name_template: >-
@@ -72,10 +72,10 @@ archives:
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "arm64" }}arm64
       {{- else }}{{ .Arch }}{{ end }}
-    formats: [tar.gz]
+    format: tar.gz
     format_overrides:
       - goos: windows
-        formats: [zip]
+        format: zip
     files:
       # Globs allow LICENSE / docs to be optional — goreleaser doesn't
       # error if a glob matches nothing, but does error on a literal
