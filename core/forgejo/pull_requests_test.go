@@ -17,6 +17,7 @@ import (
 type fakePR struct {
 	Number    int              `json:"number"`
 	Title     string           `json:"title"`
+	Body      string           `json:"body"`
 	State     string           `json:"state"`
 	User      map[string]any   `json:"user"`
 	Labels    []map[string]any `json:"labels"`
@@ -55,6 +56,27 @@ func makePR(n int, title, state string, opts func(*fakePR)) fakePR {
 		opts(&pr)
 	}
 	return pr
+}
+
+func TestListPullRequestsBodyOmitted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		pr := makePR(1, "has body", "open", nil)
+		pr.Body = "full PR description"
+		_ = json.NewEncoder(w).Encode([]fakePR{pr})
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, _, err := p.ListPullRequests(context.Background(), "Gerwood", "gaia", provider.ListPullRequestsOptions{})
+	if err != nil {
+		t.Fatalf("ListPullRequests: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("count: %d", len(got))
+	}
+	if got[0].Body != "" {
+		t.Errorf("ListPullRequests must omit Body; got %q", got[0].Body)
+	}
 }
 
 func TestListPullRequestsHappyPath(t *testing.T) {

@@ -27,6 +27,27 @@ func ghReleaseJSON(id int64, tag, name string, draft, pre bool) map[string]any {
 	}
 }
 
+func TestListReleasesGHBodyOmitted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			ghReleaseJSON(1, "v1.0.0", "First", false, false),
+		})
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, _, err := p.ListReleases(context.Background(), "o", "r", provider.ListReleasesOptions{})
+	if err != nil {
+		t.Fatalf("ListReleases: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("count: %d", len(got))
+	}
+	if got[0].Body != "" {
+		t.Errorf("ListReleases must omit Body; got %q", got[0].Body)
+	}
+}
+
 func TestListReleasesGH(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/repos/o/r/releases" {

@@ -23,6 +23,27 @@ func makeGHPR(n int, state string, merged bool) map[string]any {
 	}
 }
 
+func TestListPullRequestsGHBodyOmitted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		pr := makeGHPR(1, "open", false)
+		pr["body"] = "full PR description"
+		_ = json.NewEncoder(w).Encode([]map[string]any{pr})
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, _, err := p.ListPullRequests(context.Background(), "o", "r", provider.ListPullRequestsOptions{})
+	if err != nil {
+		t.Fatalf("ListPullRequests: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("count: %d", len(got))
+	}
+	if got[0].Body != "" {
+		t.Errorf("ListPullRequests must omit Body; got %q", got[0].Body)
+	}
+}
+
 func TestListPullRequests(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode([]map[string]any{

@@ -49,6 +49,27 @@ func newTestProvider(t *testing.T, baseURL string) *forgejo.Provider {
 	})
 }
 
+func TestListIssuesBodyOmitted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		issue := makeIssue(1, "has body", "open")
+		issue.Body = "this is the full issue description"
+		_ = json.NewEncoder(w).Encode([]fakeIssue{issue})
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, _, err := p.ListIssues(context.Background(), "Gerwood", "gaia", provider.ListIssuesOptions{})
+	if err != nil {
+		t.Fatalf("ListIssues: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("count: %d", len(got))
+	}
+	if got[0].Body != "" {
+		t.Errorf("ListIssues must omit Body; got %q", got[0].Body)
+	}
+}
+
 func TestListIssuesHappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/repos/Gerwood/gaia/issues" {
