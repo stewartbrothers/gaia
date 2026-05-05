@@ -131,10 +131,10 @@ type Provider interface {
 	// release identified by `releaseID` under `name`.
 	//
 	// `contentType` is optional — pass "" to let the implementation
-	// default to "application/octet-stream". `body` should be a
-	// reusable Reader (the underlying file handle, not a one-shot
-	// buffer) so retries don't fail.
-	UploadReleaseAsset(ctx context.Context, owner, repo string, releaseID int64, name, contentType string, body io.Reader) error
+	// default to "application/octet-stream". `size` must be the exact
+	// byte length of `body`; GitHub's upload API rejects requests that
+	// lack a Content-Length header (HTTP 400 "Bad Content-Length").
+	UploadReleaseAsset(ctx context.Context, owner, repo string, releaseID int64, name, contentType string, size int64, body io.Reader) error
 
 	// --- Packages (Phase 4 / #107) -----------------------------------
 	//
