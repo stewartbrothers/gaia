@@ -75,7 +75,7 @@ just the JSON-encoded envelope inside an MCP `text` content block.
 {
   "name": "gaia_pr_review",
   "arguments": {
-    "repo": "Gerwood/gaia",
+    "repo": "myorg/myrepo",
     "number": 75,
     "state": "request-changes",
     "body": "see inline",

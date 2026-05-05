@@ -20,10 +20,12 @@ name: Release
 #   5. builds gaia (so we can dogfood it for the upload step)
 #   6. runs `gaia release publish` to attach artifacts to the
 #      Forgejo release (creates the release record if absent)
-#   7. if GITHUB_MIRROR_SSH_KEY is configured (#47), pushes the
-#      tag to the GitHub mirror so external users can find it via
-#      `go install …@vX.Y.Z` and the Homebrew formula's URL works
-#      against either remote
+#   7. if GH_RELEASE_TOKEN is configured, creates a matching release
+#      on the GitHub mirror (github.com/stewartbrothers/gaia) with
+#      the same artifacts — the one-line installer downloads from
+#      GitHub so the mirror is the public release point
+#   8. if GITHUB_MIRROR_SSH_KEY is configured (#47), pushes the
+#      tag to the GitHub mirror so the release is reachable
 #
 # Each step is gated so a failure (goreleaser flake, network, etc.)
 # surfaces with a useful annotation instead of dumping the full
@@ -147,7 +149,7 @@ jobs:
             exit 1
           fi
 
-      - name: Publish release via gaia
+      - name: Publish release via gaia (Forgejo)
         env:
           # FORGEJO_RELEASE_TOKEN is a repo-scoped token with
           # `write:repository`. Add it via Repository Settings →
@@ -161,17 +163,102 @@ jobs:
               --asset 'dist/*.zip' \
               --asset 'dist/*checksums.txt' \
               --notes-from CHANGELOG.md 2> publish.stderr; then
-            echo "::error::gaia release publish failed — see stderr below."
+            echo "::error::gaia release publish (Forgejo) failed — see stderr below."
             sed 's/^/::error::  /' publish.stderr
             exit 1
           fi
           echo "::notice::Forgejo release ${{ github.ref_name }} published with all artifacts."
 
-      # Mirror the tag to GitHub so external users can `go install …@TAG`
-      # against the public mirror. Gated on the same SSH deploy key
-      # configuration the mirror.yml workflow uses (#47). When the secret
-      # is unset (e.g. before the user has set up the mirror), this step
-      # logs a notice and exits 0 — the Forgejo release stands alone.
+      # GitHub mirror release: upload the same artifacts to the public
+      # GitHub mirror so the one-line installer can download them.
+      # Gated on GH_RELEASE_TOKEN — when unset, logs a notice and
+      # continues. Set via Repository Settings → Secrets: a GitHub
+      # fine-grained PAT with write:contents on stewartbrothers/gaia.
+      - name: Check whether GitHub release token is configured
+        id: gh_release_gate
+        env:
+          GH_RELEASE_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+        run: |
+          if [ -z "${GH_RELEASE_TOKEN:-}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::GH_RELEASE_TOKEN not configured — skipping GitHub release publish for ${{ github.ref_name }}."
+            echo "::notice::Set GH_RELEASE_TOKEN (fine-grained PAT, write:contents on stewartbrothers/gaia)"
+            echo "::notice::to enable the public installer to download artifacts from GitHub."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish release via gaia (GitHub)
+        if: steps.gh_release_gate.outputs.configured == 'true'
+        env:
+          # GH_TOKEN is the env var gaia reads for the GitHub provider.
+          GH_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! ./bin/gaia --provider github --repo stewartbrothers/gaia \
+              release publish "${{ github.ref_name }}" \
+              --asset 'dist/*.tar.gz' \
+              --asset 'dist/*.zip' \
+              --asset 'dist/*checksums.txt' \
+              --notes-from CHANGELOG.md 2> publish-gh.stderr; then
+            echo "::error::gaia release publish (GitHub) failed — see stderr below."
+            sed 's/^/::error::  /' publish-gh.stderr
+            exit 1
+          fi
+          echo "::notice::GitHub release ${{ github.ref_name }} published with all artifacts."
+
+      # Container image: build multi-arch and push to GitHub Container
+      # Registry (ghcr.io/stewartbrothers/gaia-mcp). Gated on
+      # GH_RELEASE_TOKEN — the same PAT used for the release publish
+      # step, but it also needs write:packages scope. When unset,
+      # logs a notice and skips; no effect on the binary release.
+      - name: Check whether GHCR token is configured
+        id: ghcr_gate
+        env:
+          GH_RELEASE_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+        run: |
+          if [ -z "${GH_RELEASE_TOKEN:-}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::GH_RELEASE_TOKEN not configured — skipping GHCR container publish for ${{ github.ref_name }}."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish container image to GHCR
+        if: steps.ghcr_gate.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | docker login ghcr.io -u stewartbrothers --password-stdin
+
+          commit_sha=$(git rev-parse --short HEAD)
+
+          # buildx enables multi-arch in a single manifest push.
+          # ubuntu-latest runners ship buildx; create the builder once
+          # (idempotent — the name is scoped to the runner session).
+          docker buildx create --name multiarch --use 2>/dev/null \
+            || docker buildx use multiarch
+
+          if ! docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --build-arg "VERSION=${TAG}" \
+              --build-arg "COMMIT=${commit_sha}" \
+              -t "ghcr.io/stewartbrothers/gaia-mcp:${TAG}" \
+              -t "ghcr.io/stewartbrothers/gaia-mcp:latest" \
+              --push \
+              . 2> ghcr.stderr; then
+            echo "::error::GHCR container push failed — see stderr below."
+            sed 's/^/::error::  /' ghcr.stderr
+            exit 1
+          fi
+          echo "::notice::Container ghcr.io/stewartbrothers/gaia-mcp:${TAG} pushed."
+
+      # Mirror the tag to GitHub so the release is reachable.
+      # Gated on GITHUB_MIRROR_SSH_KEY (#47). When unset, the Forgejo
+      # and GitHub releases stand alone (tag already on GitHub if the
+      # mirror workflow ran; GH_RELEASE_TOKEN step above skips cleanly).
       - name: Check whether GitHub mirror secret is configured
         id: mirror_gate
         env:
@@ -204,7 +291,7 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
 
           if ! git remote get-url github >/dev/null 2>&1; then
-            git remote add github git@github.com:Gerwood/gaia.git
+            git remote add github git@github.com:stewartbrothers/gaia.git
           fi
 
           if ! git push github "refs/tags/$TAG:refs/tags/$TAG" 2> mirror.stderr; then

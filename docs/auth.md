@@ -72,11 +72,11 @@ committable in some flows; credentials should never be.
 A repo's `.gaia/config.yaml` typically looks like:
 
 ```yaml
-default_profile: stewartbrothers
-default_repo: Gerwood/gaia       # short-circuits --repo when set
+default_profile: myforge
+default_repo: myorg/myrepo       # short-circuits --repo when set
 
 profiles:
-  stewartbrothers:
+  myforge:
     provider: forgejo
     api_url: https://your-forge.example.com/api/v1
 ```
@@ -128,12 +128,12 @@ forgejo:
   your-forge.example.com:
     api_url: https://your-forge.example.com/api/v1
     token: <opaque>
-    user: Gerwood
+    user: alice
 github:
   github.com:
     api_url: https://api.github.com
     token: <opaque>
-    user: gerwood
+    user: alice
 ```
 
 Top-level keys are provider names; second-level are hostnames. The

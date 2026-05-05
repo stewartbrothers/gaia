@@ -125,7 +125,7 @@ release:
 # brews: maintain a Homebrew formula in this same repo at
 # Formula/gaia.rb so users can:
 #
-#   brew tap Gerwood/gaia https://github.com/stewartbrothers/gaia
+#   brew tap stewartbrothers/gaia https://github.com/stewartbrothers/gaia
 #   brew install gaia
 #
 # On every tagged release, goreleaser opens a commit against `main`
@@ -157,7 +157,7 @@ brews:
       name: gaia
       branch: main
       git:
-        url: 'git@github.com:stewartbrothers/gaia.git'
+        url: 'git@repo.stewartbrothers.com.au:Gerwood/gaia.git'
         ssh_command: 'ssh -i {{ .KeyPath }} -o StrictHostKeyChecking=accept-new'
         private_key: '{{ .Env.GORELEASER_TAP_DEPLOY_KEY }}'
     # Where in the repo the formula file lives. Homebrew will look

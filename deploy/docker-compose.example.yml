@@ -25,7 +25,7 @@ services:
   # Pattern 1 — loopback only
   # ---------------------------------------------------------------
   gaia-mcp.local:
-    image: gaia-mcp:latest
+    image: ghcr.io/stewartbrothers/gaia-mcp:latest
     restart: unless-stopped
     ports:
       # 127.0.0.1 prefix binds the published port to host loopback,
@@ -48,7 +48,7 @@ services:
   # Pattern 2 — public via reverse proxy (nginx terminates TLS)
   # ---------------------------------------------------------------
   gaia-mcp.public:
-    image: gaia-mcp:latest
+    image: ghcr.io/stewartbrothers/gaia-mcp:latest
     restart: unless-stopped
     networks:
       - forge-net

@@ -150,11 +150,12 @@ Either path triggers the `.forgejo/workflows/release.yml` workflow.
 7. Runs `gaia release publish "${TAG}" --asset 'dist/*' --notes-from CHANGELOG.md`,
    which creates the release record (Forgejo doesn't auto-create
    on tag push) and uploads each asset.
-8. **If `GITHUB_MIRROR_SSH_KEY` is configured (#47)**, pushes the
-   tag to `github.com/stewartbrothers/gaia` so the `go install …@vX.Y.Z`
-   path works against the public mirror and the Homebrew tap URL
-   form against `https://github.com/stewartbrothers/gaia` returns the
-   formula at the tagged commit.
+8. **If `GH_RELEASE_TOKEN` is configured**, creates a matching
+   GitHub release and uploads the same artifacts to
+   `github.com/stewartbrothers/gaia` — this is the public download
+   point for the one-line installer.
+9. **If `GITHUB_MIRROR_SSH_KEY` is configured (#47)**, pushes the
+   tag to `github.com/stewartbrothers/gaia`.
 
 Each step that can fail (goreleaser, build, publish, mirror push)
 captures stderr to a file and re-emits it as `::error::` annotations,
@@ -198,15 +199,15 @@ Run through the checklist:
       vX.Y.Z` commit, signed by `gaia-release-bot`). If
       `GORELEASER_TAP_DEPLOY_KEY` was unset, this step silently
       skips — re-run after configuring the secret.
-- [ ] **GitHub mirror** has the new tag visible at
-      `github.com/stewartbrothers/gaia/tags`. If `GITHUB_MIRROR_SSH_KEY`
-      was unset, the workflow logs a notice and exits 0; the
-      Forgejo release stands alone until the mirror is set up.
+- [ ] **GitHub release** has the new tag and all artifacts at
+      `github.com/stewartbrothers/gaia/releases/tag/vX.Y.Z`. If
+      `GH_RELEASE_TOKEN` was unset, the workflow skips this step
+      with a notice.
+- [ ] **One-line installer** works: `curl -fsSL https://raw.githubusercontent.com/stewartbrothers/gaia/main/scripts/install.sh | TAG=vX.Y.Z bash`
+- [ ] **Container image** published: `docker pull ghcr.io/stewartbrothers/gaia-mcp:vX.Y.Z` and `docker pull ghcr.io/stewartbrothers/gaia-mcp:latest` both succeed. If `GH_RELEASE_TOKEN` lacked `write:packages`, the workflow skips with a notice.
 - [ ] **`brew upgrade gaia`** on a tap-installed Mac picks up the
       new version: `brew upgrade gaia && gaia version`. (Skip if
       the formula bump didn't run.)
-- [ ] **`go install …@vX.Y.Z`** resolves cleanly:
-      `go install github.com/stewartbrothers/gaia/cmd/gaia@vX.Y.Z`.
 
 Manual binary check (any platform):
 
@@ -266,12 +267,21 @@ Repository Settings → Secrets → Add Secret:
   Homebrew formula doesn't get auto-updated and tap users stay
   on the previous tag until the next manual update.
 
+- **`GH_RELEASE_TOKEN`** — GitHub **classic** PAT with scopes
+  `public_repo` (create releases + upload assets) and
+  `write:packages` (push container image to GHCR; includes
+  `read:packages`). Fine-grained PATs cannot push to GHCR.
+  Used by the release workflow to create the GitHub release,
+  upload artifacts, and push the container image.
+  **Strongly recommended** — the public one-line installer and
+  `docker pull` both depend on it.
+
 - **`GITHUB_MIRROR_SSH_KEY`** — SSH private key matching a deploy
-  key with **write** access on `github.com/stewartbrothers/gaia` (the
-  public mirror). Used by both `mirror.yml` (#47) and the release
-  workflow's mirror-push step. **Optional**; if absent, the
-  GitHub mirror doesn't track new tags. Forgejo release is the
-  canonical artifact host either way.
+  key with **write** access on `github.com/stewartbrothers/gaia`
+  (the public mirror). Used by both `mirror.yml` (#47) and the
+  release workflow's mirror-push step. **Optional**; if absent,
+  tags don't auto-push to GitHub (but the release upload step
+  above doesn't need it).
 
 The optional secrets gate independently — configure the ones you
 need, leave the others unset. Workflow logs surface a `notice`

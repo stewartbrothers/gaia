@@ -1,6 +1,6 @@
 # Packages baseline
 
-No measured rows yet. The `Gerwood/gaia` Forgejo instance has no
+No measured rows yet. The test Forgejo instance has no
 published packages at the time of writing, so a live side-by-side
 isn't reproducible. The packages commands (`gaia packages list`,
 `gaia packages view`, `gaia packages delete`, `gaia packages upload`)

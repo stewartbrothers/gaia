@@ -1,7 +1,7 @@
 # Reads baseline
 
-Measured 2026-05-02 against `your-forge.example.com`, repo
-`Gerwood/gaia`, PR #75 (no comments), and `cli/cli` on github.com
+Measured 2026-05-02 against a Forgejo instance, repo
+`owner/repo`, PR #75 (no comments), and `cli/cli` on github.com
 (release rows). Token estimates use `bytes / 4`.
 
 | Command                                            | Bytes   | ≈Tokens | vs. raw curl |

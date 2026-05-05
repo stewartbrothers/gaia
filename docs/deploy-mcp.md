@@ -6,7 +6,7 @@ details — auth model, bind policy, audit log — see [`mcp.md`](mcp.md).
 
 The TL;DR:
 
-- Container image: built from `Dockerfile` at the repo root.
+- Container image: `ghcr.io/stewartbrothers/gaia-mcp` (or build from `Dockerfile`).
 - Two deployment patterns: loopback-only (workstation) and public
   via reverse proxy (small team).
 - Pass-through auth means there are **no secrets to inject** at
@@ -30,7 +30,17 @@ HTTP makes sense when:
 
 If none of those apply, stay on stdio.
 
-## Build the image
+## Get the image
+
+**Pull from GHCR** (fastest — pre-built multi-arch for linux/amd64 and linux/arm64):
+
+```bash
+docker pull ghcr.io/stewartbrothers/gaia-mcp:v0.2.0
+# or track latest:
+docker pull ghcr.io/stewartbrothers/gaia-mcp:latest
+```
+
+**Build locally** from source:
 
 ```bash
 docker build -t gaia-mcp:local .
@@ -41,13 +51,13 @@ binaries, `alpine:3.20` runs them. Final image is ~23 MB. Both
 `gaia` and `gaia-mcp` are on the runtime PATH so you can
 `docker exec` for ad-hoc operations.
 
-For a versioned build, pass `VERSION` and `COMMIT`:
+For a versioned local build:
 
 ```bash
 docker build \
-  --build-arg VERSION=v0.1.0 \
+  --build-arg VERSION=v0.2.0 \
   --build-arg COMMIT=$(git rev-parse --short HEAD) \
-  -t gaia-mcp:v0.1.0 .
+  -t gaia-mcp:v0.2.0 .
 ```
 
 `gaia version` inside the container then reports those values.
@@ -60,7 +70,7 @@ binds to `127.0.0.1`; no TLS needed.
 ```yaml
 services:
   gaia-mcp:
-    image: gaia-mcp:local
+    image: ghcr.io/stewartbrothers/gaia-mcp:latest
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"   # 127.0.0.1: prefix is critical
@@ -156,7 +166,7 @@ spec:
     spec:
       containers:
         - name: gaia-mcp
-          image: gaia-mcp:v0.1.0
+          image: ghcr.io/stewartbrothers/gaia-mcp:v0.2.0
           args: ["--http", ":8080", "--allow-public-no-tls"]
           ports:
             - containerPort: 8080
@@ -248,11 +258,6 @@ without redaction** — though tokens never appear, request paths
 might still leak repo names you'd rather keep internal.
 
 ## What's NOT here
-
-- **Image publishing** — there's no public registry image yet.
-  Build locally or push to your own registry. Distribution work
-  is tracked under epic #5 (issue #50: Forgejo Actions release
-  workflow).
 - **Per-tenant credential routing** — pass-through means each
   bearer is its own identity, so this isn't needed. Closed as
   superseded.

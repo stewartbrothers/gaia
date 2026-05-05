@@ -98,7 +98,7 @@ expect.
 
 ```bash
 $ gaia pr create --title "..." --head feature/x --base main --dry-run
-POST /repos/Gerwood/gaia/pulls
+POST /repos/myorg/myrepo/pulls
 {
   "title": "...",
   "head": "feature/x",

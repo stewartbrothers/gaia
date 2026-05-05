@@ -3,14 +3,17 @@
 #
 # Usage (the README + wiki Quick Start one-liner):
 #
-#   curl -fsSL https://github.com/stewartbrothers/gaia/raw/branch/main/scripts/install.sh \
+#   curl -fsSL https://raw.githubusercontent.com/stewartbrothers/gaia/main/scripts/install.sh \
 #     | TAG=v0.2.0 bash
 #
-# Authenticated forges (e.g. a private Forgejo instance that gates
-# all read access) need a token in the env. The script honours
-# GITEA_TOKEN / FORGEJO_TOKEN / GAIA_TOKEN — first one set wins:
+# Release archives are downloaded from the GitHub mirror
+# (github.com/stewartbrothers/gaia/releases). To override (e.g.
+# pull from your own mirror or a Forgejo instance), set:
 #
-#   curl -fsSL .../install.sh | TAG=v0.2.0 GITEA_TOKEN=xxx bash
+#   GAIA_DOWNLOAD_BASE=https://your-host/releases/download \
+#   GAIA_API=https://your-host/api/v1 \
+#   GAIA_TOKEN=xxx \
+#   TAG=v0.2.0 bash
 #
 # Or with explicit flags (when not piping):
 #
@@ -19,8 +22,8 @@
 # What it does:
 #
 #   1. Detect OS (linux/darwin) + arch (x86_64/arm64).
-#   2. Resolve the latest release tag from the API when TAG is not set
-#      (only works if the API is reachable — see auth note above).
+#   2. Resolve the latest release tag from the GitHub API when TAG is
+#      not set.
 #   3. Download the matching tarball + checksums file, sha256-verify
 #      before extracting.
 #   4. Install `gaia` and `gaia-mcp` into --prefix (default
@@ -45,16 +48,17 @@ set -euo pipefail
 # Defaults (overridable via flags or env)
 # ----------------------------------------------------------------------
 
-GAIA_REPO="${GAIA_REPO:-Gerwood/gaia}"
-GAIA_API="${GAIA_API:-https://your-forge.example.com/api/v1}"
-GAIA_DOWNLOAD_BASE="${GAIA_DOWNLOAD_BASE:-https://your-forge.example.com/${GAIA_REPO}/releases/download}"
+GAIA_REPO="${GAIA_REPO:-stewartbrothers/gaia}"
+GAIA_API="${GAIA_API:-https://api.github.com}"
+GAIA_DOWNLOAD_BASE="${GAIA_DOWNLOAD_BASE:-https://github.com/${GAIA_REPO}/releases/download}"
 TAG="${TAG:-}"
 PREFIX="${PREFIX:-$HOME/.local/bin}"
 VERBOSE="${VERBOSE:-0}"
 
-# First non-empty token wins. Sent as `Authorization: token ...` to
-# Forgejo/Gitea (matches gaia's own convention) and Bearer to GitHub.
-TOKEN="${GITEA_TOKEN:-${FORGEJO_TOKEN:-${GAIA_TOKEN:-${GH_TOKEN:-${GITHUB_TOKEN:-}}}}}"
+# Optional GitHub PAT — not needed for public release downloads.
+# Set GH_TOKEN / GITHUB_TOKEN / GAIA_TOKEN if your GAIA_DOWNLOAD_BASE
+# points at a private host. First non-empty value wins.
+TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-${GAIA_TOKEN:-${GITEA_TOKEN:-${FORGEJO_TOKEN:-}}}}}"
 
 # ----------------------------------------------------------------------
 # Output helpers
@@ -141,7 +145,7 @@ vlog "detected platform: $platform"
 if [ -z "$TAG" ]; then
   log "resolving latest release tag from $GAIA_API"
   if ! latest_json="$(gcurl "$GAIA_API/repos/$GAIA_REPO/releases/latest" 2>&1)"; then
-    die "failed to fetch latest release info — set TAG=vX.Y.Z to skip the lookup, or supply a token via GITEA_TOKEN/GAIA_TOKEN if the forge requires auth"
+    die "failed to fetch latest release info — set TAG=vX.Y.Z to skip the API lookup"
   fi
   TAG="$(printf '%s' "$latest_json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
   [ -n "$TAG" ] || die "could not extract tag_name from latest-release response"
@@ -169,7 +173,7 @@ checksums_url="$GAIA_DOWNLOAD_BASE/$TAG/$checksums"
 log "downloading $archive"
 vlog "from $archive_url"
 gcurl -o "$download_dir/$archive" "$archive_url" \
-  || die "download failed: $archive_url (auth-gated forge? set GITEA_TOKEN)"
+  || die "download failed: $archive_url"
 
 log "downloading $checksums"
 vlog "from $checksums_url"
