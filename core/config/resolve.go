@@ -60,7 +60,15 @@ func Resolve(cfg *Config, ov Override) (*Resolved, error) {
 	}
 
 	provider := firstNonEmpty(ov.Provider, os.Getenv("GAIA_PROVIDER"), profile.Provider)
-	apiURL := firstNonEmpty(ov.APIURL, os.Getenv("FORGEJO_API_URL"), profile.APIURL)
+	// Only carry the profile's api_url through when the provider hasn't
+	// been overridden away from the profile's own provider. If the caller
+	// passes --provider github but the active profile targets forgejo, the
+	// forgejo api_url must not bleed through to GitHub API requests.
+	profileAPIURL := profile.APIURL
+	if ov.Provider != "" && profile.Provider != "" && ov.Provider != profile.Provider {
+		profileAPIURL = ""
+	}
+	apiURL := firstNonEmpty(ov.APIURL, os.Getenv("FORGEJO_API_URL"), profileAPIURL)
 	token := resolveToken(profile, provider)
 
 	defaultRepo := ""
