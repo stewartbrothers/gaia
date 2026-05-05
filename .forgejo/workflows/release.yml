@@ -108,6 +108,10 @@ jobs:
         run: |
           if [ -z "${TAP_KEY:-}" ]; then
             echo "skip=homebrew," >> "$GITHUB_OUTPUT"
+            # goreleaser evaluates {{ .Env.GORELEASER_TAP_DEPLOY_KEY }} in the
+            # brews template before applying skip logic, so set a placeholder
+            # to prevent a template-evaluation error when the secret is absent.
+            echo "GORELEASER_TAP_DEPLOY_KEY=placeholder" >> "$GITHUB_ENV"
             echo "::notice::GORELEASER_TAP_DEPLOY_KEY not configured — skipping Homebrew formula bump for ${{ github.ref_name }}."
           else
             echo "skip=" >> "$GITHUB_OUTPUT"
