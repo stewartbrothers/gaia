@@ -157,7 +157,7 @@ brews:
       name: gaia
       branch: main
       git:
-        url: 'git@github.com:stewartbrothers/gaia.git'
+        url: 'git@repo.stewartbrothers.com.au:Gerwood/gaia.git'
         ssh_command: 'ssh -i {{ .KeyPath }} -o StrictHostKeyChecking=accept-new'
         private_key: '{{ .Env.GORELEASER_TAP_DEPLOY_KEY }}'
     # Where in the repo the formula file lives. Homebrew will look
