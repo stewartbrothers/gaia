@@ -26,13 +26,13 @@ func TestFromGitRemoteSSHForm(t *testing.T) {
 	gitOrSkip(t)
 	dir := t.TempDir()
 	runGit(t, dir, "init", "-q")
-	runGit(t, dir, "remote", "add", "origin", "git@github.com:stewartbrothers/gaia.git")
+	runGit(t, dir, "remote", "add", "origin", "git@forge.example.com:myorg/myrepo.git")
 
 	got, err := autodetect.FromGitRemote(dir, "")
 	if err != nil {
 		t.Fatalf("FromGitRemote: %v", err)
 	}
-	if got.Host != "github.com" || got.Owner != "Gerwood" || got.Name != "gaia" {
+	if got.Host != "forge.example.com" || got.Owner != "myorg" || got.Name != "myrepo" {
 		t.Errorf("got %+v", got)
 	}
 }

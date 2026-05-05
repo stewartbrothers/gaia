@@ -13,11 +13,11 @@ func TestParseRemoteURL(t *testing.T) {
 	}{
 		{"scp-github", "git@github.com:foo/bar.git", "github.com", "foo", "bar"},
 		{"scp-no-suffix", "git@github.com:foo/bar", "github.com", "foo", "bar"},
-		{"scp-self-hosted", "git@github.com:stewartbrothers/gaia.git", "github.com", "Gerwood", "gaia"},
+		{"scp-self-hosted", "git@forge.example.com:myorg/myrepo.git", "forge.example.com", "myorg", "myrepo"},
 		{"ssh-protocol", "ssh://git@github.com/foo/bar.git", "github.com", "foo", "bar"},
 		{"ssh-with-port", "ssh://git@host.example:2222/foo/bar.git", "host.example", "foo", "bar"},
 		{"https", "https://github.com/foo/bar.git", "github.com", "foo", "bar"},
-		{"https-no-suffix", "https://github.com/stewartbrothers/gaia", "your-forge.example.com", "Gerwood", "gaia"},
+		{"https-no-suffix", "https://forge.example.com/myorg/myrepo", "forge.example.com", "myorg", "myrepo"},
 		{"https-with-userinfo", "https://user:tok@git.example/foo/bar.git", "git.example", "foo", "bar"},
 		{"git-protocol", "git://github.com/foo/bar.git", "github.com", "foo", "bar"},
 	}
