@@ -267,12 +267,14 @@ Repository Settings → Secrets → Add Secret:
   Homebrew formula doesn't get auto-updated and tap users stay
   on the previous tag until the next manual update.
 
-- **`GH_RELEASE_TOKEN`** — GitHub fine-grained PAT with
-  `write:contents` **and** `write:packages` on
-  `github.com/stewartbrothers/gaia`. Used by the release workflow
-  to create the GitHub release, upload artifacts, and push the
-  container image to GHCR. **Strongly recommended** — the public
-  one-line installer and `docker pull` both depend on it.
+- **`GH_RELEASE_TOKEN`** — GitHub **classic** PAT with scopes
+  `public_repo` (create releases + upload assets) and
+  `write:packages` (push container image to GHCR; includes
+  `read:packages`). Fine-grained PATs cannot push to GHCR.
+  Used by the release workflow to create the GitHub release,
+  upload artifacts, and push the container image.
+  **Strongly recommended** — the public one-line installer and
+  `docker pull` both depend on it.
 
 - **`GITHUB_MIRROR_SSH_KEY`** — SSH private key matching a deploy
   key with **write** access on `github.com/stewartbrothers/gaia`
