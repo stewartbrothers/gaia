@@ -546,7 +546,9 @@ func prettyReleaseView(w io.Writer, data any) error {
 	_, _ = fmt.Fprintf(w, "  Author:    %s\n", r.Author.Login)
 	_, _ = fmt.Fprintf(w, "  Draft:     %v\n", r.Draft)
 	_, _ = fmt.Fprintf(w, "  Pre:       %v\n", r.Prerelease)
-	_, _ = fmt.Fprintf(w, "  Target:    %s\n", r.TargetCommitish)
+	if r.TargetCommitish != "" {
+		_, _ = fmt.Fprintf(w, "  Target:    %s\n", r.TargetCommitish)
+	}
 	_, _ = fmt.Fprintf(w, "  Created:   %s\n", r.CreatedAt.Format("2006-01-02 15:04"))
 	if r.PublishedAt != nil {
 		_, _ = fmt.Fprintf(w, "  Published: %s\n", r.PublishedAt.Format("2006-01-02 15:04"))

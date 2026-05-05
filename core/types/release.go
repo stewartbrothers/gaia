@@ -9,7 +9,7 @@ import "time"
 // TargetCommitish is the branch or commit SHA the release was cut
 // against; populated by the forge but optional in create flows.
 type Release struct {
-	ID              int64      `json:"id"`
+	ID              int64      `json:"-"`
 	TagName         string     `json:"tag_name"`
 	Name            string     `json:"name,omitempty" gaia:"trust=external"`
 	Body            string     `json:"body,omitempty" gaia:"trust=external"`
