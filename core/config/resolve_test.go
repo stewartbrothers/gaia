@@ -263,3 +263,31 @@ func TestResolvedStringMissingTokenShows(t *testing.T) {
 		t.Errorf("expected TokenSet:false in %q", s)
 	}
 }
+
+// TestResolveProviderOverrideDropsProfileAPIURL pins the bug where
+// --provider github with a forgejo-profile active sent GitHub requests
+// to the forgejo host. The profile's api_url belongs to the profile's
+// provider; it must not bleed through when the provider is overridden.
+func TestResolveProviderOverrideDropsProfileAPIURL(t *testing.T) {
+	clearGaiaEnv(t)
+	cfg := &config.Config{
+		DefaultProfile: "sb",
+		Profiles: map[string]config.Profile{
+			"sb": {Provider: "forgejo", APIURL: "https://git.example.com/api/v1"},
+		},
+	}
+	t.Setenv("GH_TOKEN", "gh-token")
+	got, err := config.Resolve(cfg, config.Override{Provider: "github"})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got.APIURL != "" {
+		t.Errorf("provider override should clear profile api_url; got %q", got.APIURL)
+	}
+	if got.Provider != "github" {
+		t.Errorf("provider: got %q, want github", got.Provider)
+	}
+	if got.Token != "gh-token" {
+		t.Errorf("token: got %q, want gh-token", got.Token)
+	}
+}
