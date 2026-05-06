@@ -173,6 +173,39 @@ jobs:
           fi
           echo "::notice::Forgejo release ${{ github.ref_name }} published with all artifacts."
 
+      # Move the `latest` tag forward so install.sh TAG=latest and
+      # `docker pull ...:latest` always resolve to the current release.
+      # Force-push is intentional — `latest` is a floating pointer, not
+      # a permanent history marker.
+      - name: Move latest tag
+        run: |
+          set -euo pipefail
+          git tag -f latest
+          git push origin -f refs/tags/latest
+          echo "::notice::Moved latest tag to ${{ github.ref_name }}."
+
+      # Bump the "Latest: vX.Y.Z" badge in README.md and commit it back
+      # to main so the repo landing page always reflects the current
+      # release without a manual release-prep edit.
+      - name: Bump README latest-version badge
+        env:
+          GITEA_TOKEN: ${{ secrets.FORGEJO_RELEASE_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          release_date=$(date +%Y-%m-%d)
+          sed -i "s|^> \*\*Latest:.*|> **Latest: ${TAG}** — released ${release_date}. See [\`CHANGELOG.md\`](CHANGELOG.md) for release notes.|" README.md
+          if git diff --quiet README.md; then
+            echo "README already up-to-date for ${TAG}."
+            exit 0
+          fi
+          git config user.name "gaia-release-bot"
+          git config user.email "aidev@stewartbrothers.com.au"
+          git add README.md
+          git commit -m "docs: bump README latest version to ${TAG}"
+          git push origin HEAD:refs/heads/main
+          echo "::notice::README bumped to ${TAG}."
+
       # GitHub mirror release: upload the same artifacts to the public
       # GitHub mirror so the one-line installer can download them.
       # Gated on GH_RELEASE_TOKEN — when unset, logs a notice and

@@ -1,7 +1,6 @@
 # gaia — Git AI Access
 
-> **Latest: v0.2.0** — released 2026-05-03. See
-> [`CHANGELOG.md`](CHANGELOG.md#020--2026-05-03) for the release notes.
+> **Latest: v0.2.5** — released 2026-05-06. See [`CHANGELOG.md`](CHANGELOG.md) for release notes.
 
 Token-trimmed, agent-friendly CLI and MCP server for **Forgejo,
 Gitea, and GitHub**. Built so that LLM-driven agents can interact with
@@ -34,7 +33,7 @@ burning tokens on the bloat that comes with raw REST responses.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/stewartbrothers/gaia/main/scripts/install.sh \
-  | TAG=v0.2.0 bash
+  | bash
 ```
 
 **Homebrew** (macOS + Linux):
@@ -47,7 +46,7 @@ brew install gaia
 **Container** (for `gaia-mcp --http` server deployments):
 
 ```bash
-docker pull ghcr.io/stewartbrothers/gaia-mcp:v0.2.0
+docker pull ghcr.io/stewartbrothers/gaia-mcp:latest
 ```
 
 **Build from source**:
