@@ -215,6 +215,89 @@ func TestPRCIWaitPollsUntilSettled(t *testing.T) {
 	}
 }
 
+// TestPRCIWaitRefSuccess verifies --ref polls /commits/{ref}/status
+// without needing a PR number, and exits 0 when checks succeed.
+func TestPRCIWaitRefSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/status") {
+			t.Errorf("unexpected path: %q", r.URL.Path)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(fakeCIStatus("success",
+			[]map[string]string{
+				{"name": "release / publish", "state": "success"},
+			}))
+	}))
+	defer srv.Close()
+
+	_, _, code := runCIWait(t, srv, "--ref", "v0.2.7", "--interval", "10ms", "--timeout", "1s")
+	if code != exitcode.OK {
+		t.Errorf("exit: got %d want OK", code)
+	}
+}
+
+// TestPRCIWaitRefEmptyStateThenSuccess verifies the polling loop
+// handles empty state (no checks registered yet) as pending and keeps
+// polling until a real state appears.
+func TestPRCIWaitRefEmptyStateThenSuccess(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/status") {
+			t.Errorf("unexpected path: %q", r.URL.Path)
+			return
+		}
+		n := calls.Add(1)
+		if n == 1 {
+			_ = json.NewEncoder(w).Encode(map[string]any{"state": "", "statuses": []any{}})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(fakeCIStatus("success",
+			[]map[string]string{{"name": "release", "state": "success"}}))
+	}))
+	defer srv.Close()
+
+	_, _, code := runCIWait(t, srv, "--ref", "v0.2.7", "--interval", "10ms", "--timeout", "2s")
+	if code != exitcode.OK {
+		t.Errorf("exit: got %d want OK", code)
+	}
+	if calls.Load() < 2 {
+		t.Errorf("expected at least 2 polls, got %d", calls.Load())
+	}
+}
+
+// TestPRCIWaitRefFailure verifies --ref polls exit CheckFailed when
+// a non-flaky check fails.
+func TestPRCIWaitRefFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/status") {
+			t.Errorf("unexpected path: %q", r.URL.Path)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(fakeCIStatus("failure",
+			[]map[string]string{
+				{"name": "release / publish", "state": "failure"},
+			}))
+	}))
+	defer srv.Close()
+
+	_, _, code := runCIWait(t, srv, "--ref", "v0.2.7", "--interval", "10ms", "--timeout", "1s")
+	if code != exitcode.CheckFailed {
+		t.Errorf("exit: got %d want CheckFailed", code)
+	}
+}
+
+// TestPRCIWaitRefAndNumberMutuallyExclusive verifies that passing both
+// a PR number and --ref is rejected at usage time.
+func TestPRCIWaitRefAndNumberMutuallyExclusive(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+
+	_, _, code := runCIWait(t, srv, "42", "--ref", "v0.2.7", "--interval", "10ms")
+	if code != exitcode.Usage {
+		t.Errorf("exit: got %d want Usage", code)
+	}
+}
+
 // TestPRCIWaitFlakyMarkerExtra verifies --flaky-marker adds
 // custom name substrings to the flakiness classifier.
 func TestPRCIWaitFlakyMarkerExtra(t *testing.T) {

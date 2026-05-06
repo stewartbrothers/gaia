@@ -52,6 +52,17 @@ type Provider interface {
 	// a Source discriminator.
 	ListComments(ctx context.Context, owner, repo string, n int, opts ListCommentsOptions) ([]types.Comment, error)
 
+	// GetCommitStatus returns the combined CI status for the commit
+	// identified by ref (a full SHA, branch name, or tag name). Both
+	// Forgejo and GitHub accept tag names directly in this endpoint so
+	// no ref-to-SHA resolution is needed on the caller's side.
+	//
+	// Used by `gaia pr ci-wait --ref <ref>` to poll tag-triggered
+	// release workflows. Returns a CISummary with State="" when no
+	// status has been registered yet (the workflow hasn't started);
+	// callers should treat "" as "pending".
+	GetCommitStatus(ctx context.Context, owner, repo, ref string) (*types.CISummary, error)
+
 	// Search returns hits across the kinds named in opts.Kinds (issues
 	// and PRs in Phase 1; code added in Phase 4).
 	Search(ctx context.Context, query string, opts SearchOptions) ([]types.SearchResult, *Page, error)

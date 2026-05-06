@@ -3,14 +3,12 @@ description: |
   Cut a gaia release from the current main HEAD.
 
   Pre-flight checks → local quality gate → annotated tag + push (which
-  triggers the Forgejo Actions release workflow) → yield for the operator
-  to watch the workflow complete → verify the release record is visible.
+  triggers the Forgejo Actions release workflow) → poll via
+  `gaia pr ci-wait --ref <tag>` until the workflow settles → verify
+  the release record is visible.
 
   Usage:
     gaia chain run release --var tag=v0.3.0
-
-  Resume after the workflow finishes:
-    gaia chain resume <token>
 
 vars:
   tag:
@@ -91,17 +89,16 @@ steps:
         error: "${error.message}"
 
   - id: await-workflow
-    run: |
-      TAG=${tag}
-      printf '\nTag %s pushed. The Forgejo Actions release workflow is running.\n' "$TAG" >&2
-      printf 'Watch: https://git.stewartbrothers.com.au/Gerwood/gaia/actions\n' >&2
-      printf '\nWhen the workflow completes successfully, resume with:\n' >&2
-      printf '  gaia chain resume <token>\n' >&2
-      printf '\nTo abort the chain instead:\n' >&2
-      printf '  gaia chain abort <token>\n' >&2
-      exit 1
+    run: gaia pr ci-wait --ref ${tag} --timeout 30m --interval 15s
     yield_on:
-      - unknown_error
+      - check_flaky
+      - timeout
+    abort_on:
+      - check_failed
+    retry:
+      max: 2
+      delay: 60s
+      backoff: constant
 
   - id: verify-release
     run: gaia release view ${tag} --fields tag_name,draft,prerelease,published_at
