@@ -10,7 +10,45 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+## [0.2.7] — 2026-05-06
+
+Release workflow fixes, chain dogfooding, and release automation.
+
 ### Added
+
+- `.gaia/chains/release.yaml` — saved release chain that runs pre-flight
+  validation, quality gate, tags and pushes, then polls the release workflow
+  via `gaia pr ci-wait --ref <tag>`, and verifies the resulting release
+  record. Fully autonomous — no yield/human step needed. (#192, #193, #194)
+- `gaia pr ci-wait --ref <ref>` — new flag polls commit status for any git
+  ref (tag, branch, or SHA) without needing a PR number. Consistent across
+  Forgejo and GitHub (both accept tag names in the commit-status endpoint).
+  Also fixes a pre-existing bug where an empty state ("") was treated as
+  success instead of pending. (#194, #195)
+- Release workflow: `latest` git tag now moves to each new release tag on
+  every successful publish. Enables `TAG=latest` in install scripts and
+  `:latest` docker images. (#191)
+- Release workflow: README version badge is automatically committed and pushed
+  to main after each successful release. (#191)
+
+### Fixed
+
+- `core/config/resolve.go`: `--provider github` no longer bleeds through the
+  Forgejo profile's `api_url`, fixing GitHub publish hitting the wrong host.
+  (#189)
+- `core/github/releases.go`: GitHub asset uploads now set `Content-Length`
+  explicitly; previously `uploads.github.com` rejected all uploads with HTTP
+  400 "Bad Content-Length". Adds `size int64` parameter to
+  `provider.UploadReleaseAsset`. (#190)
+- `.goreleaser.yml`: fixed v2 field names (`ids`→`builds`,
+  `formats`→`format`). (#187, #188)
+- Release workflow: stderr capture files moved to `$RUNNER_TEMP` so goreleaser
+  no longer sees a dirty working tree. (#188)
+- Release workflow: `GORELEASER_TAP_DEPLOY_KEY` placeholder written to env
+  when the secret is absent, preventing template evaluation failure when
+  `--skip=homebrew` is active. (#187)
+
+### Added (earlier in 0.2.x)
 
 - `scripts/install.sh` — one-line installer for the prebuilt
   `gaia` + `gaia-mcp` binaries. Detects OS/arch, sha256-verifies
