@@ -23,8 +23,8 @@ mocks:
       {
         "state": "success",
         "statuses": [
-          {"state": "success", "context": "build"},
-          {"state": "success", "context": "test"}
+          {"status": "success", "context": "build"},
+          {"status": "success", "context": "test"}
         ]
       }
 

@@ -21,7 +21,7 @@ func fakeCIStatus(rollupState string, statuses []map[string]string) map[string]a
 	arr := make([]map[string]any, 0, len(statuses))
 	for _, s := range statuses {
 		arr = append(arr, map[string]any{
-			"state":   s["state"],
+			"status":  s["state"], // Forgejo API field is "status", not "state"
 			"context": s["name"],
 		})
 	}

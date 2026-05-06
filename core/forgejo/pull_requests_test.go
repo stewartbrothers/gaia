@@ -248,10 +248,10 @@ func TestGetPullRequestWithCISummary(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"state": "failure",
 				"statuses": []map[string]any{
-					{"state": "success", "context": "build"},
-					{"state": "success", "context": "test"},
-					{"state": "failure", "context": "lint"},
-					{"state": "pending", "context": "deploy"},
+					{"status": "success", "context": "build"},
+					{"status": "success", "context": "test"},
+					{"status": "failure", "context": "lint"},
+					{"status": "pending", "context": "deploy"},
 				},
 			})
 		default:

@@ -26,7 +26,7 @@ mocks:
       {
         "state": "success",
         "statuses": [
-          {"state": "success", "context": "build"}
+          {"status": "success", "context": "build"}
         ]
       }
 

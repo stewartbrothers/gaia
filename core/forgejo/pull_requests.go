@@ -46,7 +46,7 @@ type apiCommitStatus struct {
 }
 
 type apiStatusItem struct {
-	State   string `json:"state"`
+	State   string `json:"status"`            // Forgejo API sends "status", not "state", for per-item entries
 	Context string `json:"context,omitempty"` // Forgejo's name for the check
 }
 

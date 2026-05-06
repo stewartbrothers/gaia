@@ -230,7 +230,7 @@ func makeMCPCIStatus(rollup string, items []map[string]string) map[string]any {
 	statuses := make([]map[string]any, 0, len(items))
 	for _, it := range items {
 		statuses = append(statuses, map[string]any{
-			"state":   it["state"],
+			"status":  it["state"], // Forgejo API field is "status", not "state"
 			"context": it["name"],
 		})
 	}
