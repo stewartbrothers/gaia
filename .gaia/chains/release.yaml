@@ -1,0 +1,117 @@
+name: release
+description: |
+  Cut a gaia release from the current main HEAD.
+
+  Pre-flight checks → local quality gate → annotated tag + push (which
+  triggers the Forgejo Actions release workflow) → yield for the operator
+  to watch the workflow complete → verify the release record is visible.
+
+  Usage:
+    gaia chain run release --var tag=v0.3.0
+
+  Resume after the workflow finishes:
+    gaia chain resume <token>
+
+vars:
+  tag:
+    required: true
+
+steps:
+  - id: validate
+    run: |
+      set -euo pipefail
+      TAG=${tag}
+
+      # Must be on main.
+      branch=$(git rev-parse --abbrev-ref HEAD)
+      if [ "$branch" != "main" ]; then
+        echo "ERROR: must be on main, currently on $branch" >&2
+        exit 1
+      fi
+
+      # Working tree must be clean.
+      if [ -n "$(git status --porcelain)" ]; then
+        echo "ERROR: working tree is dirty; commit or stash first" >&2
+        git status --short >&2
+        exit 1
+      fi
+
+      # Must be up-to-date with origin/main.
+      git fetch --quiet origin main
+      if [ -n "$(git diff HEAD origin/main)" ]; then
+        echo "ERROR: local main is not up-to-date with origin/main; pull first" >&2
+        exit 1
+      fi
+
+      # Tag must not already exist locally or on the remote.
+      if git rev-parse --verify "refs/tags/$TAG" >/dev/null 2>&1; then
+        echo "ERROR: tag $TAG already exists locally" >&2
+        exit 1
+      fi
+      if git ls-remote --tags origin "$TAG" | grep -q "$TAG"; then
+        echo "ERROR: tag $TAG already exists on origin" >&2
+        exit 1
+      fi
+
+      # CHANGELOG must mention this tag.
+      if ! grep -qF "$TAG" CHANGELOG.md; then
+        echo "ERROR: no entry for $TAG found in CHANGELOG.md — update it first" >&2
+        exit 1
+      fi
+
+      echo "Validation passed for $TAG."
+    on_failure:
+      return:
+        reason: validation-failed
+        tag: ${tag}
+        error: "${error.message}"
+
+  - id: gate
+    run: |
+      export PATH="$(go env GOPATH)/bin:$PATH"
+      make fmt vet lint cover build
+    timeout: 20m
+    on_failure:
+      return:
+        reason: gate-failed
+        tag: ${tag}
+        error: "${error.message}"
+
+  - id: tag-and-push
+    run: |
+      set -euo pipefail
+      TAG=${tag}
+      git tag -a "$TAG" -m "release: $TAG"
+      git push origin "$TAG"
+      echo "Tag $TAG pushed. Forgejo Actions release workflow is now running."
+    on_failure:
+      return:
+        reason: tag-push-failed
+        tag: ${tag}
+        error: "${error.message}"
+
+  - id: await-workflow
+    run: |
+      TAG=${tag}
+      printf '\nTag %s pushed. The Forgejo Actions release workflow is running.\n' "$TAG" >&2
+      printf 'Watch: https://git.stewartbrothers.com.au/Gerwood/gaia/actions\n' >&2
+      printf '\nWhen the workflow completes successfully, resume with:\n' >&2
+      printf '  gaia chain resume <token>\n' >&2
+      printf '\nTo abort the chain instead:\n' >&2
+      printf '  gaia chain abort <token>\n' >&2
+      exit 1
+    yield_on:
+      - unknown_error
+
+  - id: verify-release
+    run: gaia release view ${tag} --fields tag_name,draft,prerelease,published_at
+    capture: release
+    retry:
+      max: 3
+      delay: 10s
+      backoff: constant
+    on_failure:
+      return:
+        reason: release-not-found
+        tag: ${tag}
+        error: "${error.message}"
