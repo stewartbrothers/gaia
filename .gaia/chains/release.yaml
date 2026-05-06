@@ -27,10 +27,11 @@ steps:
         exit 1
       fi
 
-      # Working tree must be clean.
-      if [ -n "$(git status --porcelain)" ]; then
-        echo "ERROR: working tree is dirty; commit or stash first" >&2
-        git status --short >&2
+      # Working tree must have no modified or staged files.
+      # Untracked files are fine — they don't affect the release.
+      if ! git diff --quiet HEAD; then
+        echo "ERROR: working tree has uncommitted changes; commit or stash first" >&2
+        git diff --stat HEAD >&2
         exit 1
       fi
 

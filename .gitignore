@@ -41,3 +41,11 @@
 # `go build ./cmd/gaia-mcp` without -o (which writes to cwd, not bin/).
 /gaia
 /gaia-mcp
+
+# Local scratch files / notes
+*.md.local
+chaining-ideas.md
+
+# SSH key pairs generated locally for tap/mirror setup
+brew-key-ed25519
+brew-key-ed25519.pub
