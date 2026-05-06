@@ -13,7 +13,7 @@ func fakeCommitStatus(state string, statuses []map[string]string) map[string]any
 	arr := make([]map[string]any, 0, len(statuses))
 	for _, s := range statuses {
 		arr = append(arr, map[string]any{
-			"state":   s["state"],
+			"status":  s["state"], // Forgejo API field is "status", not "state"
 			"context": s["name"],
 		})
 	}
@@ -44,6 +44,38 @@ func TestGetCommitStatusSuccess(t *testing.T) {
 	}
 	if got.Successful != 1 || got.Total != 1 {
 		t.Errorf("counts: successful=%d total=%d", got.Successful, got.Total)
+	}
+}
+
+// TestGetCommitStatusFailure verifies that a failed check is counted and its
+// state is surfaced. This exercises the "status" JSON field fix (#196):
+// Forgejo sends "status" per item, not "state".
+func TestGetCommitStatusFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/status") {
+			t.Errorf("unexpected path: %q", r.URL.Path)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(fakeCommitStatus("failure",
+			[]map[string]string{
+				{"name": "CI / check", "state": "failure"},
+			}))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, err := p.GetCommitStatus(context.Background(), "o", "r", "v0.2.7")
+	if err != nil {
+		t.Fatalf("GetCommitStatus: %v", err)
+	}
+	if got.State != "failure" {
+		t.Errorf("state: got %q want failure", got.State)
+	}
+	if got.Failed != 1 {
+		t.Errorf("failed count: got %d want 1 (check json:\"status\" field fix #196)", got.Failed)
+	}
+	if got.Total != 1 {
+		t.Errorf("total: got %d want 1", got.Total)
 	}
 }
 
