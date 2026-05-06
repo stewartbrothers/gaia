@@ -13,6 +13,53 @@ import (
 	"github.com/stewartbrothers/gaia/core/types"
 )
 
+// waitForCIRef polls GetCommitStatus for the given ref until checks
+// settle or opts.Timeout is reached. Same return contract as waitForCI:
+//
+//	nil                      — all checks succeeded
+//	exitcode.CheckFailed     — non-flaky failure
+//	exitcode.CheckFlaky      — flaky-only failure OR timeout
+//	other (Auth/NotFound/…)  — provider error during polling
+//
+// An empty State ("") in the returned summary means no checks have been
+// registered yet (e.g., the Actions runner hasn't started); the loop
+// treats it as pending so callers don't have to special-case it.
+func waitForCIRef(ctx context.Context, p provider.Provider, owner, repo, ref string, opts ciWaitOptions) (*types.CISummary, error) {
+	if opts.Timeout <= 0 {
+		opts.Timeout = defaultCIWaitTimeout
+	}
+	if opts.Interval <= 0 {
+		opts.Interval = defaultCIWaitInterval
+	}
+
+	deadline := time.Now().Add(opts.Timeout)
+	var last *types.CISummary
+	for {
+		summary, err := p.GetCommitStatus(ctx, owner, repo, ref)
+		if err != nil {
+			return last, err
+		}
+		last = summary
+
+		// "" means no checks registered yet; treat as pending.
+		if last.State != "" && last.State != "pending" {
+			return last, classifyChecks(last, opts.FlakyExtra)
+		}
+
+		if time.Now().After(deadline) {
+			return last, exitcode.Errorf(exitcode.CheckFlaky,
+				"ci-wait: timed out after %s with checks still pending (%d/%d)",
+				opts.Timeout, last.Pending, last.Total)
+		}
+
+		select {
+		case <-ctx.Done():
+			return last, ctx.Err()
+		case <-time.After(opts.Interval):
+		}
+	}
+}
+
 // defaultCIWaitInterval is how often `gaia pr ci-wait` polls the
 // PR's commit status when --interval isn't supplied. 10s matches
 // the rough cadence forge UIs poll at; cheap on the upstream and
@@ -41,12 +88,17 @@ func newPRCIWaitCmd(flags *globalFlags) *cobra.Command {
 		timeout    time.Duration
 		interval   time.Duration
 		flakyExtra []string
+		ref        string
 	)
 	cmd := &cobra.Command{
-		Use:   "ci-wait <number>",
-		Short: "Block until a PR's CI checks finish (with structured exits for chain routing)",
-		Long: `Poll the PR's commit-status / check-runs endpoint until
-all checks have completed or --timeout is reached.
+		Use:   "ci-wait [<number>]",
+		Short: "Block until CI checks finish (with structured exits for chain routing)",
+		Long: `Poll commit-status / check-runs until all checks have completed or
+--timeout is reached. Accepts either a PR number or a git ref (tag,
+branch, or SHA) via --ref.
+
+  gaia pr ci-wait 42          # wait for PR 42's head commit
+  gaia pr ci-wait --ref v0.2.7  # wait for a tag-triggered workflow
 
 Designed for chain consumption — exits with structured codes the
 chain runtime maps to yield_on / abort_on conditions:
@@ -67,12 +119,15 @@ that should also count as flaky.
 Output: a single envelope carrying the final CI summary +
 per-check name/state pairs, on stdout. Stderr stays quiet unless
 --verbose is set on the parent command.`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.RangeArgs(0, 1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			n, err := parseIssueNumber(args[0])
-			if err != nil {
-				return err
+			if ref == "" && len(args) == 0 {
+				return exitcode.Errorf(exitcode.Usage, "ci-wait: provide either a PR number or --ref <ref>")
 			}
+			if ref != "" && len(args) > 0 {
+				return exitcode.Errorf(exitcode.Usage, "ci-wait: --ref and a PR number are mutually exclusive")
+			}
+
 			p, _, err := buildForgejoProvider(flags)
 			if err != nil {
 				return err
@@ -82,15 +137,27 @@ per-check name/state pairs, on stdout. Stderr stays quiet unless
 				return err
 			}
 
-			summary, classifyErr := waitForCI(cmd.Context(), p, owner, repo, n, ciWaitOptions{
+			opts := ciWaitOptions{
 				Timeout:    timeout,
 				Interval:   interval,
 				FlakyExtra: flakyExtra,
-			})
+			}
 
-			// We always render the envelope (even on classifyErr) so
-			// the agent gets the per-check breakdown alongside the
-			// exit code — it's the actionable detail.
+			var summary *types.CISummary
+			var classifyErr error
+
+			if ref != "" {
+				summary, classifyErr = waitForCIRef(cmd.Context(), p, owner, repo, ref, opts)
+			} else {
+				n, err := parseIssueNumber(args[0])
+				if err != nil {
+					return err
+				}
+				summary, classifyErr = waitForCI(cmd.Context(), p, owner, repo, n, opts)
+			}
+
+			// Always render the envelope so the agent gets the per-check
+			// breakdown alongside the exit code.
 			if summary != nil {
 				if renderErr := renderEnvelope(cmd, flags, summary, nil, nil); renderErr != nil {
 					return renderErr
@@ -102,6 +169,7 @@ per-check name/state pairs, on stdout. Stderr stays quiet unless
 	cmd.Flags().DurationVar(&timeout, "timeout", defaultCIWaitTimeout, "give up after this duration → exit code CheckFlaky")
 	cmd.Flags().DurationVar(&interval, "interval", defaultCIWaitInterval, "poll interval")
 	cmd.Flags().StringSliceVar(&flakyExtra, "flaky-marker", nil, "additional case-insensitive substring(s) marking a check as flaky (repeatable)")
+	cmd.Flags().StringVar(&ref, "ref", "", "git ref (tag, branch, or SHA) to poll instead of a PR number")
 	return cmd
 }
 
@@ -146,7 +214,10 @@ func waitForCI(ctx context.Context, p provider.Provider, owner, repo string, n i
 			return &types.CISummary{State: "success"}, nil
 		}
 
-		if last.State != "pending" {
+		// "" means no checks have been registered yet (Actions runner
+		// hasn't started). Treat it the same as "pending" so we don't
+		// prematurely report success before CI has even booted.
+		if last.State != "" && last.State != "pending" {
 			// Settled. Classify failures.
 			return last, classifyChecks(last, opts.FlakyExtra)
 		}

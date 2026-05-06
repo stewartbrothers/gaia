@@ -192,6 +192,9 @@ func (*noopProvider) RedeliverWebhook(_ context.Context, _, _ string, _, _ int64
 func (*noopProvider) TestWebhook(_ context.Context, _, _ string, _ int64) error {
 	return errNotImplemented
 }
+func (*noopProvider) GetCommitStatus(_ context.Context, _, _, _ string) (*types.CISummary, error) {
+	return nil, errNotImplemented
+}
 
 // Reference time.Time so an unused-import check never fires while tests
 // scaffold up. Removed once a real test uses it.
