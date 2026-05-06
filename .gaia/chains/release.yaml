@@ -52,9 +52,11 @@ steps:
         exit 1
       fi
 
-      # CHANGELOG must mention this tag.
-      if ! grep -qF "$TAG" CHANGELOG.md; then
-        echo "ERROR: no entry for $TAG found in CHANGELOG.md — update it first" >&2
+      # CHANGELOG must have an entry for this version.
+      # Strip the leading 'v' since Keep a Changelog uses [1.2.3] not [v1.2.3].
+      VERSION="${TAG#v}"
+      if ! grep -qF "$VERSION" CHANGELOG.md; then
+        echo "ERROR: no entry for $VERSION found in CHANGELOG.md — update it first" >&2
         exit 1
       fi
 
