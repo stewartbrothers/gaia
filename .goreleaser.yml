@@ -148,6 +148,11 @@ brews:
     description: Token-trimmed CLI + MCP server for Forgejo and GitHub
     license: Apache-2.0
     skip_upload: auto
+    # Explicit URL template required because --skip=publish disables the
+    # goreleaser release step, so goreleaser cannot derive the download URL
+    # from the release record. Formula URLs point to the GitHub mirror
+    # (the public download endpoint used by install.sh and brew).
+    url_template: "https://github.com/stewartbrothers/gaia/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     # The tap lives in this repo (the canonical Forgejo repo). The
     # brews block needs `git.api_url` set so goreleaser hits the
     # Forgejo API instead of github.com. `gitea` is the supported
