@@ -1,6 +1,6 @@
 # gaia — Git AI Access
 
-> **Latest: v0.2.5** — released 2026-05-06. See [`CHANGELOG.md`](CHANGELOG.md) for release notes.
+> **Latest: v0.2.8** — released 2026-05-07. See [`CHANGELOG.md`](CHANGELOG.md) for release notes.
 
 Token-trimmed, agent-friendly CLI and MCP server for **Forgejo,
 Gitea, and GitHub**. Built so that LLM-driven agents can interact with
