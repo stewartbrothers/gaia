@@ -268,15 +268,19 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          echo "$GH_TOKEN" | docker login ghcr.io -u stewartbrothers --password-stdin
+          # Suppress the "credentials stored unencrypted" warning — on an
+          # ephemeral runner the config.json lives only for this job.
+          echo "$GH_TOKEN" | docker login ghcr.io -u stewartbrothers --password-stdin 2>&1 \
+            | grep -v "WARNING! Your credentials are stored unencrypted" || true
 
           commit_sha=$(git rev-parse --short HEAD)
 
-          # buildx enables multi-arch in a single manifest push.
-          # ubuntu-latest runners ship buildx; create the builder once
-          # (idempotent — the name is scoped to the runner session).
-          docker buildx create --name multiarch --use 2>/dev/null \
-            || docker buildx use multiarch
+          # Create a fresh docker-container driver builder.  Tear down any
+          # stale instance first so the create is always idempotent — the
+          # 2>/dev/null fallback pattern breaks when the instance dir is
+          # missing but the create itself also fails.
+          docker buildx rm multiarch 2>/dev/null || true
+          docker buildx create --name multiarch --driver docker-container --use
 
           if ! docker buildx build \
               --platform linux/amd64,linux/arm64 \
