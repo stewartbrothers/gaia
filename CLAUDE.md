@@ -57,6 +57,26 @@ These are hard rules. Apply them on every change.
 7. **Never force-push without rebasing against `main` first**, and only on
    feature branches. Force-push to `main` is forbidden.
 
+8. **Close the loop when a feature lands.** A feature implementation is not
+   done until every guidance document that will drive future usage of it is
+   updated. Specifically, when a PR adds or extends a gaia command:
+
+   - **Update the coverage list** in the "Dogfood: gaia-first protocol"
+     section of this file to include the new command/subcommand.
+   - **Close the gap issues** the feature resolves — `Closes #N` in the PR
+     body so they auto-close. Any `type:gap` issue whose workaround the new
+     command replaces must be closed, not left open.
+   - **Update memory** — if working in a Claude Code session, update the
+     relevant memory file (usually `feedback_dogfood_gaia.md` and
+     `feedback_gaia_first_protocol.md`) so future sessions know the command
+     exists and can use it rather than filing a duplicate gap issue.
+   - **Add the bench measurement** to the relevant `bench/dogfood-<resource>.md`
+     file so there is evidence the command trims output vs. raw API.
+
+   The rationale: the gaia-first protocol is only as good as the coverage
+   list. A command that exists but isn't listed will keep generating
+   workarounds and duplicate gap issues in every future session.
+
 ## Testing discipline
 
 ### TDD is the default
