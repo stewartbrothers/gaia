@@ -93,7 +93,11 @@ steps:
         error: "${error.message}"
 
   - id: await-workflow
-    run: gaia pr ci-wait --ref ${tag} --timeout 30m --interval 15s
+    run: |
+      set -euo pipefail
+      TAG=${tag}
+      SHA=$(git rev-parse "$TAG^{}")
+      gaia pr ci-wait --ref "$SHA" --timeout 30m --interval 15s
     yield_on:
       - check_flaky
       - timeout
