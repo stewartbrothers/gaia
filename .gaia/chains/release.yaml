@@ -54,7 +54,8 @@ steps:
 
       # CHANGELOG must have an entry for this version.
       # Strip the leading 'v' since Keep a Changelog uses [1.2.3] not [v1.2.3].
-      VERSION="${TAG#v}"
+      # Use sed: chain runner expands dollar-brace patterns before the shell sees the script.
+      VERSION=$(echo "$TAG" | sed 's/^v//')
       if ! grep -qF "$VERSION" CHANGELOG.md; then
         echo "ERROR: no entry for $VERSION found in CHANGELOG.md — update it first" >&2
         exit 1
