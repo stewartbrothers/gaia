@@ -10,6 +10,33 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+## [0.2.8] — 2026-05-07
+
+Release chain hardening and goreleaser fix — first fully end-to-end clean release.
+
+### Fixed
+
+- `core/forgejo`: per-item CI check states were always empty because
+  `apiStatusItem` mapped `json:"state"` but Forgejo sends `"status"` for
+  individual status entries. This caused `gaia pr ci-wait` to exit 0
+  (success) even when checks had failed, since `classifyChecks` short-circuits
+  on `Failed == 0`. (#196)
+- `.gaia/chains/release.yaml`: `await-workflow` step now resolves the
+  annotated tag to its commit SHA (`git rev-parse "$TAG^{}"`) before polling
+  `gaia pr ci-wait --ref`. Forgejo's `/commits/{ref}/status` endpoint does not
+  resolve tag names — polling by tag name always returned empty state and timed
+  out. (#204)
+- `.gaia/chains/release.yaml`: validate step used `${TAG#v}` bash parameter
+  expansion in a shell comment; the chain runner expands all `${...}` patterns
+  before passing the script to the shell, so the comment itself triggered
+  "unresolved variable references". Replaced with `sed 's/^v//'` and reworded
+  the comment. (#203)
+- `.goreleaser.yml`: added explicit `url_template` to the `brews:` block.
+  Without it, goreleaser v2 tries to derive the formula download URL from the
+  release record — but since the workflow runs with `--skip=publish`, the
+  release is disabled and goreleaser fails with "release is disabled, cannot
+  use default url_template", blocking all downstream steps. (#205)
+
 ## [0.2.7] — 2026-05-06
 
 Release workflow fixes, chain dogfooding, and release automation.
