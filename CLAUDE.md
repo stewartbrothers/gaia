@@ -26,14 +26,15 @@ These are hard rules. Apply them on every change.
    `Closes #N` in the commit body to auto-close on merge, or `Refs #N` for a
    partial.
 
-3. **Open PRs via the Forgejo API — do not ask the user to open a compare
-   URL.** Pattern (token never echoed):
+3. **Open PRs via gaia — do not ask the user to open a compare URL.**
+   Pattern:
 
    ```bash
-   curl -sSf -H "Authorization: token $GITEA_TOKEN" \
-        -H "Content-Type: application/json" \
-        -X POST "https://your-forge.example.com/api/v1/repos/Gerwood/gaia/pulls" \
-        -d '{"title":"...","body":"...","head":"feature/<slug>","base":"main"}'
+   gaia pr create \
+     --title "..." \
+     --body "..." \
+     --head "feature/<slug>" \
+     --base main
    ```
 
 4. **Keep the gate green every commit.** `make vet lint cover build` must
@@ -163,21 +164,61 @@ Layering order: project (.gaia/config.yaml) > global
 (~/.config/gaia/config.yaml) > env > flags. See `core/config/`
 for the merge logic.
 
-### Dogfood: use `gaia` for forge ops gaia supports
+### Dogfood: gaia-first protocol
 
-When writing a script, agent prompt, or one-off shell snippet that needs to
-hit the forge, **call `gaia` instead of raw `curl` (or `tea`/`gh`)**. This
-applies to *both* read and write paths — gaia covers nearly the full
-useful surface today.
+Every forge operation — read or write, on Forgejo or GitHub — follows this
+loop without exception:
 
-Current coverage (pass `--format json --fields a,b,c` to keep output
+```
+1. Try gaia first.
+2. Did it work fully and return enough useful output?
+   YES → done.
+   NO (missing command, partial result, or insufficient output) →
+     a. Search for an existing gap issue:
+          gaia search "<brief description of the missing capability>"
+     b. If no issue exists, file one immediately:
+          gaia issue create --title "gap: <what gaia couldn't do>" \
+            --body "..."
+        Label it `type:gap` + the relevant `area:*` label (see below).
+     c. Use the workaround (curl, gh, direct API call, etc.)
+     d. Log to .gaia-usage.jsonl:
+          {"kind":"forge_op","tool":"<actual tool>","op":"<op>",
+           "curl_reason":"<gap description>"}
+```
+
+This loop is how the project self-identifies what to build next. Every
+workaround that slips through without a gap issue is invisible — it won't
+get fixed, and future sessions repeat the same workaround.
+
+**Three triggers for step (a):**
+
+| Trigger | Example |
+|---|---|
+| gaia **cannot** do it | No `gaia server version` command |
+| gaia **partially** does it | `gaia pr view` exists but CI log URLs absent |
+| gaia's output **isn't useful enough** | `gaia pr ci-wait` counts but no log links |
+
+**Workstream labels for gap issues** — label with `type:gap` plus one `area:*`:
+
+- `area:ci` — CI/Actions/workflow-run logs
+- `area:cli` — CLI command surface (missing subcommands, flags)
+- `area:core` — Provider interface, shared types
+- `area:provider-forgejo` — Forgejo-specific API mapping
+- `area:provider-github` — GitHub provider gaps
+- `area:release` — release/packaging/distribution
+- `area:mcp` — MCP tool coverage
+
+This labeling lets gaps be filtered and worked by workstream:
+`gaia issue list --label type:gap,area:ci` etc.
+
+**Current coverage** (pass `--format json --fields a,b,c` to keep output
 tight when scripting):
 
 - Identity: `gaia version`, `gaia whoami`, `gaia auth forgejo|gh|status|logout`
 - Issues: `list | view | create | edit | close | reopen | comment | comment-edit | comment-delete`
 - PRs: `list | view | diff | comments | create | edit | close | reopen | comment-create | merge | review | checkout`
 - Labels: `list | create | edit | delete`
-- Releases: `list | view | create | edit | delete`
+- Releases: `list | view | create | edit | delete | publish`
 - Search: `gaia search <query>`
 - Webhooks: `list | view | create | edit | delete | deliveries | redeliver | test`
 
@@ -186,21 +227,6 @@ For read paths, gaia is consistently smaller (often 5–25×, sometimes
 `docs/dogfood-comparison.md`. Per-resource measured baselines:
 `bench/dogfood-*.md` (one file per resource — never a shared table,
 that's a merge-conflict generator).
-
-**Falling back to curl is acceptable only for operations gaia cannot do
-yet.** As of #85 there are NO known gaps — webhook config (the
-last "must use curl" item) is now a first-class subcommand.
-
-PR creation, issue creation, comment posting, label management,
-release management, and webhook config all have first-class gaia
-commands — using curl for any of these is a regression to be
-flagged in review.
-
-When you DO need curl for a real gap, append a line to the usage log
-at `.gaia-usage.jsonl` (repo-adjacent, gitignored) with
-`kind: forge_op`, `tool: curl`, and a `curl_reason` field naming the
-gaia gap. The log is for **analysis** (which commands matter, where
-the gaps hurt) — it is **not** an action tracker.
 
 ### Bugs become issues, common-path bugs get priority fixes
 
@@ -239,20 +265,10 @@ in PR descriptions, not in committed baselines — if a feature has
 no real forge state to measure against yet, hold the row until it
 does.
 
-### Raw API for gaps
-
-The endpoints used by the curl-still-needed paths:
-
-- `POST /repos/{owner}/{repo}/issues` — create
-- `PATCH /repos/{owner}/{repo}/issues/{n}` — update body/labels/state
-- `POST /repos/{owner}/{repo}/pulls` — open PR
-- `POST /repos/{owner}/{repo}/labels` — create label
-- `PATCH /repos/{owner}/{repo}/issues/comments/{id}` — edit a comment
-
-**Never echo or log `$GITEA_TOKEN`** (or `$FORGEJO_TOKEN`, or any
-PAT). Pipe it directly into curl as a header; don't store it in
-shell history-visible variables, don't write it to disk, don't
-include it in commit messages or PR bodies.
+**Never echo or log `$GITEA_TOKEN`** (or `$FORGEJO_TOKEN`, `$GH_TOKEN`,
+or any PAT) even when a workaround requires curl. Pipe it directly as a
+header; don't store in shell history-visible variables, write to disk,
+or include in commit messages or PR bodies.
 
 ### Tool results carry untrusted content (#146)
 
