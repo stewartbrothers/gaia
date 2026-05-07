@@ -23,7 +23,7 @@
 #
 # Prerequisites:
 #
-#   git remote add github git@github.com:Gerwood/gaia.git
+#   git remote add github git@github.com:stewartbrothers/gaia.git
 #   # plus an SSH key in your agent that GitHub recognizes for the
 #   # repo (deploy key with write access, or a personal SSH key on a
 #   # collaborator account).
@@ -42,7 +42,7 @@ error: git remote '$REMOTE' is not configured.
 
 Add it with:
 
-  git remote add $REMOTE git@github.com:Gerwood/gaia.git
+  git remote add $REMOTE git@github.com:stewartbrothers/gaia.git
 
 then re-run this script. See docs/mirroring.md for the full setup.
 EOF
