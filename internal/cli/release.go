@@ -257,7 +257,8 @@ type assetResult struct {
 	Path        string `json:"path"`
 	Size        int64  `json:"size"`
 	ContentType string `json:"content_type"`
-	Uploaded    bool   `json:"uploaded"`
+	Uploaded    bool   `json:"uploaded,omitempty"`
+	Replaced    bool   `json:"replaced,omitempty"`
 	Error       string `json:"error,omitempty"`
 }
 
@@ -348,6 +349,17 @@ found).`,
 			}
 			result.Release = rel
 
+			// Fetch existing assets so we can replace them rather than
+			// creating duplicates when a workflow re-runs after a fix.
+			existingAssets, listErr := p.ListReleaseAssets(cmd.Context(), owner, repo, rel.ID)
+			if listErr != nil {
+				return listErr
+			}
+			existingByName := make(map[string]int64, len(existingAssets))
+			for _, a := range existingAssets {
+				existingByName[a.Name] = a.ID
+			}
+
 			// Upload each asset. Per-asset failures are recorded but
 			// don't abort the run — operators want to see which ones
 			// got through. Final exit code is non-zero if ANY asset
@@ -368,6 +380,17 @@ found).`,
 				}
 				ar.Size = info.Size()
 
+				// Delete the existing asset first so the re-upload
+				// doesn't create a duplicate.
+				if oldID, exists := existingByName[ar.Name]; exists {
+					if delErr := p.DeleteReleaseAsset(cmd.Context(), owner, repo, rel.ID, oldID); delErr != nil {
+						ar.Error = delErr.Error()
+						anyFailed = true
+						result.Assets = append(result.Assets, ar)
+						continue
+					}
+				}
+
 				file, openErr := os.Open(f)
 				if openErr != nil {
 					ar.Error = openErr.Error()
@@ -381,6 +404,8 @@ found).`,
 				if upErr != nil {
 					ar.Error = upErr.Error()
 					anyFailed = true
+				} else if _, wasExisting := existingByName[ar.Name]; wasExisting {
+					ar.Replaced = true
 				} else {
 					ar.Uploaded = true
 				}

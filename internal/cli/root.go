@@ -77,6 +77,7 @@ auth setup.`,
 
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newWhoamiCmd(flags))
+	root.AddCommand(newServerCmd(flags))
 	root.AddCommand(newAuthCmd(flags))
 	root.AddCommand(newIssueCmd(flags))
 	root.AddCommand(newPRCmd(flags))
