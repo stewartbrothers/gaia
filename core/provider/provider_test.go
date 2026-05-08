@@ -138,6 +138,12 @@ func (*noopProvider) DeleteRelease(_ context.Context, _, _, _ string) error {
 func (*noopProvider) UploadReleaseAsset(_ context.Context, _, _ string, _ int64, _, _ string, _ int64, _ io.Reader) error {
 	return errNotImplemented
 }
+func (*noopProvider) ListReleaseAssets(_ context.Context, _, _ string, _ int64) ([]types.ReleaseAsset, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) DeleteReleaseAsset(_ context.Context, _, _ string, _, _ int64) error {
+	return errNotImplemented
+}
 func (*noopProvider) ListPackages(_ context.Context, _ string, _ provider.ListPackagesOptions) ([]types.Package, *provider.Page, error) {
 	return nil, nil, errNotImplemented
 }
