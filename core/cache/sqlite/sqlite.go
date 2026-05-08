@@ -309,6 +309,41 @@ func (s *Store) StoreList(ctx context.Context, e cache.ListEntry) error {
 	return nil
 }
 
+// Scan returns all non-expired object payloads for the given
+// (kind, owner, repo) tuple. Used by cache-backed search to avoid
+// an upstream round-trip when the cache is warm. Entries older than
+// 2×TTL are excluded; entries that are merely stale (past 1×TTL)
+// are still returned — the caller can decide whether to use them.
+// Returns an empty slice (not an error) when no entries exist.
+func (s *Store) Scan(ctx context.Context, kind, owner, repo string) ([][]byte, error) {
+	if s == nil {
+		return nil, nil
+	}
+	// fetched_at is stored as Unix seconds (integer). ttl_seconds is the
+	// TTL in seconds. An entry is within 2×TTL when:
+	//   fetched_at > now_unix - ttl_seconds * 2
+	const q = `SELECT payload FROM objects
+	           WHERE kind=? AND owner=? AND repo=?
+	           AND fetched_at > strftime('%s','now') - ttl_seconds * 2`
+	rows, err := s.db.QueryContext(ctx, q, kind, owner, repo)
+	if err != nil {
+		return nil, fmt.Errorf("cache: scan: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out [][]byte
+	for rows.Next() {
+		var p []byte
+		if err := rows.Scan(&p); err != nil {
+			return nil, fmt.Errorf("cache: scan: %w", err)
+		}
+		out = append(out, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cache: scan: %w", err)
+	}
+	return out, nil
+}
+
 // LookupList is the list_index counterpart of Lookup.
 func (s *Store) LookupList(ctx context.Context, k cache.ListKey) (cache.ListEntry, bool, error) {
 	if s == nil {

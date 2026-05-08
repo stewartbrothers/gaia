@@ -123,6 +123,9 @@ func TestNilStoreMethodsAreNoOps(t *testing.T) {
 	if _, ok, err := s.LookupList(ctx, cache.ListKey{}); err != nil || ok {
 		t.Errorf("nil LookupList: ok=%v err=%v; want (false, nil)", ok, err)
 	}
+	if payloads, err := s.Scan(ctx, "issue", "o", "r"); err != nil || len(payloads) != 0 {
+		t.Errorf("nil Scan: payloads=%v err=%v; want ([], nil)", payloads, err)
+	}
 	if err := s.Nuke(ctx); err != nil {
 		t.Errorf("nil Nuke: %v", err)
 	}

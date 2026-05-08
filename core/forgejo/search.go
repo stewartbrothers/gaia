@@ -2,9 +2,11 @@ package forgejo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/core/types"
@@ -47,7 +49,21 @@ func (a *apiSearchResult) toType() types.SearchResult {
 // For Kinds: ["issue"] / ["pull_request"] are translated to the
 // upstream `type=issues|pulls` filter. Empty or `["issue",
 // "pull_request"]` sends no filter so both kinds come back.
+//
+// When the client has a cache and opts.Repo is non-empty (repo-scoped),
+// the cache is consulted first. A warm cache (at least one entry for
+// the repo) short-circuits the upstream call entirely. A cold cache
+// (zero entries) falls through to the upstream path unchanged.
 func (p *Provider) Search(ctx context.Context, query string, opts provider.SearchOptions) ([]types.SearchResult, *provider.Page, error) {
+	// Cache-backed path: repo-scoped only, falls through if cold.
+	if p.client.cache != nil && opts.Repo != "" {
+		if results, ok, err := p.searchFromCache(ctx, query, opts); err != nil {
+			return nil, nil, err
+		} else if ok {
+			return results, nil, nil
+		}
+	}
+
 	limit := clampLimit(opts.Limit)
 	q := url.Values{}
 	q.Set("q", query)
@@ -74,6 +90,78 @@ func (p *Provider) Search(ctx context.Context, query string, opts provider.Searc
 		out = append(out, raw[i].toType())
 	}
 	return out, makePage(len(raw), limit, opts.Cursor), nil
+}
+
+// cachePayload is the minimal shape of a cached object payload that
+// searchFromCache needs. It covers both apiIssue and apiPullRequest —
+// both have number, title, and body as plain strings in their cached form.
+type cachePayload struct {
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	Body   string `json:"body"`
+}
+
+// searchFromCache scans the local cache for issues/PRs matching query.
+// Returns (results, true, nil) when the cache is warm (at least one entry
+// existed for the requested kinds), or (nil, false, nil) when the cache
+// is cold — the caller must fall through to the upstream path.
+func (p *Provider) searchFromCache(ctx context.Context, query string, opts provider.SearchOptions) ([]types.SearchResult, bool, error) {
+	owner, repo, ok := strings.Cut(opts.Repo, "/")
+	if !ok {
+		// Malformed repo slug — fall through to upstream.
+		return nil, false, nil
+	}
+	needle := strings.ToLower(query)
+	var hits []types.SearchResult
+	total := 0
+
+	kinds := opts.Kinds
+	if len(kinds) == 0 {
+		kinds = []string{"issue", "pull_request"}
+	}
+
+	for _, kind := range kinds {
+		cacheKind := kindIssue // "issue"
+		if kind == "pull_request" {
+			cacheKind = kindPR // "pr"
+		}
+		payloads, err := p.client.cache.Scan(ctx, cacheKind, owner, repo)
+		if err != nil {
+			return nil, false, err
+		}
+		total += len(payloads)
+		for _, raw := range payloads {
+			var item cachePayload
+			if err := json.Unmarshal(raw, &item); err != nil {
+				// Skip malformed entries rather than failing the whole
+				// operation — the upstream path would succeed regardless.
+				continue
+			}
+			titleLower := strings.ToLower(item.Title)
+			bodyLower := strings.ToLower(item.Body)
+			if !strings.Contains(titleLower, needle) && !strings.Contains(bodyLower, needle) {
+				continue
+			}
+			hits = append(hits, types.SearchResult{
+				Kind:     kind,
+				Number:   item.Number,
+				Title:    item.Title,
+				RepoFull: opts.Repo,
+			})
+		}
+	}
+
+	if total == 0 {
+		// Cold cache — signal the caller to fall through.
+		return nil, false, nil
+	}
+
+	// Apply limit.
+	limit := clampLimit(opts.Limit)
+	if limit > 0 && len(hits) > limit {
+		hits = hits[:limit]
+	}
+	return hits, true, nil
 }
 
 // upstreamTypeForKinds maps gaia's Kinds slice to the Forgejo `type`

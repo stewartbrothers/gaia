@@ -165,6 +165,32 @@ func (m *Memory) LookupList(_ context.Context, k ListKey) (ListEntry, bool, erro
 	return row, true, nil
 }
 
+// Scan returns all non-expired object payloads for the given
+// (kind, owner, repo) tuple. Entries older than 2×TTL are excluded.
+// Returns an empty slice (not an error) when no entries exist.
+func (m *Memory) Scan(_ context.Context, kind, owner, repo string) ([][]byte, error) {
+	if m == nil {
+		return nil, nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out [][]byte
+	for k, e := range m.rows {
+		if k.Kind != kind || k.Owner != owner || k.Repo != repo {
+			continue
+		}
+		// Exclude entries older than 2×TTL.
+		if time.Since(e.FetchedAt) > 2*e.TTL {
+			continue
+		}
+		// Copy payload slice to prevent aliasing.
+		p := make([]byte, len(e.Payload))
+		copy(p, e.Payload)
+		out = append(out, p)
+	}
+	return out, nil
+}
+
 // Nuke truncates both maps. Used by tests that need a clean slate
 // without re-instantiating Memory.
 func (m *Memory) Nuke(_ context.Context) error {
