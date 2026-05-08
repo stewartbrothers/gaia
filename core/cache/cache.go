@@ -84,6 +84,13 @@ type Cache interface {
 	// Stale when older than its TTL.
 	LookupList(ctx context.Context, k ListKey) (ListEntry, bool, error)
 
+	// Scan returns all non-expired object payloads for the given
+	// (kind, owner, repo) tuple. Used by cache-backed search to avoid
+	// an upstream round-trip when the cache is warm. Returns an empty
+	// slice (not an error) when no entries exist for the tuple.
+	// Expired entries (older than 2×TTL) are excluded.
+	Scan(ctx context.Context, kind, owner, repo string) ([][]byte, error)
+
 	// Nuke truncates every row. Used by `gaia cache nuke` and tests
 	// that need a clean slate without recreating the underlying file.
 	Nuke(ctx context.Context) error

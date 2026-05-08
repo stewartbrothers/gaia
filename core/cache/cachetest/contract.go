@@ -382,6 +382,104 @@ func RunContract(t *testing.T, factory func(t *testing.T) cache.Cache) {
 			t.Errorf("post-cache envelope dropped Body content; got %s", envAfter)
 		}
 	})
+
+	// ScanReturnsPayloads: store 3 issue entries, scan by kind/owner/repo,
+	// expect 3 payloads back.
+	t.Run("ScanReturnsPayloads", func(t *testing.T) {
+		c := factory(t)
+		ctx := context.Background()
+		for i := 1; i <= 3; i++ {
+			key := cache.Key{Kind: "issue", Owner: "o", Repo: "r", ID: itoa(i)}
+			payload, _ := json.Marshal(map[string]any{"number": i})
+			if err := c.Store(ctx, cache.Entry{
+				Key:       key,
+				FetchedAt: time.Now(),
+				TTL:       5 * time.Minute,
+				Payload:   payload,
+			}); err != nil {
+				t.Fatalf("Store %d: %v", i, err)
+			}
+		}
+		payloads, err := c.Scan(ctx, "issue", "o", "r")
+		if err != nil {
+			t.Fatalf("Scan: %v", err)
+		}
+		if len(payloads) != 3 {
+			t.Errorf("Scan: got %d payloads, want 3", len(payloads))
+		}
+		for _, p := range payloads {
+			if len(p) == 0 {
+				t.Error("Scan returned empty payload")
+			}
+		}
+	})
+
+	// ScanReturnsEmptyWhenCold: no entries → empty slice, no error.
+	t.Run("ScanReturnsEmptyWhenCold", func(t *testing.T) {
+		c := factory(t)
+		payloads, err := c.Scan(context.Background(), "issue", "o", "r")
+		if err != nil {
+			t.Fatalf("Scan: %v", err)
+		}
+		if len(payloads) != 0 {
+			t.Errorf("Scan on cold cache: got %d, want 0", len(payloads))
+		}
+	})
+
+	// ScanExcludesExpired: entries older than 2×TTL are excluded.
+	t.Run("ScanExcludesExpired", func(t *testing.T) {
+		c := factory(t)
+		ctx := context.Background()
+		// Fresh entry — should be returned.
+		freshKey := cache.Key{Kind: "issue", Owner: "o", Repo: "r", ID: "1"}
+		if err := c.Store(ctx, cache.Entry{
+			Key:       freshKey,
+			FetchedAt: time.Now(),
+			TTL:       5 * time.Minute,
+			Payload:   []byte(`{"number":1}`),
+		}); err != nil {
+			t.Fatalf("Store fresh: %v", err)
+		}
+		// Expired entry (fetched 20 minutes ago, 5-minute TTL → 2×TTL = 10 min ago).
+		expiredKey := cache.Key{Kind: "issue", Owner: "o", Repo: "r", ID: "2"}
+		if err := c.Store(ctx, cache.Entry{
+			Key:       expiredKey,
+			FetchedAt: time.Now().Add(-20 * time.Minute),
+			TTL:       5 * time.Minute,
+			Payload:   []byte(`{"number":2}`),
+		}); err != nil {
+			t.Fatalf("Store expired: %v", err)
+		}
+		payloads, err := c.Scan(ctx, "issue", "o", "r")
+		if err != nil {
+			t.Fatalf("Scan: %v", err)
+		}
+		if len(payloads) != 1 {
+			t.Errorf("Scan: got %d payloads, want 1 (fresh only)", len(payloads))
+		}
+	})
+
+	// ScanDoesNotCrossRepo: entries for a different repo are not returned.
+	t.Run("ScanDoesNotCrossRepo", func(t *testing.T) {
+		c := factory(t)
+		ctx := context.Background()
+		for _, repo := range []string{"r1", "r2"} {
+			key := cache.Key{Kind: "issue", Owner: "o", Repo: repo, ID: "1"}
+			if err := c.Store(ctx, cache.Entry{
+				Key: key, FetchedAt: time.Now(), TTL: time.Minute,
+				Payload: []byte(`{"number":1}`),
+			}); err != nil {
+				t.Fatalf("Store %s: %v", repo, err)
+			}
+		}
+		payloads, err := c.Scan(ctx, "issue", "o", "r1")
+		if err != nil {
+			t.Fatalf("Scan: %v", err)
+		}
+		if len(payloads) != 1 {
+			t.Errorf("Scan: got %d payloads, want 1 (r1 only)", len(payloads))
+		}
+	})
 }
 
 // itoa is a local stand-in for strconv.Itoa so the harness has a
