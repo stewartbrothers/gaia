@@ -1,15 +1,13 @@
 # Homebrew formula for gaia.
 #
 # This file is **auto-updated by goreleaser** on every tagged release
-# (see the `brews:` block in .goreleaser.yml). The values below are
-# the initial scaffold targeting v0.1.0 — once a release lands, the
-# release workflow will rewrite the `url` and `sha256` fields to
-# point at the new archive. Manual edits are fine for the
-# auto-managed fields will be clobbered on the next release.
+# (see the `brews:` block in .goreleaser.yml). Manual edits are fine;
+# auto-managed fields (url/sha256/version) will be clobbered on the
+# next release.
 #
 # Tap usage:
 #
-#   brew tap Gerwood/gaia https://github.com/stewartbrothers/gaia
+#   brew tap stewartbrothers/gaia https://github.com/stewartbrothers/gaia
 #   brew install gaia
 #
 # The tap URL form is required because Homebrew defaults to
@@ -19,27 +17,27 @@ class Gaia < Formula
   desc "Token-trimmed CLI + MCP server for Forgejo and GitHub"
   homepage "https://github.com/stewartbrothers/gaia"
   license "Apache-2.0"
-  version "0.1.0"
+  version "0.2.8"
 
   on_macos do
     on_arm do
-      url "https://github.com/stewartbrothers/gaia/releases/download/v0.1.0/gaia_v0.1.0_darwin_arm64.tar.gz"
-      sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+      url "https://github.com/stewartbrothers/gaia/releases/download/v0.2.8/gaia_v0.2.8_darwin_arm64.tar.gz"
+      sha256 "41e8d3ea837c807710342fa46f226b6f90ce307fdc54b1931378da116df163b7"
     end
     on_intel do
-      url "https://github.com/stewartbrothers/gaia/releases/download/v0.1.0/gaia_v0.1.0_darwin_x86_64.tar.gz"
-      sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+      url "https://github.com/stewartbrothers/gaia/releases/download/v0.2.8/gaia_v0.2.8_darwin_x86_64.tar.gz"
+      sha256 "6a8e8e17143750c966bd3a891866e284f78c3013a34c4145fa2a7fc6a6d0fdd5"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/stewartbrothers/gaia/releases/download/v0.1.0/gaia_v0.1.0_linux_arm64.tar.gz"
-      sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+      url "https://github.com/stewartbrothers/gaia/releases/download/v0.2.8/gaia_v0.2.8_linux_arm64.tar.gz"
+      sha256 "dd9bfb816a3579d27a5b67fdbdffc13888a0a9d03b8ccf6bd16f1bcdff10f232"
     end
     on_intel do
-      url "https://github.com/stewartbrothers/gaia/releases/download/v0.1.0/gaia_v0.1.0_linux_x86_64.tar.gz"
-      sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+      url "https://github.com/stewartbrothers/gaia/releases/download/v0.2.8/gaia_v0.2.8_linux_x86_64.tar.gz"
+      sha256 "2bd16c8270f652a69d07b428107ad7e1e82f1e1268efa671bdedf3aaf5710833"
     end
   end
 
@@ -49,8 +47,6 @@ class Gaia < Formula
   end
 
   test do
-    # `gaia version` always reports a version triple; if the binary
-    # can't even produce that, the install is broken.
     assert_match(/v\d+\.\d+\.\d+/, shell_output("#{bin}/gaia version --format pretty"))
   end
 end
