@@ -4,10 +4,10 @@ go 1.25.5
 
 // Pinned to a vulnerability-free 1.25 patch release. govulncheck
 // (#140 part 3) flagged 7 standard-library CVEs against 1.25.5
-// (the floor mcp-go v0.50 forced); 1.25.9 is the latest 1.25.x at
+// (the floor mcp-go v0.50 forced); 1.25.10 is the latest 1.25.x at
 // the time of this commit. Bump the toolchain ahead of CI's
 // go-version when a new patch lands to keep govulncheck green.
-toolchain go1.25.9
+toolchain go1.25.10
 
 require (
 	github.com/mark3labs/mcp-go v0.50.0
