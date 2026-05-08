@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/stewartbrothers/gaia/core/cache"
@@ -66,9 +67,9 @@ func (p *Provider) CreateIssue(ctx context.Context, owner, repo string, opts pro
 	return &out, nil
 }
 
-// EditIssue patches an existing issue. AddLabels/RemoveLabels are
-// not applied here — like the Forgejo provider, label-list mutation
-// is a separate concern that lives in a follow-up.
+// EditIssue patches an existing issue. Scalar fields go in the PATCH
+// body; AddLabels/RemoveLabels are applied via the issue labels
+// endpoints after the PATCH. GitHub accepts names (not IDs) in both.
 func (p *Provider) EditIssue(ctx context.Context, owner, repo string, n int, opts provider.EditIssueOptions) (*types.Issue, error) {
 	body := apiEditIssueRequest{
 		Title:     opts.Title,
@@ -81,6 +82,24 @@ func (p *Provider) EditIssue(ctx context.Context, owner, repo string, n int, opt
 		return nil, err
 	}
 	cache.NewInvalidator(p.client.cache).AfterObjectMutation(ctx, kindIssue, owner, repo, itoa(n))
+
+	if len(opts.AddLabels) > 0 {
+		addPath := fmt.Sprintf("/repos/%s/%s/issues/%d/labels", owner, repo, n)
+		addBody := struct {
+			Labels []string `json:"labels"`
+		}{Labels: opts.AddLabels}
+		var ignored []apiLabelFull
+		if err := p.client.Post(ctx, addPath, addBody, &ignored); err != nil {
+			return nil, err
+		}
+	}
+	for _, name := range opts.RemoveLabels {
+		delPath := fmt.Sprintf("/repos/%s/%s/issues/%d/labels/%s", owner, repo, n, url.PathEscape(name))
+		if err := p.client.Delete(ctx, delPath); err != nil {
+			return nil, err
+		}
+	}
+
 	out := raw.toType()
 	return &out, nil
 }

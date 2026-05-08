@@ -98,15 +98,17 @@ request body without making the call.`,
 
 func newIssueEditCmd(flags *globalFlags) *cobra.Command {
 	var (
-		title   string
-		body    string
-		state   string
-		assigns []string
-		dryRun  bool
+		title        string
+		body         string
+		state        string
+		assigns      []string
+		addLabels    []string
+		removeLabels []string
+		dryRun       bool
 	)
 	cmd := &cobra.Command{
 		Use:   "edit <number>",
-		Short: "Edit an existing issue (title/body/state/assignees)",
+		Short: "Edit an existing issue (title/body/state/assignees/labels)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			n, err := parseIssueNumber(args[0])
@@ -126,10 +128,12 @@ func newIssueEditCmd(flags *globalFlags) *cobra.Command {
 				return err
 			}
 			opts := provider.EditIssueOptions{
-				Title:     title,
-				Body:      b,
-				State:     state,
-				Assignees: assigns,
+				Title:        title,
+				Body:         b,
+				State:        state,
+				Assignees:    assigns,
+				AddLabels:    addLabels,
+				RemoveLabels: removeLabels,
 			}
 			if dryRun {
 				return printDryRun(cmd, fmt.Sprintf("PATCH /repos/%s/%s/issues/%d", owner, repo, n), opts)
@@ -145,6 +149,8 @@ func newIssueEditCmd(flags *globalFlags) *cobra.Command {
 	cmd.Flags().StringVar(&body, "body", "", "new body, or \"-\" for stdin (empty = no change)")
 	cmd.Flags().StringVar(&state, "state", "", "new state: open or closed (empty = no change)")
 	cmd.Flags().StringSliceVar(&assigns, "assignee", nil, "replace assignees with these logins")
+	cmd.Flags().StringSliceVar(&addLabels, "add-label", nil, "add label by name (repeatable)")
+	cmd.Flags().StringSliceVar(&removeLabels, "remove-label", nil, "remove label by name (repeatable)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the request and exit without patching")
 	return cmd
 }

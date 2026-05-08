@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/stewartbrothers/gaia/core/cache"
+	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/core/types"
 )
@@ -50,11 +51,10 @@ func (p *Provider) CreateIssue(ctx context.Context, owner, repo string, opts pro
 	return &out, nil
 }
 
-// EditIssue patches an existing issue. Title, Body, State, Assignees
-// each become PATCH fields when non-empty/non-nil. AddLabels and
-// RemoveLabels are NOT applied here — label list mutation goes
-// through the dedicated /issues/{n}/labels endpoints in a Phase 1.5
-// follow-up; for now this method only changes scalar fields.
+// EditIssue patches an existing issue. Scalar fields (Title, Body,
+// State, Assignees) go in the PATCH body; AddLabels/RemoveLabels are
+// applied via the dedicated /issues/{n}/labels endpoints after the
+// PATCH.
 func (p *Provider) EditIssue(ctx context.Context, owner, repo string, n int, opts provider.EditIssueOptions) (*types.Issue, error) {
 	body := apiEditIssueRequest{
 		Title:     opts.Title,
@@ -70,6 +70,57 @@ func (p *Provider) EditIssue(ctx context.Context, owner, repo string, n int, opt
 	// State/title/body change can move the issue between lists; flush
 	// both the object row and the repo's issue list_index (#42).
 	cache.NewInvalidator(p.client.cache).AfterObjectMutation(ctx, kindIssue, owner, repo, itoa(n))
+
+	if len(opts.AddLabels) > 0 || len(opts.RemoveLabels) > 0 {
+		nameToID, err := p.resolveLabelNames(ctx, owner, repo, append(opts.AddLabels, opts.RemoveLabels...))
+		if err != nil {
+			return nil, err
+		}
+		if len(opts.AddLabels) > 0 {
+			ids := make([]int64, len(opts.AddLabels))
+			for i, name := range opts.AddLabels {
+				ids[i] = nameToID[name]
+			}
+			addPath := fmt.Sprintf("/repos/%s/%s/issues/%d/labels", owner, repo, n)
+			addBody := struct {
+				Labels []int64 `json:"labels"`
+			}{Labels: ids}
+			var ignored []apiLabelFull
+			if err := p.client.Post(ctx, addPath, addBody, &ignored); err != nil {
+				return nil, err
+			}
+		}
+		for _, name := range opts.RemoveLabels {
+			delPath := fmt.Sprintf("/repos/%s/%s/issues/%d/labels/%d", owner, repo, n, nameToID[name])
+			if err := p.client.Delete(ctx, delPath); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	out := raw.toType()
 	return &out, nil
+}
+
+// resolveLabelNames fetches the repo's label list once and returns a
+// name→ID map for the requested names. Returns NotFound if any name
+// is absent.
+func (p *Provider) resolveLabelNames(ctx context.Context, owner, repo string, names []string) (map[string]int64, error) {
+	all, err := p.fetchLabels(ctx, owner, repo)
+	if err != nil {
+		return nil, err
+	}
+	index := make(map[string]int64, len(all))
+	for _, l := range all {
+		index[l.Name] = l.ID
+	}
+	out := make(map[string]int64, len(names))
+	for _, name := range names {
+		id, ok := index[name]
+		if !ok {
+			return nil, exitcode.Errorf(exitcode.NotFound, "label %q not found in %s/%s", name, owner, repo)
+		}
+		out[name] = id
+	}
+	return out, nil
 }
