@@ -98,13 +98,13 @@ request body without making the call.`,
 
 func newIssueEditCmd(flags *globalFlags) *cobra.Command {
 	var (
-		title       string
-		body        string
-		state       string
-		assigns     []string
-		addLabels   []string
+		title        string
+		body         string
+		state        string
+		assigns      []string
+		addLabels    []string
 		removeLabels []string
-		dryRun      bool
+		dryRun       bool
 	)
 	cmd := &cobra.Command{
 		Use:   "edit <number>",
