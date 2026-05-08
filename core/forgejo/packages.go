@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/stewartbrothers/gaia/core/cache"
 	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/core/types"
@@ -72,10 +73,16 @@ func (p *Provider) ListPackages(ctx context.Context, owner string, opts provider
 
 // GetPackage fetches one package version by (owner, type, name,
 // version). All four are required and form the URL path.
+//
+// Routes through GetCached: a fresh cache row short-circuits the
+// upstream call entirely; a stale row triggers a conditional GET
+// with If-None-Match / If-Modified-Since (#153). Repo is "" because
+// packages are owner-scoped, not repo-scoped.
 func (p *Provider) GetPackage(ctx context.Context, owner, pkgType, name, version string) (*types.Package, error) {
 	path := packagePath(owner, pkgType, name, version)
 	var raw apiPackage
-	if err := p.client.Get(ctx, path, &raw); err != nil {
+	key := cacheKey(kindPackage, owner, "", pkgType+"/"+name+"/"+version)
+	if err := p.client.GetCached(ctx, path, &raw, key, CacheTTLSingle); err != nil {
 		return nil, err
 	}
 	out := raw.toType()
@@ -85,7 +92,11 @@ func (p *Provider) GetPackage(ctx context.Context, owner, pkgType, name, version
 // DeletePackage removes one package version. 204 is the documented
 // success status; the client treats any 2xx as success.
 func (p *Provider) DeletePackage(ctx context.Context, owner, pkgType, name, version string) error {
-	return p.client.Delete(ctx, packagePath(owner, pkgType, name, version))
+	if err := p.client.Delete(ctx, packagePath(owner, pkgType, name, version)); err != nil {
+		return err
+	}
+	cache.NewInvalidator(p.client.cache).AfterDelete(ctx, kindPackage, owner, "", pkgType+"/"+name+"/"+version)
+	return nil
 }
 
 // UploadPackage publishes one artifact to a package version. The
@@ -120,7 +131,11 @@ func (p *Provider) UploadPackage(ctx context.Context, owner, pkgType, name, vers
 		url.PathEscape(version),
 		url.PathEscape(opts.FileName),
 	)
-	return p.client.PutBinary(ctx, path, contentType, body)
+	if err := p.client.PutBinary(ctx, path, contentType, body); err != nil {
+		return err
+	}
+	cache.NewInvalidator(p.client.cache).AfterCreate(ctx, kindPackage, owner, "")
+	return nil
 }
 
 // packagePath builds `/packages/{owner}/{type}/{name}/{version}` with

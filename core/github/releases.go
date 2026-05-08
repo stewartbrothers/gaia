@@ -67,10 +67,15 @@ func (p *Provider) ListReleases(ctx context.Context, owner, repo string, opts pr
 }
 
 // GetRelease fetches one release by tag.
+//
+// Routes through GetCached: a fresh cache row short-circuits the
+// upstream call entirely; a stale row triggers a conditional GET
+// with If-None-Match / If-Modified-Since (#153).
 func (p *Provider) GetRelease(ctx context.Context, owner, repo, tag string) (*types.Release, error) {
 	var raw apiRelease
 	path := fmt.Sprintf("/repos/%s/%s/releases/tags/%s", owner, repo, url.PathEscape(tag))
-	if err := p.client.Get(ctx, path, &raw); err != nil {
+	key := cacheKey(kindRelease, owner, repo, tag)
+	if err := p.client.GetCached(ctx, path, &raw, key, CacheTTLSingle); err != nil {
 		return nil, err
 	}
 	out := raw.toType()

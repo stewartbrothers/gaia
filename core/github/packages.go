@@ -21,12 +21,14 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
 	"strconv"
 	"time"
 
+	"github.com/stewartbrothers/gaia/core/cache"
 	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/core/types"
@@ -132,7 +134,27 @@ func (p *Provider) ListPackages(ctx context.Context, owner string, opts provider
 // it as the GitHub version_id and fetch directly. Otherwise list
 // versions and match against either the version's `name` field or
 // container tags; the first match wins.
+//
+// Uses a manual cache lookup before resolution because ownerScope +
+// resolveVersionID must run first to determine the upstream URL —
+// GetCached can't be called directly (#153). On a cache hit the
+// resolution round-trips are skipped entirely. Repo is "" because
+// GitHub packages are owner-scoped, not repo-scoped.
 func (p *Provider) GetPackage(ctx context.Context, owner, pkgType, name, version string) (*types.Package, error) {
+	key := cacheKey(kindPackage, owner, "", pkgType+"/"+name+"/"+version)
+
+	// Manual cache lookup before the expensive resolution round-trips.
+	if p.client.cache != nil {
+		if hit, ok, err := p.client.cache.Lookup(ctx, key); err == nil && ok && !hit.Stale {
+			var pkg types.Package
+			if jerr := json.Unmarshal(hit.Payload, &pkg); jerr == nil {
+				return &pkg, nil
+			}
+			// Corrupt entry — fall through to upstream.
+			_ = p.client.cache.Invalidate(ctx, key)
+		}
+	}
+
 	scope, err := p.ownerScope(ctx, owner)
 	if err != nil {
 		return nil, err
@@ -148,13 +170,25 @@ func (p *Provider) GetPackage(ctx context.Context, owner, pkgType, name, version
 	if err := p.client.Get(ctx, path, &raw); err != nil {
 		return nil, err
 	}
-	return &types.Package{
+	pkg := &types.Package{
 		Type:      pkgType,
 		Name:      name,
 		Version:   raw.Name,
 		Owner:     owner,
 		CreatedAt: raw.CreatedAt,
-	}, nil
+	}
+	// Store the trimmed result in the cache for next time.
+	if p.client.cache != nil {
+		if trimmed, jerr := json.Marshal(pkg); jerr == nil {
+			_ = p.client.cache.Store(ctx, cache.Entry{
+				Key:       key,
+				FetchedAt: time.Now(),
+				TTL:       CacheTTLSingle,
+				Payload:   trimmed,
+			})
+		}
+	}
+	return pkg, nil
 }
 
 // DeletePackage removes one package version, after resolving the
@@ -169,7 +203,11 @@ func (p *Provider) DeletePackage(ctx context.Context, owner, pkgType, name, vers
 	if err != nil {
 		return err
 	}
-	return p.client.Delete(ctx, packageVersionPath(scope, owner, pkgType, name, versionID))
+	if err := p.client.Delete(ctx, packageVersionPath(scope, owner, pkgType, name, versionID)); err != nil {
+		return err
+	}
+	cache.NewInvalidator(p.client.cache).AfterDelete(ctx, kindPackage, owner, "", pkgType+"/"+name+"/"+version)
+	return nil
 }
 
 // resolveVersionID takes a caller-supplied `version` string and turns
