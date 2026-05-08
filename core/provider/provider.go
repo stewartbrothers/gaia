@@ -25,6 +25,12 @@ type Provider interface {
 	// `gaia whoami` to verify the token works.
 	Whoami(ctx context.Context) (string, error)
 
+	// ServerVersion returns the forge instance's version string. Used
+	// by `gaia server version` for diagnostics and API compatibility
+	// checks. Returns NotImplemented for providers that have no version
+	// endpoint (e.g., GitHub.com).
+	ServerVersion(ctx context.Context) (*types.ServerVersion, error)
+
 	// ListIssues returns issues matching opts. The returned Page
 	// indicates whether the result was truncated and supplies the
 	// cursor for the next call.

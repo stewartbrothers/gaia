@@ -57,6 +57,9 @@ type noopProvider struct{}
 
 var errNotImplemented = errors.New("noop provider")
 
+func (*noopProvider) ServerVersion(_ context.Context) (*types.ServerVersion, error) {
+	return nil, errNotImplemented
+}
 func (*noopProvider) Whoami(_ context.Context) (string, error) {
 	return "", errNotImplemented
 }

@@ -1,0 +1,25 @@
+description: |
+  `gaia server version` hits GET /version and returns the instance
+  version string in the standard envelope.
+
+mocks:
+  - method: GET
+    path: /version
+    status: 200
+    body: |
+      {"version": "15.0.1"}
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - server
+      - version
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: GET
+      path: /version
