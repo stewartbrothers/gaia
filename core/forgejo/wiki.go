@@ -174,58 +174,81 @@ func (p *Provider) GetWikiPage(ctx context.Context, owner, repo, slug string) (*
 	return &out, nil
 }
 
-// EditWikiPage upserts a wiki page. Probes for existence via
-// GetWikiPage first; 404 → POST /wiki/new, 200 → PATCH the existing
-// slug. Both paths return the post-write WikiPage with body decoded.
-//
-// Title in the create POST is set to the slug (Forgejo doesn't allow
-// an empty title); callers wanting a specific human title should
-// supply the slug they want the URL to use, since Forgejo derives the
-// slug from the title at creation time anyway.
+// EditWikiPage upserts a wiki page. Tries GET by slug first; if the
+// page exists, PATCHes it. On 404, lists wiki pages and matches by
+// title before falling back to POST — Forgejo may store pages under a
+// slug that differs from the title (e.g. "Quick-Start" → "Quick-Start.-"),
+// so a direct slug lookup can 404 even when the page exists (#178).
 func (p *Provider) EditWikiPage(ctx context.Context, owner, repo, slug, body string) (*types.WikiPage, error) {
 	encoded := base64.StdEncoding.EncodeToString([]byte(body))
-	wireBody := map[string]any{
-		"title":          slug,
-		"content_base64": encoded,
-	}
 
-	// Probe: does the page exist? Cheaper to PATCH-on-existing than
-	// to try POST and recover from the conflict, and the GET also
-	// validates the user's auth before we mutate.
+	// Fast path: exact slug match.
 	_, err := p.GetWikiPage(ctx, owner, repo, slug)
 	if err != nil && exitcode.Of(err) != exitcode.NotFound {
 		return nil, err
 	}
-	if err != nil {
-		// 404 → create.
-		var raw apiWikiPage
-		path := fmt.Sprintf("/repos/%s/%s/wiki/new", owner, repo)
-		if err := p.client.Post(ctx, path, wireBody, &raw); err != nil {
-			return nil, err
-		}
-		// New page may show up in any wiki list query.
-		cache.NewInvalidator(p.client.cache).AfterCreate(ctx, kindWiki, owner, repo)
-		out, derr := raw.toType()
-		if derr != nil {
-			return nil, derr
-		}
-		return &out, nil
+	if err == nil {
+		return p.patchWikiPage(ctx, owner, repo, slug, slug, encoded)
 	}
 
-	// Existing → patch. Forgejo's PATCH /wiki/page/{slug} replaces
-	// the body; the slug stays unchanged because we send the same
-	// title.
+	// Slug miss: Forgejo may have stored this page under a canonicalised
+	// slug that differs from the title. List pages and match by title.
+	if canonicalSlug, found := p.findWikiSlugByTitle(ctx, owner, repo, slug); found {
+		return p.patchWikiPage(ctx, owner, repo, canonicalSlug, slug, encoded)
+	}
+
+	// Truly new page → POST /wiki/new.
+	wireBody := map[string]any{
+		"title":          slug,
+		"content_base64": encoded,
+	}
 	var raw apiWikiPage
-	path := fmt.Sprintf("/repos/%s/%s/wiki/page/%s", owner, repo, url.PathEscape(slug))
-	if err := p.client.Patch(ctx, path, wireBody, &raw); err != nil {
+	path := fmt.Sprintf("/repos/%s/%s/wiki/new", owner, repo)
+	if err := p.client.Post(ctx, path, wireBody, &raw); err != nil {
 		return nil, err
 	}
-	cache.NewInvalidator(p.client.cache).AfterObjectMutation(ctx, kindWiki, owner, repo, slug)
+	cache.NewInvalidator(p.client.cache).AfterCreate(ctx, kindWiki, owner, repo)
 	out, derr := raw.toType()
 	if derr != nil {
 		return nil, derr
 	}
 	return &out, nil
+}
+
+// patchWikiPage issues PATCH /wiki/page/{canonicalSlug}. title is the
+// human title sent in the body (keeps the page title unchanged).
+func (p *Provider) patchWikiPage(ctx context.Context, owner, repo, canonicalSlug, title, encoded string) (*types.WikiPage, error) {
+	wireBody := map[string]any{
+		"title":          title,
+		"content_base64": encoded,
+	}
+	var raw apiWikiPage
+	path := fmt.Sprintf("/repos/%s/%s/wiki/page/%s", owner, repo, url.PathEscape(canonicalSlug))
+	if err := p.client.Patch(ctx, path, wireBody, &raw); err != nil {
+		return nil, err
+	}
+	cache.NewInvalidator(p.client.cache).AfterObjectMutation(ctx, kindWiki, owner, repo, canonicalSlug)
+	out, derr := raw.toType()
+	if derr != nil {
+		return nil, derr
+	}
+	return &out, nil
+}
+
+// findWikiSlugByTitle lists wiki pages and returns the sub_url for the
+// first page whose title matches slug (case-sensitive). Returns ("", false)
+// if not found or if the list call fails.
+func (p *Provider) findWikiSlugByTitle(ctx context.Context, owner, repo, slug string) (string, bool) {
+	pages, _, err := p.ListWikiPages(ctx, owner, repo, provider.ListWikiPagesOptions{Limit: 200})
+	if err != nil {
+		return "", false
+	}
+	for _, page := range pages {
+		if page.Title == slug && page.Path != "" && page.Path != slug {
+			return page.Path, true
+		}
+	}
+	return "", false
 }
 
 // DeleteWikiPage removes a wiki page by slug. 204 from the API is
