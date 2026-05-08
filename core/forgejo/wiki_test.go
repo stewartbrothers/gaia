@@ -251,6 +251,55 @@ func TestEditWikiPagePatchesIfExisting(t *testing.T) {
 	}
 }
 
+// TestEditWikiPageHyphenatedTitleUsesListFallback is a regression test
+// for issue #178. Forgejo may return a sub_url that differs from the
+// user-supplied title (e.g. "Quick-Start" → "Quick-Start.-"). When
+// GET by slug 404s but the list shows a page with a matching title,
+// EditWikiPage must PATCH using the canonical sub_url, not POST again.
+func TestEditWikiPageHyphenatedTitleUsesListFallback(t *testing.T) {
+	patches := int32(0)
+	posts := int32(0)
+	var patchPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/repos/o/r/wiki/page/"):
+			// Slug probe always 404s — simulates Forgejo storing the page
+			// under the mangled path "Quick-Start.-" instead of "Quick-Start".
+			w.WriteHeader(404)
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/wiki/pages"):
+			// List returns the page with the canonical (mangled) sub_url.
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"title":   "Quick-Start",
+					"sub_url": "Quick-Start.-",
+				},
+			})
+		case r.Method == http.MethodPatch:
+			atomic.AddInt32(&patches, 1)
+			patchPath = r.URL.Path
+			_ = json.NewEncoder(w).Encode(wikiPageJSON("Quick-Start", "updated", "abc1234", "2026-05-01T00:00:00Z"))
+		case r.Method == http.MethodPost:
+			atomic.AddInt32(&posts, 1)
+		}
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, err := p.EditWikiPage(context.Background(), "o", "r", "Quick-Start", "updated")
+	if err != nil {
+		t.Fatalf("EditWikiPage: %v", err)
+	}
+	if got.Body != "updated" {
+		t.Errorf("body: %q", got.Body)
+	}
+	if atomic.LoadInt32(&patches) != 1 || atomic.LoadInt32(&posts) != 0 {
+		t.Errorf("expected 1 PATCH + 0 POST; got PATCH=%d POST=%d", patches, posts)
+	}
+	if patchPath != "/repos/o/r/wiki/page/Quick-Start.-" {
+		t.Errorf("PATCH path: %q (want canonical /wiki/page/Quick-Start.-)", patchPath)
+	}
+}
+
 func TestDeleteWikiPage(t *testing.T) {
 	deletePath := ""
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
