@@ -313,3 +313,30 @@ type ListDeliveriesOptions struct {
 	Limit  int
 	Cursor string
 }
+
+// --- Actions (#183) ---
+
+// ListWorkflowRunsOptions filters and paginates a ListWorkflowRuns call.
+// Status takes "waiting", "running", "success", "failure", "cancelled",
+// or "" (all). Branch narrows to runs on the given branch. Limit and
+// Cursor are the standard page-size + opaque-cursor pair.
+type ListWorkflowRunsOptions struct {
+	Status string
+	Branch string
+	Limit  int
+	Cursor string
+}
+
+// GetWorkflowRunOptions controls how much detail GetWorkflowRun returns.
+// WithJobs=true triggers the extra tasks call so Jobs are inlined on the
+// returned WorkflowRun.
+type GetWorkflowRunOptions struct {
+	WithJobs bool
+}
+
+// GetWorkflowRunLogsOptions controls log retrieval. FailedOnly=true
+// returns only logs from jobs whose Conclusion is "failure" — the
+// common agent use-case when diagnosing a broken build.
+type GetWorkflowRunLogsOptions struct {
+	FailedOnly bool
+}
