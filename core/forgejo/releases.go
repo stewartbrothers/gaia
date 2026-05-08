@@ -123,6 +123,30 @@ func (p *Provider) DeleteRelease(ctx context.Context, owner, repo, tag string) e
 	return nil
 }
 
+// DeleteReleaseAsset removes a single asset from a release by ID.
+func (p *Provider) DeleteReleaseAsset(ctx context.Context, owner, repo string, releaseID, assetID int64) error {
+	path := fmt.Sprintf("/repos/%s/%s/releases/%d/assets/%d", owner, repo, releaseID, assetID)
+	return p.client.Delete(ctx, path)
+}
+
+// ListReleaseAssets returns the assets attached to a release.
+func (p *Provider) ListReleaseAssets(ctx context.Context, owner, repo string, releaseID int64) ([]types.ReleaseAsset, error) {
+	path := fmt.Sprintf("/repos/%s/%s/releases/%d/assets", owner, repo, releaseID)
+	var raw []struct {
+		ID   int64  `json:"id"`
+		Name string `json:"name"`
+		Size int64  `json:"size"`
+	}
+	if err := p.client.Get(ctx, path, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]types.ReleaseAsset, len(raw))
+	for i, a := range raw {
+		out[i] = types.ReleaseAsset{ID: a.ID, Name: a.Name, Size: a.Size}
+	}
+	return out, nil
+}
+
 // UploadReleaseAsset attaches a file to an existing release. Forgejo
 // expects multipart/form-data with the file in field "attachment";
 // the asset name comes from the `name=` query param. Streams the

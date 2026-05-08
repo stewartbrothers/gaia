@@ -117,6 +117,30 @@ func (p *Provider) DeleteRelease(ctx context.Context, owner, repo, tag string) e
 	return nil
 }
 
+// ListReleaseAssets returns the assets attached to a release.
+func (p *Provider) ListReleaseAssets(ctx context.Context, owner, repo string, releaseID int64) ([]types.ReleaseAsset, error) {
+	path := fmt.Sprintf("/repos/%s/%s/releases/%d/assets", owner, repo, releaseID)
+	var raw []struct {
+		ID   int64  `json:"id"`
+		Name string `json:"name"`
+		Size int64  `json:"size"`
+	}
+	if err := p.client.Get(ctx, path, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]types.ReleaseAsset, len(raw))
+	for i, a := range raw {
+		out[i] = types.ReleaseAsset{ID: a.ID, Name: a.Name, Size: a.Size}
+	}
+	return out, nil
+}
+
+// DeleteReleaseAsset removes a single asset from a release by ID.
+// GitHub's asset delete endpoint is keyed by asset ID only (not release ID).
+func (p *Provider) DeleteReleaseAsset(ctx context.Context, owner, repo string, _, assetID int64) error {
+	return p.client.Delete(ctx, fmt.Sprintf("/repos/%s/%s/releases/assets/%d", owner, repo, assetID))
+}
+
 // UploadReleaseAsset attaches a file to an existing release. GitHub
 // uses a separate host (uploads.github.com) for asset uploads, with
 // the body sent as the request body directly (NOT multipart) and the

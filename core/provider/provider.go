@@ -141,6 +141,11 @@ type Provider interface {
 	// DeleteRelease removes a release by tag.
 	DeleteRelease(ctx context.Context, owner, repo, tag string) error
 
+	// ListReleaseAssets returns the files attached to a release. Used
+	// by release publish to skip assets that are already uploaded
+	// (idempotency).
+	ListReleaseAssets(ctx context.Context, owner, repo string, releaseID int64) ([]types.ReleaseAsset, error)
+
 	// UploadReleaseAsset attaches a file to an existing release. Both
 	// forges expose this differently (Forgejo: multipart on the same
 	// API host; GitHub: raw body to uploads.github.com), but the
@@ -152,6 +157,12 @@ type Provider interface {
 	// byte length of `body`; GitHub's upload API rejects requests that
 	// lack a Content-Length header (HTTP 400 "Bad Content-Length").
 	UploadReleaseAsset(ctx context.Context, owner, repo string, releaseID int64, name, contentType string, size int64, body io.Reader) error
+
+	// DeleteReleaseAsset removes a single asset from a release by its
+	// asset ID (as returned by ListReleaseAssets). Used by
+	// `release publish` to replace an existing asset with a newer
+	// version of the same file.
+	DeleteReleaseAsset(ctx context.Context, owner, repo string, releaseID, assetID int64) error
 
 	// --- Packages (Phase 4 / #107) -----------------------------------
 	//
