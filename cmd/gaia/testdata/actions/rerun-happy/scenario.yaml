@@ -1,0 +1,22 @@
+description: |
+  `gaia actions rerun <run-id>` re-triggers the run and prints a confirmation.
+
+mocks:
+  - method: POST
+    path: /repos/o/r/actions/runs/42/rerun
+    status: 204
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - actions
+      - rerun
+      - "42"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

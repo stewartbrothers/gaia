@@ -91,6 +91,7 @@ auth setup.`,
 	root.AddCommand(newPackagesCmd(flags))
 	root.AddCommand(newWikiCmd(flags))
 	root.AddCommand(newWebhookCmd(flags))
+	root.AddCommand(newActionsCmd(flags))
 	root.AddCommand(newCacheCmd(flags))
 
 	return root

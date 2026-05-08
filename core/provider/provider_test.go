@@ -204,6 +204,18 @@ func (*noopProvider) TestWebhook(_ context.Context, _, _ string, _ int64) error 
 func (*noopProvider) GetCommitStatus(_ context.Context, _, _, _ string) (*types.CISummary, error) {
 	return nil, errNotImplemented
 }
+func (*noopProvider) ListWorkflowRuns(_ context.Context, _, _ string, _ provider.ListWorkflowRunsOptions) ([]types.WorkflowRun, *provider.Page, error) {
+	return nil, nil, errNotImplemented
+}
+func (*noopProvider) GetWorkflowRun(_ context.Context, _, _ string, _ int64, _ provider.GetWorkflowRunOptions) (*types.WorkflowRun, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) GetWorkflowRunLogs(_ context.Context, _, _ string, _ int64, _ provider.GetWorkflowRunLogsOptions) ([]types.WorkflowRunLogs, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) RerunWorkflowRun(_ context.Context, _, _ string, _ int64) error {
+	return errNotImplemented
+}
 
 // Reference time.Time so an unused-import check never fires while tests
 // scaffold up. Removed once a real test uses it.

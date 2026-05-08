@@ -1,0 +1,44 @@
+description: |
+  `gaia actions logs <run-id> --format json` returns the per-job log structure.
+  Uses --failed-only to exercise the filtering path.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/actions/tasks
+    status: 200
+    body: |
+      {
+        "total_count": 1,
+        "workflow_runs": [
+          {
+            "id": 10,
+            "name": "test",
+            "status": "completed",
+            "conclusion": "failure",
+            "steps": []
+          }
+        ]
+      }
+  - method: GET
+    path: /repos/o/r/actions/tasks/10/logs
+    status: 200
+    content_type: application/zip
+    body_file: task10.zip
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - --format
+      - json
+      - actions
+      - logs
+      - "42"
+      - --failed-only
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

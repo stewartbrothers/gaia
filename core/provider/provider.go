@@ -262,4 +262,25 @@ type Provider interface {
 	// TestWebhook sends a synthetic ping event to the webhook so
 	// the operator can confirm the receiver is reachable.
 	TestWebhook(ctx context.Context, owner, repo string, id int64) error
+
+	// --- Actions (#183) ---
+
+	// ListWorkflowRuns returns recent workflow runs for the repo,
+	// newest first. Filter by status or branch via opts.
+	ListWorkflowRuns(ctx context.Context, owner, repo string, opts ListWorkflowRunsOptions) ([]types.WorkflowRun, *Page, error)
+
+	// GetWorkflowRun fetches one run by ID. When opts.WithJobs is
+	// true the implementation makes a second call to list tasks and
+	// inlines them into the returned WorkflowRun.Jobs field.
+	GetWorkflowRun(ctx context.Context, owner, repo string, runID int64, opts GetWorkflowRunOptions) (*types.WorkflowRun, error)
+
+	// GetWorkflowRunLogs fetches the task logs for a run. Forgejo
+	// returns a ZIP per task; the implementation decodes each ZIP
+	// into per-job log lines. When opts.FailedOnly is true, only jobs
+	// whose Conclusion is "failure" are returned.
+	GetWorkflowRunLogs(ctx context.Context, owner, repo string, runID int64, opts GetWorkflowRunLogsOptions) ([]types.WorkflowRunLogs, error)
+
+	// RerunWorkflowRun re-triggers a run. Forgejo returns 204 on
+	// success; the run appears as a new run entry shortly after.
+	RerunWorkflowRun(ctx context.Context, owner, repo string, runID int64) error
 }
