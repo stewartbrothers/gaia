@@ -1,0 +1,55 @@
+name: watch-and-merge
+description: |
+  Block until a PR's CI checks pass, then merge it. Returns to the
+  caller when complete; the caller decides what to do next.
+
+  This is a blocking tool call — it runs, waits, and returns. It is
+  not a daemon or background process. The chain exits with success
+  when the PR is merged, or with an error/yield when something
+  requires intervention.
+
+  Usage:
+    gaia chain run watch-and-merge --var pr=42
+    gaia chain run watch-and-merge --var pr=42 --var method=merge --var timeout=45m
+
+vars:
+  pr:
+    required: true
+  method:
+    default: squash
+  timeout:
+    default: 30m
+  interval:
+    default: 30s
+
+steps:
+  - id: get-sha
+    run: gaia pr view ${pr} --format value --fields head.sha
+    capture: sha
+
+  - id: await-ci
+    run: gaia pr ci-wait --ref ${sha} --timeout ${timeout} --interval ${interval}
+    yield_on:
+      - timeout
+      - check_flaky
+    abort_on:
+      - check_failed
+    retry:
+      max: 2
+      delay: 60s
+      backoff: constant
+
+  - id: merge
+    run: gaia pr merge ${pr} --method ${method}
+    yield_on:
+      - merge_conflict
+      - review_required
+    on_failure:
+      return:
+        reason: merge-failed
+        pr_number: "${pr}"
+        error: "${error.message}"
+
+  - id: report
+    run: gaia pr view ${pr} --format json --fields number,title,merged_at,base.ref
+    capture: result
