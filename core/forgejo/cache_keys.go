@@ -32,17 +32,22 @@ const (
 // every provider method uses when constructing a cache.Key. Keep
 // these short and stable — they're part of the on-disk schema.
 const (
-	kindIssue   = "issue"
-	kindPR      = "pr"
-	kindRelease = "release"
-	kindWiki    = "wiki"
-	kindPackage = "package"
-	kindWebhook = "webhook"
+	kindIssue    = "issue"
+	kindPR       = "pr"
+	kindRelease  = "release"
+	kindWiki     = "wiki"
+	kindPackage  = "package"
+	kindWebhook  = "webhook"
+	kindDelivery = "delivery"
 )
 
 // itoa is a tiny strconv.Itoa wrapper so call sites read uniformly:
 // `itoa(issueNumber)` reads cleaner than `strconv.Itoa(...)`.
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// itoa64 converts an int64 to its decimal string representation.
+// Used for cache keys built from int64 IDs (webhook IDs, delivery IDs).
+func itoa64(n int64) string { return strconv.FormatInt(n, 10) }
 
 // cacheKey is the single-line constructor every provider method uses
 // when building a cache.Key. Centralised so a future kind-rename

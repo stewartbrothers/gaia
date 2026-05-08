@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/stewartbrothers/gaia/core/cache"
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/core/types"
 )
@@ -99,10 +100,15 @@ func (p *Provider) ListWebhooks(ctx context.Context, owner, repo string, opts pr
 }
 
 // GetWebhook fetches one hook by ID.
+//
+// Routes through GetCached: a fresh cache row short-circuits the
+// upstream call entirely; a stale row triggers a conditional GET
+// with If-None-Match / If-Modified-Since (#153).
 func (p *Provider) GetWebhook(ctx context.Context, owner, repo string, id int64) (*types.Webhook, error) {
 	var raw apiHook
 	path := fmt.Sprintf("/repos/%s/%s/hooks/%d", owner, repo, id)
-	if err := p.client.Get(ctx, path, &raw); err != nil {
+	key := cacheKey(kindWebhook, owner, repo, itoa64(id))
+	if err := p.client.GetCached(ctx, path, &raw, key, CacheTTLSingle); err != nil {
 		return nil, err
 	}
 	out := raw.toType()
@@ -127,6 +133,7 @@ func (p *Provider) CreateWebhook(ctx context.Context, owner, repo string, opts p
 	if err := p.client.Post(ctx, path, body, &raw); err != nil {
 		return nil, err
 	}
+	cache.NewInvalidator(p.client.cache).AfterCreate(ctx, kindWebhook, owner, repo)
 	out := raw.toType()
 	return &out, nil
 }
@@ -165,6 +172,7 @@ func (p *Provider) EditWebhook(ctx context.Context, owner, repo string, id int64
 	if err := p.client.Patch(ctx, path, patch, &raw); err != nil {
 		return nil, err
 	}
+	cache.NewInvalidator(p.client.cache).AfterObjectMutation(ctx, kindWebhook, owner, repo, itoa64(id))
 	out := raw.toType()
 	return &out, nil
 }
@@ -172,7 +180,11 @@ func (p *Provider) EditWebhook(ctx context.Context, owner, repo string, id int64
 // DeleteWebhook removes a webhook by ID. 204 is success.
 func (p *Provider) DeleteWebhook(ctx context.Context, owner, repo string, id int64) error {
 	path := fmt.Sprintf("/repos/%s/%s/hooks/%d", owner, repo, id)
-	return p.client.Delete(ctx, path)
+	if err := p.client.Delete(ctx, path); err != nil {
+		return err
+	}
+	cache.NewInvalidator(p.client.cache).AfterDelete(ctx, kindWebhook, owner, repo, itoa64(id))
+	return nil
 }
 
 // apiHookDelivery mirrors Forgejo's hook-task / delivery record. The
@@ -279,10 +291,14 @@ func (p *Provider) ListWebhookDeliveries(ctx context.Context, owner, repo string
 
 // GetWebhookDelivery fetches one delivery's full request + response
 // payload by delivery ID.
+//
+// Delivery records are immutable once created, so we use the full
+// CacheTTLSingle — there is no write-side invalidation needed (#153).
 func (p *Provider) GetWebhookDelivery(ctx context.Context, owner, repo string, id, deliveryID int64) (*types.WebhookDeliveryDetail, error) {
 	path := fmt.Sprintf("/repos/%s/%s/hooks/%d/deliveries/%d", owner, repo, id, deliveryID)
 	var raw apiHookDelivery
-	if err := p.client.Get(ctx, path, &raw); err != nil {
+	key := cacheKey(kindDelivery, owner, repo, itoa64(id)+"/"+itoa64(deliveryID))
+	if err := p.client.GetCached(ctx, path, &raw, key, CacheTTLSingle); err != nil {
 		return nil, err
 	}
 	out := raw.toDetail()
