@@ -1,0 +1,50 @@
+description: |
+  `gaia issue edit 42 --add-label bug` resolves the label name to ID
+  via GET /repos/o/r/labels, PATCHes the issue, then POSTs the label
+  IDs to /repos/o/r/issues/42/labels.
+
+mocks:
+  - method: PATCH
+    path: /repos/o/r/issues/42
+    status: 200
+    body: |
+      {
+        "number": 42, "title": "existing title", "state": "open",
+        "user": {"login": "alice"},
+        "labels": [{"id": 5, "name": "bug", "color": "ff0000"}],
+        "created_at": "2026-04-01T00:00:00Z",
+        "updated_at": "2026-04-05T00:00:00Z"
+      }
+  - method: GET
+    path: /repos/o/r/labels
+    status: 200
+    body: |
+      [
+        {"id": 5, "name": "bug",     "color": "ff0000", "description": ""},
+        {"id": 6, "name": "feature", "color": "00ff00", "description": ""}
+      ]
+  - method: POST
+    path: /repos/o/r/issues/42/labels
+    status: 200
+    body: "[]"
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - issue
+      - edit
+      - "42"
+      - --add-label
+      - bug
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: POST
+      path: /repos/o/r/issues/42/labels
+      body_contains: '"labels"'

@@ -193,3 +193,71 @@ func TestDeleteIssueCommentNotFound(t *testing.T) {
 		t.Errorf("got %d, want NotFound", got)
 	}
 }
+
+func TestEditIssueAddLabels(t *testing.T) {
+	var postBody map[string]any
+	var postPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/labels"):
+			// Label list for name→ID resolution.
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 10, "name": "bug", "color": "red"},
+				{"id": 11, "name": "enhancement", "color": "blue"},
+			})
+		case r.Method == http.MethodPatch && strings.Contains(r.URL.Path, "/issues/42"):
+			_ = json.NewEncoder(w).Encode(makeIssue(42, "t", "open"))
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/labels"):
+			postPath = r.URL.Path
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &postBody)
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+			w.WriteHeader(200)
+		}
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	_, err := p.EditIssue(context.Background(), "o", "r", 42, provider.EditIssueOptions{
+		AddLabels: []string{"bug", "enhancement"},
+	})
+	if err != nil {
+		t.Fatalf("EditIssue: %v", err)
+	}
+	if postPath != "/repos/o/r/issues/42/labels" {
+		t.Errorf("POST path: %q", postPath)
+	}
+	labels, _ := postBody["labels"].([]any)
+	if len(labels) != 2 {
+		t.Errorf("expected 2 label IDs; got %v", postBody)
+	}
+}
+
+func TestEditIssueRemoveLabels(t *testing.T) {
+	var deletedPaths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/labels"):
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 20, "name": "wontfix", "color": "grey"},
+			})
+		case r.Method == http.MethodPatch && strings.Contains(r.URL.Path, "/issues/5"):
+			_ = json.NewEncoder(w).Encode(makeIssue(5, "t", "open"))
+		case r.Method == http.MethodDelete && strings.Contains(r.URL.Path, "/issues/5/labels/"):
+			deletedPaths = append(deletedPaths, r.URL.Path)
+			w.WriteHeader(204)
+		}
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	_, err := p.EditIssue(context.Background(), "o", "r", 5, provider.EditIssueOptions{
+		RemoveLabels: []string{"wontfix"},
+	})
+	if err != nil {
+		t.Fatalf("EditIssue: %v", err)
+	}
+	if len(deletedPaths) != 1 || deletedPaths[0] != "/repos/o/r/issues/5/labels/20" {
+		t.Errorf("delete paths: %v", deletedPaths)
+	}
+}
