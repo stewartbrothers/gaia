@@ -161,10 +161,15 @@ func (p *Provider) ListWikiPages(ctx context.Context, owner, repo string, opts p
 
 // GetWikiPage fetches one wiki page by slug, decoding its body from
 // base64.
+//
+// Routes through GetCached: a fresh cache row short-circuits the
+// upstream call entirely; a stale row triggers a conditional GET
+// with If-None-Match / If-Modified-Since (#153).
 func (p *Provider) GetWikiPage(ctx context.Context, owner, repo, slug string) (*types.WikiPage, error) {
 	path := fmt.Sprintf("/repos/%s/%s/wiki/page/%s", owner, repo, url.PathEscape(slug))
 	var raw apiWikiPage
-	if err := p.client.Get(ctx, path, &raw); err != nil {
+	key := cacheKey(kindWiki, owner, repo, slug)
+	if err := p.client.GetCached(ctx, path, &raw, key, CacheTTLSingle); err != nil {
 		return nil, err
 	}
 	out, err := raw.toType()
