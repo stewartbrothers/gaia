@@ -1,18 +1,15 @@
 description: |
-  `gaia release publish v1.0.0 --asset ...` get-or-creates the
-  release, then uploads each asset in turn. Scenario tag doesn't
-  exist yet (404 on the GET) so the publish path falls through to
-  CreateRelease, then POSTs each asset multipart.
+  `gaia release publish` replaces existing assets rather than creating
+  duplicates. Scenario has an existing release (200 on GET) with one
+  asset already uploaded (gaia-linux-amd64.tar.gz). The darwin asset
+  is new and is uploaded directly. The linux asset already exists and
+  must be deleted first then re-uploaded — the output should report
+  "replaced":true for it.
 
 mocks:
   - method: GET
     path: /repos/o/r/releases/tags/v1.0.0
-    status: 404
-    body: |
-      {"message": "Not Found"}
-  - method: POST
-    path: /repos/o/r/releases
-    status: 201
+    status: 200
     body: |
       {
         "id": 50,
@@ -30,12 +27,16 @@ mocks:
     path: /repos/o/r/releases/50/assets
     status: 200
     body: |
-      []
+      [{"id": 1, "name": "gaia-linux-amd64.tar.gz", "size": 100}]
+  - method: DELETE
+    path: /repos/o/r/releases/50/assets/1
+    status: 204
+    body: ""
   - method: POST
     path: /repos/o/r/releases/50/assets
     status: 201
     body: |
-      {"id": 1, "name": "asset"}
+      {"id": 3, "name": "gaia-linux-amd64.tar.gz"}
 
 stages:
   - args:
