@@ -3,6 +3,11 @@ description: |
   /repos/o/r/issues and renders the freshly-created issue.
 
 mocks:
+  - method: GET
+    path: /repos/o/r/labels
+    status: 200
+    body: |
+      [{"id": 1, "name": "bug", "color": "ff0000", "description": ""}]
   - method: POST
     path: /repos/o/r/issues
     status: 201

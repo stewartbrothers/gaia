@@ -16,6 +16,8 @@ package cli
 
 import (
 	"github.com/spf13/cobra"
+
+	"github.com/stewartbrothers/gaia/internal/version"
 )
 
 // globalFlags carries every persistent flag exposed on the root
@@ -46,8 +48,9 @@ func NewRootCmd() *cobra.Command {
 	flags := &globalFlags{}
 
 	root := &cobra.Command{
-		Use:   "gaia",
-		Short: "Token-trimmed CLI for Forgejo and GitHub",
+		Use:     "gaia",
+		Version: version.Version,
+		Short:   "Token-trimmed CLI for Forgejo and GitHub",
 		Long: `gaia is a Git AI Access tool: a CLI and MCP server providing
 agent-shaped, token-trimmed responses against Forgejo and GitHub.
 Output goes to stdout in JSON by default; use --format=pretty for a

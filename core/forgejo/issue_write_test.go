@@ -33,15 +33,47 @@ func TestCreateIssue(t *testing.T) {
 
 	p := newTestProvider(t, srv.URL)
 	out, err := p.CreateIssue(context.Background(), "o", "r", provider.CreateIssueOptions{
-		Title:  "hello",
-		Body:   "world",
-		Labels: []string{"bug"},
+		Title: "hello",
+		Body:  "world",
 	})
 	if err != nil {
 		t.Fatalf("CreateIssue: %v", err)
 	}
 	if out.Number != 42 || out.Title != "hello" {
 		t.Errorf("got %+v", out)
+	}
+}
+
+func TestCreateIssueWithLabel(t *testing.T) {
+	var postBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/labels"):
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 7, "name": "bug", "color": "red"},
+			})
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/issues"):
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &postBody)
+			_ = json.NewEncoder(w).Encode(makeIssue(43, "titled", "open"))
+		}
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	out, err := p.CreateIssue(context.Background(), "o", "r", provider.CreateIssueOptions{
+		Title:  "titled",
+		Labels: []string{"bug"},
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	if out.Number != 43 {
+		t.Errorf("number: %d", out.Number)
+	}
+	labels, _ := postBody["labels"].([]any)
+	if len(labels) != 1 || labels[0] != float64(7) {
+		t.Errorf("expected labels=[7]; got %v", postBody["labels"])
 	}
 }
 
