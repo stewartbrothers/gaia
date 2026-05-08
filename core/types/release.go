@@ -2,6 +2,13 @@ package types
 
 import "time"
 
+// ReleaseAsset is a file attached to a release.
+type ReleaseAsset struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	Size int64  `json:"size,omitempty"`
+}
+
 // Release is the trimmed view of a forge release. Asset upload/download
 // is intentionally NOT included on this type — that's a separate
 // streaming flow that benefits from its own treatment in Phase 4.
