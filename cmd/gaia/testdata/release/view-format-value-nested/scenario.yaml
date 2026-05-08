@@ -1,0 +1,39 @@
+description: |
+  `--format value --fields author.login` extracts a nested scalar.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/releases/tags/v0.2.0
+    status: 200
+    body: |
+      {
+        "id": 9,
+        "tag_name": "v0.2.0",
+        "name": "Release name",
+        "body": "notes",
+        "draft": false,
+        "prerelease": false,
+        "author": {"login": "alice"},
+        "target_commitish": "main",
+        "created_at": "2026-04-10T00:00:00Z",
+        "published_at": "2026-04-10T00:00:00Z"
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - --format
+      - value
+      - --fields
+      - author.login
+      - release
+      - view
+      - v0.2.0
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

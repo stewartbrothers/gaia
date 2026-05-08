@@ -101,6 +101,20 @@ func renderEnvelope(cmd *cobra.Command, flags *globalFlags, data any, page *prov
 		return pretty(cmd.OutOrStdout(), data)
 	}
 
+	if flags.Format == "value" {
+		if flags.Fields == "" {
+			return exitcode.Errorf(exitcode.Usage,
+				"--format value requires --fields <path> to specify which field to extract")
+		}
+		env := envelope.New(data)
+		val, err := env.Scalar(flags.Fields)
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(cmd.OutOrStdout(), val)
+		return err
+	}
+
 	env := envelope.New(data).WithPage(page)
 	if flags.Fields != "" {
 		if err := env.Project(flags.Fields); err != nil {
