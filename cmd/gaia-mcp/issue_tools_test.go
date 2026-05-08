@@ -75,13 +75,20 @@ func TestIssueViewTool(t *testing.T) {
 func TestIssueCreateTool(t *testing.T) {
 	var captured []byte
 	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		captured, _ = io.ReadAll(r.Body)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"number": 99, "title": "hi", "state": "open",
-			"user":       map[string]any{"login": "a"},
-			"created_at": "2026-04-01T00:00:00Z",
-			"updated_at": "2026-04-01T00:00:00Z",
-		})
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/labels"):
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 3, "name": "bug", "color": "red"},
+			})
+		default:
+			captured, _ = io.ReadAll(r.Body)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number": 99, "title": "hi", "state": "open",
+				"user":       map[string]any{"login": "a"},
+				"created_at": "2026-04-01T00:00:00Z",
+				"updated_at": "2026-04-01T00:00:00Z",
+			})
+		}
 	})
 	pinBuilder(t, p)
 
@@ -95,8 +102,9 @@ func TestIssueCreateTool(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("unexpected IsError: %s", resultText(t, res))
 	}
+	// Labels are sent as integer IDs after name resolution.
 	if !strings.Contains(string(captured), `"title":"hi"`) ||
-		!strings.Contains(string(captured), `"labels":["bug"]`) {
+		!strings.Contains(string(captured), `"labels":[3]`) {
 		t.Errorf("captured body: %s", captured)
 	}
 }
