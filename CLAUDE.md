@@ -241,6 +241,7 @@ tight when scripting):
 - Releases: `list | view | create | edit | delete | publish`
 - Search: `gaia search <query>`
 - Webhooks: `list | view | create | edit | delete | deliveries | redeliver | test`
+- Actions: `list | view | logs [--failed-only] | rerun`
 
 For read paths, gaia is consistently smaller (often 5–25×, sometimes
 ~400× with `--fields`) than the raw API response. Headline summary:
