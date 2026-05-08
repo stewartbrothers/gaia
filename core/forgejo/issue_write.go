@@ -11,13 +11,11 @@ import (
 )
 
 // apiCreateIssueRequest is the POST /repos/{o}/{r}/issues body.
-// Forgejo accepts `labels: []string` (names) on Forgejo 1.21+; we
-// rely on that. For older Gitea hosts users may need to pre-create
-// the labels via `gaia label create` and we surface the error.
+// Forgejo's API requires labels as integer IDs, not names.
 type apiCreateIssueRequest struct {
 	Title     string   `json:"title"`
 	Body      string   `json:"body,omitempty"`
-	Labels    []string `json:"labels,omitempty"`
+	Labels    []int64  `json:"labels,omitempty"`
 	Assignees []string `json:"assignees,omitempty"`
 }
 
@@ -31,12 +29,24 @@ type apiEditIssueRequest struct {
 	Assignees []string `json:"assignees,omitempty"`
 }
 
-// CreateIssue opens a new issue.
+// CreateIssue opens a new issue. Label names in opts.Labels are
+// resolved to IDs via the repo's label list before posting.
 func (p *Provider) CreateIssue(ctx context.Context, owner, repo string, opts provider.CreateIssueOptions) (*types.Issue, error) {
+	var labelIDs []int64
+	if len(opts.Labels) > 0 {
+		nameToID, err := p.resolveLabelNames(ctx, owner, repo, opts.Labels)
+		if err != nil {
+			return nil, err
+		}
+		labelIDs = make([]int64, len(opts.Labels))
+		for i, name := range opts.Labels {
+			labelIDs[i] = nameToID[name]
+		}
+	}
 	body := apiCreateIssueRequest{
 		Title:     opts.Title,
 		Body:      opts.Body,
-		Labels:    opts.Labels,
+		Labels:    labelIDs,
 		Assignees: opts.Assignees,
 	}
 	var raw apiIssue
@@ -44,8 +54,6 @@ func (p *Provider) CreateIssue(ctx context.Context, owner, repo string, opts pro
 	if err := p.client.Post(ctx, path, body, &raw); err != nil {
 		return nil, err
 	}
-	// New issue could appear in any cached list query for this repo;
-	// flush the issue list_index (#42).
 	cache.NewInvalidator(p.client.cache).AfterCreate(ctx, kindIssue, owner, repo)
 	out := raw.toType()
 	return &out, nil
