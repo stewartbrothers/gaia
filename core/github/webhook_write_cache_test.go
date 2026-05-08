@@ -158,12 +158,12 @@ func TestGitHubGetWebhookDeliveryFreshHitSkipsUpstream(t *testing.T) {
 	prov := github.NewProvider(github.Options{BaseURL: srv.URL, Token: "X", Cache: c})
 
 	cachedPayload, _ := json.Marshal(map[string]any{
-		"id":          int64(77),
-		"event":       "push",
-		"action":      "",
-		"status_code": 200,
-		"duration":    0.5,
-		"redelivery":  false,
+		"id":           int64(77),
+		"event":        "push",
+		"action":       "",
+		"status_code":  200,
+		"duration":     0.5,
+		"redelivery":   false,
 		"delivered_at": "2026-04-01T00:00:00Z",
 	})
 	key := cache.Key{Kind: "delivery", Owner: "o", Repo: "r", ID: "42/77"}
