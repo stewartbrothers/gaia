@@ -301,3 +301,82 @@ func TestUploadReleaseAssetBadStatus(t *testing.T) {
 		t.Errorf("exit code: got %d, want NotFound(3)", got)
 	}
 }
+
+func TestDeleteReleaseAsset(t *testing.T) {
+	var deletedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("method: %q", r.Method)
+		}
+		deletedPath = r.URL.Path
+		w.WriteHeader(204)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	if err := p.DeleteReleaseAsset(context.Background(), "o", "r", 50, 7); err != nil {
+		t.Fatalf("DeleteReleaseAsset: %v", err)
+	}
+	if deletedPath != "/repos/o/r/releases/50/assets/7" {
+		t.Errorf("DELETE path: got %q", deletedPath)
+	}
+}
+
+func TestDeleteReleaseAssetNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(404)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	err := p.DeleteReleaseAsset(context.Background(), "o", "r", 50, 999)
+	if got := exitcode.Of(err); got != exitcode.NotFound {
+		t.Errorf("exit code: got %d, want NotFound", got)
+	}
+}
+
+func TestListReleaseAssetsReturnsNames(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/repos/o/r/releases/42/assets" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(404)
+			return
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"id": 1, "name": "gaia_v1.0.0_linux_amd64.tar.gz", "size": 9000000},
+			{"id": 2, "name": "gaia_v1.0.0_checksums.txt", "size": 500},
+		})
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	assets, err := p.ListReleaseAssets(context.Background(), "o", "r", 42)
+	if err != nil {
+		t.Fatalf("ListReleaseAssets: %v", err)
+	}
+	if len(assets) != 2 {
+		t.Fatalf("expected 2 assets, got %d", len(assets))
+	}
+	if assets[0].Name != "gaia_v1.0.0_linux_amd64.tar.gz" {
+		t.Errorf("asset[0].Name: got %q", assets[0].Name)
+	}
+	if assets[1].ID != 2 {
+		t.Errorf("asset[1].ID: got %d, want 2", assets[1].ID)
+	}
+}
+
+func TestListReleaseAssetsEmpty(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{})
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	assets, err := p.ListReleaseAssets(context.Background(), "o", "r", 1)
+	if err != nil {
+		t.Fatalf("ListReleaseAssets: %v", err)
+	}
+	if len(assets) != 0 {
+		t.Errorf("expected empty slice, got %d assets", len(assets))
+	}
+}
