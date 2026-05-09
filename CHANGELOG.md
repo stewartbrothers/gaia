@@ -10,6 +10,58 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-09
+
+Phase 4 complete. New `gaia actions` command group, cache-backed search,
+`--format value` for scriptable scalar extraction, `gaia server version`,
+`gaia issue edit --add-label/--remove-label`, and a batch of bug fixes.
+
+### Added
+
+- **`gaia actions list|view|logs|rerun`** — new command group for Forgejo
+  Actions workflow runs. `logs` fetches per-job log lines from the ZIP
+  archive endpoint; `--failed-only` limits output to failed jobs. MCP tools
+  `gaia_actions_list_runs`, `gaia_actions_view_run`,
+  `gaia_actions_get_logs`, `gaia_actions_rerun` added. Closes Phase 4
+  CI-helpers item. (#183, #228)
+- **Cache-backed search** — `gaia search` with `--repo` now scans the local
+  SQLite cache first. A warm cache short-circuits the upstream call entirely;
+  a cold cache falls through transparently. Cache interface gains `Scan`
+  method for bulk payload retrieval. (#43, #229)
+- **`GetCached` wired to all remaining single-resource reads** — `GetWikiPage`,
+  `GetRelease`, `GetWebhook`, `GetWebhookDelivery`, and `GetPackage` now use
+  conditional GET (ETag / If-Modified-Since) and SQLite TTL cache. Write-side
+  invalidation added to `CreateWebhook`, `EditWebhook`, `DeleteWebhook`,
+  `DeletePackage`, `UploadPackage`. New `kindDelivery` constant and `itoa64`
+  helper in both provider cache_keys files. (#153, #227)
+- **`gaia server version`** — new subcommand fetches the upstream Forgejo /
+  Gitea / GitHub API version. (#222)
+- **`gaia issue edit --add-label / --remove-label`** — append or remove
+  individual labels without replacing the full label set. (#201, #223)
+- **`--format value`** — new output mode extracts a single scalar field from
+  any command without needing jq. Trust-tagged fields are automatically
+  unwrapped. (#220)
+- **`.gaia/chains/watch-and-merge.yaml`** — saved chain that polls a PR until
+  all CI checks pass, then merges. (#221)
+
+### Fixed
+
+- `core/forgejo`: `EditWikiPage` now resolves hyphenated page slugs via a
+  list-and-match fallback when a direct slug GET returns 404. Forgejo
+  canonicalises slugs on creation (e.g. "Quick-Start" → "Quick-Start.-"),
+  so a direct PUT would silently create a duplicate. (#178, #226)
+- `gaia --version` flag now works; previously cobra returned "unknown flag:
+  --version". (#225)
+- `gaia issue create --label <name>` resolves label names to IDs before
+  posting. Forgejo's API requires integer IDs; sending names caused HTTP 422.
+  (#225)
+- `gaia release publish` now uses replace semantics: existing same-named
+  assets are deleted before re-uploading, preventing duplicates when a CI
+  workflow re-runs. (#219)
+- Release workflow: GHCR container build no longer fails when
+  `docker buildx create` conflicts with an existing builder instance; ephemeral
+  runner credential warning suppressed. (#210)
+
 ## [0.2.8] — 2026-05-07
 
 Release chain hardening and goreleaser fix — first fully end-to-end clean release.
