@@ -1,13 +1,10 @@
 module github.com/stewartbrothers/gaia
 
-go 1.25.5
+go 1.26.0
 
-// Pinned to a vulnerability-free 1.25 patch release. govulncheck
-// (#140 part 3) flagged 7 standard-library CVEs against 1.25.5
-// (the floor mcp-go v0.50 forced); 1.25.10 is the latest 1.25.x at
-// the time of this commit. Bump the toolchain ahead of CI's
-// go-version when a new patch lands to keep govulncheck green.
-toolchain go1.25.10
+// code.gitea.io/sdk/gitea v0.24.1 requires go1.26; bumped floor to match.
+// Toolchain pinned to the latest go1.26 patch at time of this commit.
+toolchain go1.26.3
 
 require (
 	github.com/mark3labs/mcp-go v0.50.0

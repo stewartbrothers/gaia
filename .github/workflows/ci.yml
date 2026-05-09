@@ -26,11 +26,10 @@ jobs:
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
         with:
-          # Pinned to match the floor in go.mod. mcp-go v0.50.x
-          # (#138) bumped its own toolchain requirement to 1.25.5,
-          # so gaia's floor moved with it. Bump go.mod and this
-          # file together.
-          go-version: '1.25'
+          # Pinned to match the floor in go.mod. code.gitea.io/sdk/gitea
+          # v0.24.1 requires go1.26; bumped floor to match. Bump go.mod
+          # and this file together.
+          go-version: '1.26'
           cache: true
 
       - name: gofmt check
@@ -50,11 +49,10 @@ jobs:
       # code.forgejo.org but does not mirror third-party actions. We use
       # the same shell install on GitHub so both workflows stay identical
       # (per the lock-step rule in the file header).
-      # v2 line — required for Go 1.25 toolchain support; v1.64.x
-      # was built against go1.23 and refuses to load configs that
-      # target newer toolchains.
+      # v2.12.2 was the first release built with go1.26, required after
+      # the floor bump (code.gitea.io/sdk/gitea v0.24.1 needs go1.26).
       - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.1
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 
       - name: golangci-lint
         run: |
