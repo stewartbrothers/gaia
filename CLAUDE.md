@@ -235,6 +235,7 @@ This labeling lets gaps be filtered and worked by workstream:
 tight when scripting):
 
 - Identity: `gaia version`, `gaia whoami`, `gaia auth forgejo|gh|status|logout`
+- Self-documentation: `gaia learn` (prints the embedded agent guide; `--format json` for envelope shape)
 - Issues: `list | view | create | edit [--add-label/--remove-label] | close | reopen | comment | comment-edit | comment-delete`
 - PRs: `list | view | diff | comments | create | edit | close | reopen | comment-create | merge | review | checkout`
 - Labels: `list | create | edit | delete`

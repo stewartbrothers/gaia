@@ -51,7 +51,9 @@ func NewRootCmd() *cobra.Command {
 		Use:     "gaia",
 		Version: version.Version,
 		Short:   "Token-trimmed CLI for Forgejo and GitHub",
-		Long: `gaia is a Git AI Access tool: a CLI and MCP server providing
+		Long: `🤖 If you are an AI coding agent: run ` + "`gaia learn`" + ` for a quick-start guide.
+
+gaia is a Git AI Access tool: a CLI and MCP server providing
 agent-shaped, token-trimmed responses against Forgejo and GitHub.
 Output goes to stdout in JSON by default; use --format=pretty for a
 human-readable rendering.
@@ -79,6 +81,7 @@ auth setup.`,
 	pf.BoolVar(&flags.NoCache, "no-cache", false, "bypass the local read cache for this call — every read goes upstream (#42)")
 
 	root.AddCommand(newVersionCmd())
+	root.AddCommand(newLearnCmd(flags))
 	root.AddCommand(newWhoamiCmd(flags))
 	root.AddCommand(newServerCmd(flags))
 	root.AddCommand(newAuthCmd(flags))
