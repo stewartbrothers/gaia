@@ -23,9 +23,13 @@ type User struct {
 // Label is the trimmed view of a forge label. For read paths the Name
 // alone is what agents branch on, but Color/Description are useful
 // for label CRUD (#g4) where the agent is creating or editing labels
-// rather than just listing them. Both are omitempty so the read path
+// rather than just listing them. ID is the forge's numeric identifier;
+// surfaced because some forge APIs (Forgejo's PATCH/DELETE) take it,
+// and agents falling back to direct API calls otherwise have no way
+// to discover it. All optional fields are omitempty so the read path
 // stays compact when those fields aren't populated.
 type Label struct {
+	ID          int64  `json:"id,omitempty"`
 	Name        string `json:"name"`
 	Color       string `json:"color,omitempty"`
 	Description string `json:"description,omitempty"`

@@ -22,6 +22,7 @@ type apiLabelFull struct {
 
 func (a *apiLabelFull) toType() types.Label {
 	return types.Label{
+		ID:          a.ID,
 		Name:        a.Name,
 		Color:       a.Color,
 		Description: a.Description,

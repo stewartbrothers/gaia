@@ -43,8 +43,11 @@ func TestListLabels(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("count: %d", len(got))
 	}
-	if got[0].Name != "bug" || got[0].Color != "ff0000" || got[0].Description != "something is broken" {
+	if got[0].ID != 1 || got[0].Name != "bug" || got[0].Color != "ff0000" || got[0].Description != "something is broken" {
 		t.Errorf("got %+v", got[0])
+	}
+	if got[1].ID != 2 {
+		t.Errorf("ID should pass through; got %d", got[1].ID)
 	}
 	if got[1].Description != "" {
 		t.Errorf("empty description should pass through; got %q", got[1].Description)

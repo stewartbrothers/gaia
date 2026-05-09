@@ -26,8 +26,11 @@ func TestListLabelsGH(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListLabels: %v", err)
 	}
-	if len(got) != 2 || got[0].Name != "bug" || got[0].Color != "ff0000" {
+	if len(got) != 2 || got[0].ID != 1 || got[0].Name != "bug" || got[0].Color != "ff0000" {
 		t.Errorf("got %+v", got)
+	}
+	if got[1].ID != 2 {
+		t.Errorf("ID should pass through; got %d", got[1].ID)
 	}
 }
 

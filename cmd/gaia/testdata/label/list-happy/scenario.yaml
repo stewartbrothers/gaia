@@ -1,5 +1,6 @@
 description: |
-  `gaia label list` returns the trimmed label set (no IDs).
+  `gaia label list` returns the trimmed label set with numeric
+  IDs surfaced (#234).
 
 mocks:
   - method: GET
