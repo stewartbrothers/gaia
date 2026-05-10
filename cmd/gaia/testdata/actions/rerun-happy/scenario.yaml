@@ -1,10 +1,9 @@
 description: |
-  `gaia actions rerun <run-id>` re-triggers the run and prints a confirmation.
-
-mocks:
-  - method: POST
-    path: /repos/o/r/actions/runs/42/rerun
-    status: 204
+  `gaia actions rerun <run-id>` is currently unsupported on Forgejo
+  v15.0.1 — the API does not expose a rerun endpoint. The provider
+  returns a clear unsupported error pointing at the UI rerun route
+  for manual action. The provider must NOT call any API endpoint to
+  reach this conclusion (verified by the absence of mocks).
 
 stages:
   - args:
@@ -16,7 +15,7 @@ stages:
       - o/r
       - actions
       - rerun
-      - "42"
+      - "362"
     env:
       FORGEJO_TOKEN: TEST
-    exit_code: 0
+    exit_code: 1

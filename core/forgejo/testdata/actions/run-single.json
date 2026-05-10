@@ -1,0 +1,29 @@
+{
+  "ScheduleID": 0,
+  "approved_by": 0,
+  "commit_sha": "d9b3a1b004342d3246d5b548fe7776571cacd8e5",
+  "created": "2026-05-10T11:32:08+10:00",
+  "duration": 41000000000,
+  "event": "push",
+  "event_payload": "{...}",
+  "html_url": "https://git.stewartbrothers.com.au/Gerwood/gaia/actions/runs/362",
+  "id": 1706,
+  "index_in_repo": 362,
+  "is_fork_pull_request": false,
+  "is_ref_deleted": false,
+  "need_approval": false,
+  "prettyref": "main",
+  "repository": {
+    "name": "gaia"
+  },
+  "started": "2026-05-10T11:32:08+10:00",
+  "status": "success",
+  "stopped": "2026-05-10T11:32:49+10:00",
+  "title": "Merge pull request 'post-release v0.3.0: gitignore .claude/, update Homebrew formula' (#257) from fix/v0.3.0-post-release into main",
+  "trigger_event": "push",
+  "trigger_user": {
+    "login": "Gerwood"
+  },
+  "updated": "2026-05-10T11:32:49+10:00",
+  "workflow_id": "mirror.yml"
+}

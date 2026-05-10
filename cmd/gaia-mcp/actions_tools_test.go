@@ -1,48 +1,36 @@
 package main
 
 import (
-	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"sync/atomic"
+	"strings"
 	"testing"
 )
 
-// mcpRunJSON returns a minimal Forgejo workflow-run JSON object for MCP tests.
-func mcpRunJSON(id int64, name, status, conclusion, branch string) map[string]any {
+// mcpActionRun returns a Forgejo v15.0.1-shape ActionRun JSON object
+// (verified against the running instance + the v15.0.1 source tree at
+// code.forgejo.org). Note the wire shape: `index_in_repo` is the
+// user-facing run number, `id` is the internal db ID, `prettyref` is
+// the branch, `commit_sha` is the head SHA, `title` is the head
+// message, `trigger_user.login` is the actor, `created`/`updated`
+// (no `_at` suffix) are timestamps, and there is NO `conclusion`
+// field — Status carries terminal outcome.
+func mcpActionRun(id, indexInRepo int64, status, branch string) map[string]any {
 	return map[string]any{
-		"id":          id,
-		"name":        name,
-		"event":       "push",
-		"status":      status,
-		"conclusion":  conclusion,
-		"head_branch": branch,
-		"head_sha":    "abc1234",
-		"head_commit": map[string]any{"message": "fix: test"},
-		"trigger_actor": map[string]any{
-			"login": "alice",
-		},
-		"created_at": "2026-04-01T10:00:00Z",
-		"updated_at": "2026-04-01T10:05:00Z",
+		"id":            id,
+		"index_in_repo": indexInRepo,
+		"title":         "fix: test",
+		"workflow_id":   "ci.yml",
+		"event":         "push",
+		"status":        status,
+		"prettyref":     branch,
+		"commit_sha":    "abc1234",
+		"trigger_user":  map[string]any{"login": "alice"},
+		"created":       "2026-04-01T10:00:00Z",
+		"updated":       "2026-04-01T10:05:00Z",
+		"html_url":      "https://example.test/o/r/actions/runs/" + map[bool]string{true: "362", false: "0"}[indexInRepo == 362],
 	}
-}
-
-// buildTestZip creates an in-memory ZIP for MCP log tests.
-func buildTestZip(entries map[string]string) []byte {
-	var buf bytes.Buffer
-	w := zip.NewWriter(&buf)
-	for name, content := range entries {
-		f, err := w.Create(name)
-		if err != nil {
-			panic(fmt.Sprintf("buildTestZip Create %s: %v", name, err))
-		}
-		_, _ = f.Write([]byte(content))
-	}
-	_ = w.Close()
-	return buf.Bytes()
 }
 
 func TestActionsListRunsTool(t *testing.T) {
@@ -50,8 +38,8 @@ func TestActionsListRunsTool(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"total_count": 2,
 			"workflow_runs": []map[string]any{
-				mcpRunJSON(42, "CI", "completed", "success", "main"),
-				mcpRunJSON(41, "CI", "completed", "failure", "feature/x"),
+				mcpActionRun(1706, 362, "success", "main"),
+				mcpActionRun(1705, 361, "failure", "feature/x"),
 			},
 		})
 	})
@@ -77,13 +65,33 @@ func TestActionsViewRunToolRequiresRunID(t *testing.T) {
 func TestActionsViewRunTool(t *testing.T) {
 	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/o/r/actions/runs/42":
-			_ = json.NewEncoder(w).Encode(mcpRunJSON(42, "CI", "completed", "success", "main"))
+		case "/repos/o/r/actions/runs":
+			// Resolve step: caller passed the user-facing run
+			// number (362); the provider issues
+			// `?run_number=362&limit=1`.
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"total_count":   1,
+				"workflow_runs": []map[string]any{mcpActionRun(1706, 362, "success", "main")},
+			})
+		case "/repos/o/r/actions/runs/1706":
+			// Fetch by internal ID (1706).
+			_ = json.NewEncoder(w).Encode(mcpActionRun(1706, 362, "success", "main"))
 		case "/repos/o/r/actions/tasks":
+			// WithJobs: tasks endpoint returns ALL repo
+			// tasks (Forgejo v15 doesn't filter by run_id).
+			// The provider filters in-process by RunNumber.
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"total_count": 1,
 				"workflow_runs": []map[string]any{
-					{"id": 100, "name": "build", "status": "completed", "conclusion": "success", "steps": []map[string]any{}},
+					{
+						"id":          100,
+						"name":        "build",
+						"run_number":  362,
+						"status":      "success",
+						"workflow_id": "ci.yml",
+						"created_at":  "2026-04-01T10:00:00Z",
+						"updated_at":  "2026-04-01T10:05:00Z",
+					},
 				},
 			})
 		default:
@@ -94,7 +102,7 @@ func TestActionsViewRunTool(t *testing.T) {
 	pinBuilder(t, p)
 
 	res, err := callTool(context.Background(), handleActionsViewRun, map[string]any{
-		"repo": "o/r", "run_id": float64(42),
+		"repo": "o/r", "run_id": float64(362),
 	})
 	if err != nil || res.IsError {
 		t.Fatalf("err=%v res=%s", err, resultText(t, res))
@@ -108,38 +116,38 @@ func TestActionsGetLogsToolRequiresRunID(t *testing.T) {
 	}
 }
 
-func TestActionsGetLogsTool(t *testing.T) {
+// TestActionsGetLogsToolUnsupported confirms the MCP tool surfaces the
+// unsupported-on-this-server error rather than fabricating an API
+// path. Regression for #262.
+func TestActionsGetLogsToolUnsupported(t *testing.T) {
 	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/repos/o/r/actions/tasks" && r.URL.Query().Get("run_id") == "42":
+		// Resolution + by-id fetch are allowed (the provider
+		// embeds the run's html_url in the error). Anything
+		// else is a fabrication.
+		switch r.URL.Path {
+		case "/repos/o/r/actions/runs":
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"total_count": 1,
-				"workflow_runs": []map[string]any{
-					{"id": 10, "name": "test", "status": "completed", "conclusion": "failure", "steps": []map[string]any{}},
-				},
+				"total_count":   1,
+				"workflow_runs": []map[string]any{mcpActionRun(1706, 362, "failure", "main")},
 			})
-		case r.URL.Path == "/repos/o/r/actions/tasks/10/logs":
-			w.Header().Set("Content-Type", "application/zip")
-			_, _ = w.Write(buildTestZip(map[string]string{
-				"1_Run tests.txt": "FAIL: TestFoo\n",
-			}))
+		case "/repos/o/r/actions/runs/1706":
+			_ = json.NewEncoder(w).Encode(mcpActionRun(1706, 362, "failure", "main"))
 		default:
-			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+			t.Errorf("unexpected path: %q (logs API doesn't exist on Forgejo v15)", r.URL.Path)
 			w.WriteHeader(404)
 		}
 	})
 	pinBuilder(t, p)
 
-	res, err := callTool(context.Background(), handleActionsGetLogs, map[string]any{
-		"repo": "o/r", "run_id": float64(42), "failed_only": true,
+	res, _ := callTool(context.Background(), handleActionsGetLogs, map[string]any{
+		"repo": "o/r", "run_id": float64(362), "failed_only": true,
 	})
-	if err != nil || res.IsError {
-		t.Fatalf("err=%v res=%s", err, resultText(t, res))
+	if !res.IsError {
+		t.Fatal("logs must surface as an MCP error result on Forgejo v15")
 	}
-	// Result should be plain text (not envelope JSON)
 	txt := resultText(t, res)
-	if txt == "" {
-		t.Error("logs must not be empty")
+	if !strings.Contains(txt, "not exposed") {
+		t.Errorf("error must explain the limitation; got %q", txt)
 	}
 }
 
@@ -150,23 +158,23 @@ func TestActionsRerunToolRequiresRunID(t *testing.T) {
 	}
 }
 
-func TestActionsRerunTool(t *testing.T) {
-	postHits := int32(0)
-	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			atomic.AddInt32(&postHits, 1)
-			w.WriteHeader(204)
-		}
+// TestActionsRerunToolUnsupported: rerun is not exposed via the
+// Forgejo v15 API. Provider must return an unsupported error without
+// hitting any endpoint.
+func TestActionsRerunToolUnsupported(t *testing.T) {
+	p, _ := fakeForgeProvider(t, func(_ http.ResponseWriter, r *http.Request) {
+		t.Errorf("rerun tool must not hit the API on Forgejo v15; got %s %s", r.Method, r.URL.Path)
 	})
 	pinBuilder(t, p)
 
-	res, err := callTool(context.Background(), handleActionsRerun, map[string]any{
-		"repo": "o/r", "run_id": float64(42),
+	res, _ := callTool(context.Background(), handleActionsRerun, map[string]any{
+		"repo": "o/r", "run_id": float64(362),
 	})
-	if err != nil || res.IsError {
-		t.Fatalf("err=%v res=%s", err, resultText(t, res))
+	if !res.IsError {
+		t.Fatal("rerun must surface as an MCP error result on Forgejo v15")
 	}
-	if atomic.LoadInt32(&postHits) != 1 {
-		t.Errorf("expected 1 POST; got %d", postHits)
+	txt := resultText(t, res)
+	if !strings.Contains(txt, "not exposed") {
+		t.Errorf("error must explain the limitation; got %q", txt)
 	}
 }
