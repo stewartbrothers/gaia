@@ -85,6 +85,11 @@ $ gaia --repo o/r pr review 42 --state approve --body "ship it"
 $ gaia --repo o/r pr merge 42 --method squash
 ```
 
+When setting up a new project, append the recommended `.gitignore`
+block once: `gaia gitignore >> .gitignore` (or
+`gaia gitignore --check` to audit an existing one). Full list and
+rationale: [`docs/configuration.md`](docs/configuration.md#recommended-gitignore-entries).
+
 ## Command surface (current)
 
 ```

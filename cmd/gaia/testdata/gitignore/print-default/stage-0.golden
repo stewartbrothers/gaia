@@ -1,0 +1,8 @@
+# gaia credentials store (auto-installed by 'gaia auth')
+.gaia/credentials*
+
+# gaia insights DB (Phase 9, defaults to XDG state — catch in-tree overrides)
+.gaia/insights.db
+.gaia/insights.db-wal
+.gaia/insights.db-shm
+.gaia/insights/
