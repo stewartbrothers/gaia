@@ -95,10 +95,18 @@ func buildServer() *server.MCPServer {
 		"gaia-mcp",
 		version.Version,
 		server.WithToolCapabilities(false),
+		// Enable resource capability so MCP clients see resources/list
+		// and resources/read in the initialize response. subscribe and
+		// listChanged are both false: the registered resources are
+		// `go:embed`'d at build time and never change at runtime, so
+		// neither subscriptions nor list-changed notifications are
+		// useful here.
+		server.WithResourceCapabilities(false, false),
 		server.WithRecovery(),
 	)
 	registerSmokeTools(s)
 	registerAllTools(s)
+	registerLearnResource(s)
 	return s
 }
 
