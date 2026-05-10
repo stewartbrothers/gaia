@@ -2,6 +2,10 @@
 
 > **Latest: v0.3.0** — released 2026-05-09. See [`CHANGELOG.md`](CHANGELOG.md) for release notes.
 
+> 🤖 **AI coding agent reading this?** → see [`docs/agent-guide.md`](docs/agent-guide.md).
+> It's the cliff-notes guide to using gaia efficiently and safely. You can also
+> run `gaia learn` once gaia is installed.
+
 Token-trimmed, agent-friendly CLI and MCP server for **Forgejo,
 Gitea, and GitHub**. Built so that LLM-driven agents can interact with
 a forge over either shell tools or the Model Context Protocol without
