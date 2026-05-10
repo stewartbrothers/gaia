@@ -1,0 +1,8 @@
+# existing project entries
+*.log
+node_modules/
+.gaia/credentials*
+.gaia/insights.db
+.gaia/insights.db-wal
+.gaia/insights.db-shm
+.gaia/insights/

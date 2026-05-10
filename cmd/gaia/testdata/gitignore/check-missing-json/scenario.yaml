@@ -1,0 +1,16 @@
+description: |
+  `gaia --format json gitignore --check` returns the standard
+  envelope with both entries (the full recommended set) and missing
+  (just the ones absent from the project's .gitignore). Exit code is
+  still Generic when entries are missing; the envelope is the
+  payload, the exit code is the signal.
+
+stages:
+  - args:
+      - --format
+      - json
+      - gitignore
+      - --check
+      - --path
+      - ${scenarioDir}/.gitignore.fixture
+    exit_code: 1

@@ -1,0 +1,5 @@
+.gitignore missing 4 recommended entries:
+.gaia/insights.db
+.gaia/insights.db-wal
+.gaia/insights.db-shm
+.gaia/insights/

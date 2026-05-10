@@ -1,0 +1,9 @@
+description: |
+  `gaia gitignore` (no flags) prints the embedded recommended block
+  to stdout. Default output is raw text — wrapping in JSON would
+  break the canonical `gaia gitignore >> .gitignore` workflow.
+
+stages:
+  - args:
+      - gitignore
+    exit_code: 0
