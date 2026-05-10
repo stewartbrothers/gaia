@@ -1,13 +1,11 @@
 package forgejo_test
 
 import (
-	"archive/zip"
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,81 +13,40 @@ import (
 	"github.com/stewartbrothers/gaia/core/provider"
 )
 
-// runJSON returns a minimal Forgejo workflow-run JSON object suitable
-// for use in both list and single-get responses.
-func runJSON(id int64, name, event, status, conclusion, branch, sha string) map[string]any {
-	return map[string]any{
-		"id":          id,
-		"name":        name,
-		"event":       event,
-		"status":      status,
-		"conclusion":  conclusion,
-		"head_branch": branch,
-		"head_sha":    sha,
-		"head_commit": map[string]any{
-			"message": "fix: something important",
-		},
-		"trigger_actor": map[string]any{
-			"login": "alice",
-		},
-		"created_at": "2026-04-01T10:00:00Z",
-		"updated_at": "2026-04-01T10:05:00Z",
-	}
+// fixturePath resolves a path under core/forgejo/testdata/actions/.
+// All Actions fixtures are recorded responses from a real Forgejo
+// v15.0.1 instance — never hand-stubbed shapes that "look right".
+// See `core/forgejo/actions.go` for the field-name reference.
+func fixturePath(t *testing.T, name string) string {
+	t.Helper()
+	return filepath.Join("testdata", "actions", name)
 }
 
-func taskJSON(id int64, name, status, conclusion string) map[string]any {
-	return map[string]any{
-		"id":         id,
-		"name":       name,
-		"status":     status,
-		"conclusion": conclusion,
-		"steps": []map[string]any{
-			{
-				"name":       "Set up job",
-				"status":     "completed",
-				"conclusion": conclusion,
-				"number":     1,
-			},
-		},
+// readFixture returns the bytes of a recorded API response.
+func readFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(fixturePath(t, name))
+	if err != nil {
+		t.Fatalf("read fixture %s: %v", name, err)
 	}
-}
-
-// buildZip creates an in-memory ZIP archive with one entry per (name,
-// content) pair. Used to simulate Forgejo's task-log endpoint.
-func buildZip(entries map[string]string) []byte {
-	var buf bytes.Buffer
-	w := zip.NewWriter(&buf)
-	for name, content := range entries {
-		f, err := w.Create(name)
-		if err != nil {
-			panic(fmt.Sprintf("buildZip Create %s: %v", name, err))
-		}
-		if _, err := f.Write([]byte(content)); err != nil {
-			panic(fmt.Sprintf("buildZip Write %s: %v", name, err))
-		}
-	}
-	if err := w.Close(); err != nil {
-		panic(fmt.Sprintf("buildZip Close: %v", err))
-	}
-	return buf.Bytes()
+	return data
 }
 
 // ---------------------------------------------------------------------------
-// TestListWorkflowRuns
+// TestListWorkflowRuns — confirms the user-facing run number (Forgejo's
+// `index_in_repo`) is what surfaces as types.WorkflowRun.ID, and the
+// internal database ID lands in RunID. This is the regression test for
+// #261 — `gaia actions list` previously emitted the internal ID and that
+// number didn't match the UI URL.
 // ---------------------------------------------------------------------------
 
-func TestListWorkflowRuns(t *testing.T) {
+func TestListWorkflowRunsMapsRunNumberAsID(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/repos/o/r/actions/runs" {
 			t.Errorf("path: %q", r.URL.Path)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"total_count": 2,
-			"workflow_runs": []map[string]any{
-				runJSON(42, "CI", "push", "completed", "success", "main", "abc1234"),
-				runJSON(41, "CI", "push", "completed", "failure", "feature/x", "dead000"),
-			},
-		})
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(readFixture(t, "runs-list.json"))
 	}))
 	defer srv.Close()
 
@@ -99,30 +56,48 @@ func TestListWorkflowRuns(t *testing.T) {
 		t.Fatalf("ListWorkflowRuns: %v", err)
 	}
 	if len(runs) != 2 {
-		t.Fatalf("count: %d", len(runs))
+		t.Fatalf("count: got %d, want 2", len(runs))
 	}
-	if runs[0].ID != 42 {
-		t.Errorf("runs[0].ID: got %d, want 42", runs[0].ID)
+	// First run in the recorded fixture: index_in_repo=362, id=1706.
+	if runs[0].ID != 362 {
+		t.Errorf("runs[0].ID (user-facing run number): got %d, want 362", runs[0].ID)
 	}
-	if runs[1].Conclusion != "failure" {
-		t.Errorf("runs[1].Conclusion: got %q, want failure", runs[1].Conclusion)
+	if runs[0].RunID != 1706 {
+		t.Errorf("runs[0].RunID (internal db ID): got %d, want 1706", runs[0].RunID)
 	}
-	if runs[0].Actor.Login != "alice" {
-		t.Errorf("runs[0].Actor.Login: got %q, want alice", runs[0].Actor.Login)
+	// All the other previously-zero fields the bug surfaced. These
+	// being non-empty is the #263 regression test.
+	if runs[0].WorkflowName != "mirror.yml" {
+		t.Errorf("runs[0].WorkflowName: got %q, want mirror.yml", runs[0].WorkflowName)
+	}
+	if runs[0].Branch != "main" {
+		t.Errorf("runs[0].Branch: got %q, want main", runs[0].Branch)
+	}
+	if runs[0].HeadSHA == "" {
+		t.Error("runs[0].HeadSHA must be populated (regression for #263)")
+	}
+	if runs[0].Actor.Login == "" {
+		t.Error("runs[0].Actor.Login must be populated (regression for #263)")
+	}
+	if runs[0].CreatedAt.IsZero() {
+		t.Error("runs[0].CreatedAt must be populated (regression for #263)")
+	}
+	if runs[0].UpdatedAt.IsZero() {
+		t.Error("runs[0].UpdatedAt must be populated (regression for #263)")
+	}
+	if runs[0].HTMLURL == "" {
+		t.Error("runs[0].HTMLURL must be populated for the logs gap workaround")
 	}
 	if page == nil {
 		t.Error("page must not be nil")
 	}
 }
 
-func TestListWorkflowRunsPassesStatusFilter(t *testing.T) {
+func TestListWorkflowRunsPassesStatusAndRefFilters(t *testing.T) {
 	gotQuery := ""
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotQuery = r.URL.RawQuery
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"total_count":   0,
-			"workflow_runs": []map[string]any{},
-		})
+		_, _ = w.Write([]byte(`{"total_count":0,"workflow_runs":[]}`))
 	}))
 	defer srv.Close()
 
@@ -137,94 +112,145 @@ func TestListWorkflowRunsPassesStatusFilter(t *testing.T) {
 	if !strings.Contains(gotQuery, "status=failure") {
 		t.Errorf("query %q must contain status=failure", gotQuery)
 	}
-	if !strings.Contains(gotQuery, "branch=main") {
-		t.Errorf("query %q must contain branch=main", gotQuery)
+	// Forgejo's filter is `ref`, NOT `branch` — verified against
+	// the swagger spec for ListActionRuns.
+	if !strings.Contains(gotQuery, "ref=main") {
+		t.Errorf("query %q must contain ref=main (Forgejo's filter is ref, not branch)", gotQuery)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// TestGetWorkflowRun
+// TestGetWorkflowRun — exercises the run-number → internal-ID resolution
+// step plus the field mapping. The CLI passes the user-facing run number;
+// the provider issues `?run_number=N&limit=1` first, then `runs/{id}`
+// with the resolved internal ID. This pattern is required because the
+// Forgejo API only accepts the internal id in the path.
 // ---------------------------------------------------------------------------
 
-func TestGetWorkflowRun(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/repos/o/r/actions/runs/42" {
-			t.Errorf("path: %q", r.URL.Path)
-		}
-		_ = json.NewEncoder(w).Encode(runJSON(42, "CI", "push", "completed", "success", "main", "abc1234"))
-	}))
-	defer srv.Close()
-
-	p := newTestProvider(t, srv.URL)
-	run, err := p.GetWorkflowRun(context.Background(), "o", "r", 42, provider.GetWorkflowRunOptions{})
-	if err != nil {
-		t.Fatalf("GetWorkflowRun: %v", err)
-	}
-	if run.ID != 42 {
-		t.Errorf("ID: got %d, want 42", run.ID)
-	}
-	if run.WorkflowName != "CI" {
-		t.Errorf("WorkflowName: got %q, want CI", run.WorkflowName)
-	}
-	if run.HeadSHA != "abc1234" {
-		t.Errorf("HeadSHA: got %q, want abc1234", run.HeadSHA)
-	}
-	if run.HeadMessage != "fix: something important" {
-		t.Errorf("HeadMessage: got %q", run.HeadMessage)
-	}
-	if len(run.Jobs) != 0 {
-		t.Errorf("Jobs must be empty without WithJobs; got %d", len(run.Jobs))
-	}
-}
-
-func TestGetWorkflowRunWithJobs(t *testing.T) {
-	taskCalled := false
+func TestGetWorkflowRunResolvesRunNumber(t *testing.T) {
+	resolveCalled := false
+	getCalled := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/o/r/actions/runs/42":
-			_ = json.NewEncoder(w).Encode(runJSON(42, "CI", "push", "completed", "success", "main", "abc1234"))
-		case "/repos/o/r/actions/tasks":
-			taskCalled = true
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"total_count": 1,
-				"workflow_runs": []map[string]any{
-					taskJSON(100, "build", "completed", "success"),
-				},
-			})
+		case "/repos/o/r/actions/runs":
+			// resolution step — caller passed run_number=362
+			if got := r.URL.Query().Get("run_number"); got != "362" {
+				t.Errorf("run_number: got %q, want 362", got)
+			}
+			resolveCalled = true
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(readFixture(t, "runs-list.json"))
+		case "/repos/o/r/actions/runs/1706":
+			// fetch by internal ID
+			getCalled = true
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(readFixture(t, "run-single.json"))
 		default:
-			t.Errorf("unexpected path: %q", r.URL.Path)
+			t.Errorf("unexpected path: %s", r.URL.Path)
 			w.WriteHeader(404)
 		}
 	}))
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
-	run, err := p.GetWorkflowRun(context.Background(), "o", "r", 42, provider.GetWorkflowRunOptions{WithJobs: true})
+	run, err := p.GetWorkflowRun(context.Background(), "o", "r", 362, provider.GetWorkflowRunOptions{})
+	if err != nil {
+		t.Fatalf("GetWorkflowRun: %v", err)
+	}
+	if !resolveCalled {
+		t.Error("must hit resolve step (run_number → internal id)")
+	}
+	if !getCalled {
+		t.Error("must hit by-id step")
+	}
+	if run.ID != 362 {
+		t.Errorf("ID (user-facing): got %d, want 362", run.ID)
+	}
+	if run.RunID != 1706 {
+		t.Errorf("RunID (internal): got %d, want 1706", run.RunID)
+	}
+	if run.WorkflowName != "mirror.yml" {
+		t.Errorf("WorkflowName: got %q, want mirror.yml", run.WorkflowName)
+	}
+	if run.HeadSHA == "" || run.Branch == "" || run.Actor.Login == "" {
+		t.Error("real fields must be populated (regression for #263)")
+	}
+}
+
+func TestGetWorkflowRunUnknownRunNumber(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Empty list -> unresolved run number
+		_, _ = w.Write([]byte(`{"total_count":0,"workflow_runs":[]}`))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	_, err := p.GetWorkflowRun(context.Background(), "o", "r", 99999, provider.GetWorkflowRunOptions{})
+	if got := exitcode.Of(err); got != exitcode.NotFound {
+		t.Errorf("unknown run_number must return NotFound, got %d", got)
+	}
+}
+
+func TestGetWorkflowRunWithJobsFiltersByRunNumber(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/o/r/actions/runs":
+			// Resolution OR jobs-prep: branch on whether
+			// run_number param is present.
+			if r.URL.Query().Get("run_number") == "362" {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write(readFixture(t, "runs-list.json"))
+			} else {
+				w.WriteHeader(400)
+				_, _ = w.Write([]byte(`{"message":"unexpected runs query"}`))
+			}
+		case "/repos/o/r/actions/runs/1706":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(readFixture(t, "run-single.json"))
+		case "/repos/o/r/actions/tasks":
+			// Forgejo v15.0.1: tasks endpoint doesn't filter
+			// by run_id even if you pass it. The fixture
+			// contains a task whose run_number is 362; the
+			// provider filters in-process.
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(readFixture(t, "tasks-list.json"))
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	run, err := p.GetWorkflowRun(context.Background(), "o", "r", 362, provider.GetWorkflowRunOptions{WithJobs: true})
 	if err != nil {
 		t.Fatalf("GetWorkflowRun WithJobs: %v", err)
 	}
-	if !taskCalled {
-		t.Error("WithJobs must call the tasks endpoint")
+	if len(run.Jobs) == 0 {
+		t.Fatal("WithJobs must inline matching tasks; got 0 (filter probably wrong)")
 	}
-	if len(run.Jobs) != 1 {
-		t.Fatalf("Jobs: got %d, want 1", len(run.Jobs))
-	}
-	if run.Jobs[0].ID != 100 {
-		t.Errorf("Jobs[0].ID: got %d, want 100", run.Jobs[0].ID)
-	}
-	if len(run.Jobs[0].Steps) != 1 {
-		t.Errorf("Jobs[0].Steps count: got %d, want 1", len(run.Jobs[0].Steps))
+	for _, j := range run.Jobs {
+		if j.Name == "" {
+			t.Errorf("job name must be populated; got empty for %+v", j)
+		}
 	}
 }
 
 func TestGetWorkflowRunNotFound(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Make resolve return a row, but the by-id call 404s —
+		// simulating a race or a deleted run.
+		if r.URL.Path == "/repos/o/r/actions/runs" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(readFixture(t, "runs-list.json"))
+			return
+		}
 		w.WriteHeader(404)
 	}))
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
-	_, err := p.GetWorkflowRun(context.Background(), "o", "r", 99, provider.GetWorkflowRunOptions{})
+	_, err := p.GetWorkflowRun(context.Background(), "o", "r", 362, provider.GetWorkflowRunOptions{})
 	if got := exitcode.Of(err); got != exitcode.NotFound {
 		t.Errorf("exit code: got %d, want NotFound", got)
 	}
@@ -244,121 +270,65 @@ func TestGetWorkflowRunAuth(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TestGetWorkflowRunLogs
+// TestGetWorkflowRunLogs — Forgejo v15.0.1 has no log endpoint, so the
+// provider returns a clear unsupported error rather than fabricating an
+// API path that always 404s. This is the regression test for #262.
 // ---------------------------------------------------------------------------
 
-func TestGetWorkflowRunLogs(t *testing.T) {
-	// Two tasks: both successful. Logs should be returned for both.
-	tasksHandled := false
-	logsHandled := [2]bool{}
+func TestGetWorkflowRunLogsUnsupported(t *testing.T) {
+	requested := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/repos/o/r/actions/tasks" && r.URL.Query().Get("run_id") == "42":
-			tasksHandled = true
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"total_count": 2,
-				"workflow_runs": []map[string]any{
-					taskJSON(10, "build", "completed", "success"),
-					taskJSON(11, "test", "completed", "failure"),
-				},
-			})
-		case r.URL.Path == "/repos/o/r/actions/tasks/10/logs":
-			logsHandled[0] = true
-			w.Header().Set("Content-Type", "application/zip")
-			_, _ = w.Write(buildZip(map[string]string{
-				"1_Set up job.txt": "step output line 1\nstep output line 2\n",
-			}))
-		case r.URL.Path == "/repos/o/r/actions/tasks/11/logs":
-			logsHandled[1] = true
-			w.Header().Set("Content-Type", "application/zip")
-			_, _ = w.Write(buildZip(map[string]string{
-				"1_Run tests.txt": "FAIL: TestFoo\npanic: nil pointer\n",
-			}))
+		requested++
+		// Resolve step is allowed (we want the html_url for the
+		// error message). Anything else means the provider
+		// fabricated an endpoint.
+		switch r.URL.Path {
+		case "/repos/o/r/actions/runs":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(readFixture(t, "runs-list.json"))
+		case "/repos/o/r/actions/runs/1706":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(readFixture(t, "run-single.json"))
 		default:
-			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
+			t.Errorf("provider must NOT hit %s — Forgejo v15 has no logs API", r.URL.Path)
 			w.WriteHeader(404)
 		}
 	}))
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
-	logs, err := p.GetWorkflowRunLogs(context.Background(), "o", "r", 42, provider.GetWorkflowRunLogsOptions{})
-	if err != nil {
-		t.Fatalf("GetWorkflowRunLogs: %v", err)
+	_, err := p.GetWorkflowRunLogs(context.Background(), "o", "r", 362, provider.GetWorkflowRunLogsOptions{})
+	if err == nil {
+		t.Fatal("GetWorkflowRunLogs must return an unsupported error")
 	}
-	if !tasksHandled {
-		t.Error("must call tasks endpoint")
+	msg := err.Error()
+	// The message must mention the limitation AND the html_url so
+	// agents have an actionable next step.
+	if !strings.Contains(msg, "not exposed") {
+		t.Errorf("error must explain logs are unsupported on this Forgejo version; got %q", msg)
 	}
-	if !logsHandled[0] || !logsHandled[1] {
-		t.Errorf("log calls: %v", logsHandled)
-	}
-	if len(logs) != 2 {
-		t.Fatalf("log count: got %d, want 2", len(logs))
-	}
-}
-
-func TestGetWorkflowRunLogsFailedOnly(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/repos/o/r/actions/tasks" && r.URL.Query().Get("run_id") == "42":
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"total_count": 2,
-				"workflow_runs": []map[string]any{
-					taskJSON(10, "build", "completed", "success"),
-					taskJSON(11, "test", "completed", "failure"),
-				},
-			})
-		case r.URL.Path == "/repos/o/r/actions/tasks/11/logs":
-			w.Header().Set("Content-Type", "application/zip")
-			_, _ = w.Write(buildZip(map[string]string{
-				"1_Run tests.txt": "FAIL: TestFoo\n",
-			}))
-		case r.URL.Path == "/repos/o/r/actions/tasks/10/logs":
-			t.Error("FailedOnly must not fetch logs for successful jobs")
-			w.WriteHeader(500)
-		default:
-			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
-			w.WriteHeader(404)
-		}
-	}))
-	defer srv.Close()
-
-	p := newTestProvider(t, srv.URL)
-	logs, err := p.GetWorkflowRunLogs(context.Background(), "o", "r", 42, provider.GetWorkflowRunLogsOptions{FailedOnly: true})
-	if err != nil {
-		t.Fatalf("GetWorkflowRunLogs FailedOnly: %v", err)
-	}
-	if len(logs) != 1 {
-		t.Fatalf("log count: got %d, want 1 (failed only)", len(logs))
-	}
-	if logs[0].JobName != "test" {
-		t.Errorf("JobName: got %q, want test", logs[0].JobName)
-	}
-	if len(logs[0].Lines) == 0 {
-		t.Error("Lines must not be empty")
+	if !strings.Contains(msg, "https://") {
+		t.Errorf("error must include the run's html_url so callers can grab logs manually; got %q", msg)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// TestRerunWorkflowRun
+// TestRerunWorkflowRun — Forgejo v15 also doesn't expose rerun. Same
+// pattern: clean unsupported error rather than fabricated API path.
 // ---------------------------------------------------------------------------
 
-func TestRerunWorkflowRun(t *testing.T) {
-	postPath := ""
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Errorf("method: got %q, want POST", r.Method)
-		}
-		postPath = r.URL.Path
-		w.WriteHeader(204)
+func TestRerunWorkflowRunUnsupported(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		t.Errorf("RerunWorkflowRun must not hit any API endpoint; got request to %s", r.URL.Path)
 	}))
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
-	if err := p.RerunWorkflowRun(context.Background(), "o", "r", 42); err != nil {
-		t.Fatalf("RerunWorkflowRun: %v", err)
+	err := p.RerunWorkflowRun(context.Background(), "o", "r", 362)
+	if err == nil {
+		t.Fatal("RerunWorkflowRun must return an unsupported error on Forgejo v15")
 	}
-	if postPath != "/repos/o/r/actions/runs/42/rerun" {
-		t.Errorf("POST path: got %q", postPath)
+	if !strings.Contains(err.Error(), "not exposed") {
+		t.Errorf("error must explain rerun is unsupported; got %q", err)
 	}
 }

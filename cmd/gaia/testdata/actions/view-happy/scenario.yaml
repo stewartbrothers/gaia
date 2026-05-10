@@ -1,23 +1,51 @@
 description: |
-  `gaia actions view <run-id>` returns the run summary without jobs by default.
+  `gaia actions view <run-id>` returns the run summary without jobs by
+  default. The CLI passes the user-facing run number; the provider
+  resolves it to Forgejo's internal ID via `?run_number=N&limit=1`,
+  then fetches `/runs/{internal-id}` for the full record.
 
 mocks:
   - method: GET
-    path: /repos/o/r/actions/runs/42
+    path: /repos/o/r/actions/runs
+    query: "limit=1&run_number=362"
     status: 200
     body: |
       {
-        "id": 42,
-        "name": "CI",
+        "total_count": 1,
+        "workflow_runs": [
+          {
+            "id": 1706,
+            "index_in_repo": 362,
+            "title": "fix: something important",
+            "workflow_id": "ci.yml",
+            "event": "push",
+            "status": "success",
+            "prettyref": "main",
+            "commit_sha": "abc1234",
+            "trigger_user": {"login": "alice"},
+            "created": "2026-04-10T10:00:00Z",
+            "updated": "2026-04-10T10:05:00Z",
+            "html_url": "https://example.test/o/r/actions/runs/362"
+          }
+        ]
+      }
+  - method: GET
+    path: /repos/o/r/actions/runs/1706
+    status: 200
+    body: |
+      {
+        "id": 1706,
+        "index_in_repo": 362,
+        "title": "fix: something important",
+        "workflow_id": "ci.yml",
         "event": "push",
-        "status": "completed",
-        "conclusion": "success",
-        "head_branch": "main",
-        "head_sha": "abc1234",
-        "head_commit": {"message": "fix: something important"},
-        "trigger_actor": {"login": "alice"},
-        "created_at": "2026-04-10T10:00:00Z",
-        "updated_at": "2026-04-10T10:05:00Z"
+        "status": "success",
+        "prettyref": "main",
+        "commit_sha": "abc1234",
+        "trigger_user": {"login": "alice"},
+        "created": "2026-04-10T10:00:00Z",
+        "updated": "2026-04-10T10:05:00Z",
+        "html_url": "https://example.test/o/r/actions/runs/362"
       }
 
 stages:
@@ -30,7 +58,7 @@ stages:
       - o/r
       - actions
       - view
-      - "42"
+      - "362"
     env:
       FORGEJO_TOKEN: TEST
     exit_code: 0

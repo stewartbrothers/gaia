@@ -1,6 +1,13 @@
 description: |
   `gaia actions list` returns recent workflow runs newest first.
 
+  The mock body uses Forgejo's real ActionRun JSON shape (verified
+  against Forgejo v15.0.1's swagger + source): `index_in_repo` is the
+  user-facing run number that surfaces as ID, `id` is the internal db
+  ID that surfaces as RunID, `prettyref` is the branch, `commit_sha`
+  is the head SHA, `title` is the head message, `trigger_user.login`
+  is the actor, `created`/`updated` (no `_at` suffix) are timestamps.
+
 mocks:
   - method: GET
     path: /repos/o/r/actions/runs
@@ -10,30 +17,32 @@ mocks:
         "total_count": 2,
         "workflow_runs": [
           {
-            "id": 42,
-            "name": "CI",
+            "id": 1706,
+            "index_in_repo": 362,
+            "title": "fix: something important",
+            "workflow_id": "ci.yml",
             "event": "push",
-            "status": "completed",
-            "conclusion": "success",
-            "head_branch": "main",
-            "head_sha": "abc1234",
-            "head_commit": {"message": "fix: something important"},
-            "trigger_actor": {"login": "alice"},
-            "created_at": "2026-04-10T10:00:00Z",
-            "updated_at": "2026-04-10T10:05:00Z"
+            "status": "success",
+            "prettyref": "main",
+            "commit_sha": "abc1234",
+            "trigger_user": {"login": "alice"},
+            "created": "2026-04-10T10:00:00Z",
+            "updated": "2026-04-10T10:05:00Z",
+            "html_url": "https://example.test/o/r/actions/runs/362"
           },
           {
-            "id": 41,
-            "name": "CI",
+            "id": 1705,
+            "index_in_repo": 361,
+            "title": "wip",
+            "workflow_id": "ci.yml",
             "event": "push",
-            "status": "completed",
-            "conclusion": "failure",
-            "head_branch": "feature/x",
-            "head_sha": "dead0000",
-            "head_commit": {"message": "wip"},
-            "trigger_actor": {"login": "bob"},
-            "created_at": "2026-04-10T09:00:00Z",
-            "updated_at": "2026-04-10T09:10:00Z"
+            "status": "failure",
+            "prettyref": "feature/x",
+            "commit_sha": "dead0000",
+            "trigger_user": {"login": "bob"},
+            "created": "2026-04-10T09:00:00Z",
+            "updated": "2026-04-10T09:10:00Z",
+            "html_url": "https://example.test/o/r/actions/runs/361"
           }
         ]
       }

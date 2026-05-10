@@ -1,29 +1,58 @@
 description: |
-  `gaia actions logs <run-id> --format json` returns the per-job log structure.
-  Uses --failed-only to exercise the filtering path.
+  `gaia actions logs <run-id>` is currently unsupported on Forgejo
+  v15.0.1 — the API does not expose Actions logs (verified against the
+  swagger spec + source). The provider returns a clear unsupported
+  error with the run's UI URL embedded so callers can grab logs
+  manually. This is the regression test for #262.
+
+  The provider does still resolve the run number → internal id (so
+  it can include the html_url in the error message), so the run
+  lookup mocks must be in place even though the logs endpoint is
+  never reached.
 
 mocks:
   - method: GET
-    path: /repos/o/r/actions/tasks
+    path: /repos/o/r/actions/runs
+    query: "limit=1&run_number=362"
     status: 200
     body: |
       {
         "total_count": 1,
         "workflow_runs": [
           {
-            "id": 10,
-            "name": "test",
-            "status": "completed",
-            "conclusion": "failure",
-            "steps": []
+            "id": 1706,
+            "index_in_repo": 362,
+            "title": "fix: something important",
+            "workflow_id": "ci.yml",
+            "event": "push",
+            "status": "failure",
+            "prettyref": "main",
+            "commit_sha": "abc1234",
+            "trigger_user": {"login": "alice"},
+            "created": "2026-04-10T10:00:00Z",
+            "updated": "2026-04-10T10:05:00Z",
+            "html_url": "https://example.test/o/r/actions/runs/362"
           }
         ]
       }
   - method: GET
-    path: /repos/o/r/actions/tasks/10/logs
+    path: /repos/o/r/actions/runs/1706
     status: 200
-    content_type: application/zip
-    body_file: task10.zip
+    body: |
+      {
+        "id": 1706,
+        "index_in_repo": 362,
+        "title": "fix: something important",
+        "workflow_id": "ci.yml",
+        "event": "push",
+        "status": "failure",
+        "prettyref": "main",
+        "commit_sha": "abc1234",
+        "trigger_user": {"login": "alice"},
+        "created": "2026-04-10T10:00:00Z",
+        "updated": "2026-04-10T10:05:00Z",
+        "html_url": "https://example.test/o/r/actions/runs/362"
+      }
 
 stages:
   - args:
@@ -33,12 +62,12 @@ stages:
       - ${apiURL}
       - --repo
       - o/r
-      - --format
-      - json
       - actions
       - logs
-      - "42"
-      - --failed-only
+      - "362"
     env:
       FORGEJO_TOKEN: TEST
-    exit_code: 0
+    # exit_code 1 = Generic. The unsupported-on-this-server error
+    # uses Generic rather than NotFound so agents distinguish "missing
+    # capability" from "missing run".
+    exit_code: 1

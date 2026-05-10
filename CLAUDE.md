@@ -250,7 +250,12 @@ tight when scripting):
 - Releases: `list | view | create | edit | delete | publish`
 - Search: `gaia search <query>`
 - Webhooks: `list | view | create | edit | delete | deliveries | redeliver | test`
-- Actions: `list | view | logs [--failed-only] | rerun`
+- Actions: `list | view [--with-jobs] | logs | rerun`. Run IDs accept the
+  user-facing run number from the UI URL (e.g. `/actions/runs/362` →
+  `gaia actions view 362`); the provider resolves to Forgejo's internal
+  ID transparently. `logs` and `rerun` currently return an unsupported
+  error on Forgejo v15.0.1 because the API doesn't expose those
+  endpoints (gaps #266, #267) — use the run's `html_url` instead.
 
 For read paths, gaia is consistently smaller (often 5–25×, sometimes
 ~400× with `--fields`) than the raw API response. Headline summary:
