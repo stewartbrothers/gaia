@@ -374,6 +374,11 @@ out to `gaia`. Same envelope shape, same trust tagging, no process
 spawn cost per call. The `_trust: "external"` markers carry through
 identically. See [`docs/mcp.md`](mcp.md).
 
+`gaia-mcp` exposes this guide as the `gaia://learn` MCP resource
+(MIME `text/markdown`) — same `go:embed` source as `gaia learn`, so
+agents driving the server can fetch the briefing via `resources/read`
+without shelling out.
+
 ## Where to file gaps
 
 When the gaia-first protocol returns NO at step 2, file an issue at

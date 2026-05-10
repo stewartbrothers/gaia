@@ -97,8 +97,8 @@ func buildServer() *server.MCPServer {
 		server.WithToolCapabilities(false),
 		// Enable resource capability so MCP clients see resources/list
 		// and resources/read in the initialize response. subscribe and
-		// listChanged are both false: the gitignore resource is
-		// `go:embed`'d at build time and never changes at runtime, so
+		// listChanged are both false: the registered resources are
+		// `go:embed`'d at build time and never change at runtime, so
 		// neither subscriptions nor list-changed notifications are
 		// useful here.
 		server.WithResourceCapabilities(false, false),
@@ -107,6 +107,7 @@ func buildServer() *server.MCPServer {
 	registerSmokeTools(s)
 	registerAllTools(s)
 	registerGitignoreResource(s)
+	registerLearnResource(s)
 	return s
 }
 
