@@ -10,6 +10,105 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-11
+
+New top-level `gaia gitignore` command, two MCP resources (`gaia://learn`
+and `gaia://gitignore`), and a substantial Forgejo Actions provider fix
+that aligns IDs with what the UI shows.
+
+### Breaking
+
+- **`gaia actions list|view`**: the `id` field is now the **user-facing
+  run number** (matching the UI URL — e.g. `/actions/runs/362`) rather
+  than the internal database task ID. The internal ID is exposed as
+  `run_id` for callers that need it for follow-up API calls. Agents
+  that hard-coded the previous `id` values must re-read after upgrading.
+  Closes #261 / #263, in #269.
+
+### Added
+
+- **`gaia gitignore`** — new top-level command. `gaia gitignore` prints
+  the recommended `.gitignore` block for any project that uses gaia
+  (covers `.gaia/credentials*` plus the Phase 9 insights DB siblings).
+  `gaia gitignore --check` audits an existing `.gitignore` and exits
+  non-zero with the list of missing entries — pair with `--quiet` for
+  CI gating. The same content is exposed as the MCP resource
+  `gaia://gitignore` (MIME `text/plain`). Closes #249, in #273.
+- **`gaia://learn`** MCP resource — exposes the agent guide
+  (`docs/agent-guide.md`) as `text/markdown` at `gaia://learn`. Agents
+  driving `gaia-mcp` (stdio or streamable HTTP) can `resources/read`
+  the agent-onboarding briefing without shelling out to the CLI.
+  Closes #245, in #274.
+
+### Changed
+
+- **`gaia actions logs|rerun`**: rather than calling endpoints that
+  don't exist on Forgejo v15 (and 404'ing confusingly), these now
+  return a clear "endpoint not supported on this Forgejo version"
+  error that includes the run's HTML URL so callers have an
+  actionable next step. Sibling issues #266 (logs) and #267 (rerun)
+  track upstream Forgejo for when the API exposes these. In #269.
+
+### Fixed
+
+- **`gaia actions view`**: most fields (`workflow_name`, `branch`,
+  `head_sha`, `actor`, timestamps) were returning zero-valued because
+  the struct tags didn't match Forgejo's wire shape. Re-grounded the
+  whole `core/forgejo/actions.go` mapping against the Forgejo v15.0.1
+  Swagger + source + live curl. Closes #263, in #269.
+- **Release workflow**: `Dockerfile` `GO_VERSION` default now threads
+  from the `setup-go` input rather than being hardcoded, preventing
+  Go-version skew when the workflow updates Go but the Dockerfile
+  didn't get bumped in lockstep. Closes #259, in #264.
+- **Release workflow**: dropped `--skip=publish` from
+  `goreleaser release` so the Homebrew tap auto-bumps. The Forgejo
+  release record is still opted out via `release: disable: true` in
+  `.goreleaser.yml` — `gaia release publish` creates the release
+  record after artifacts are built. Closes #260, in #265.
+
+### Tests
+
+- Anti-rot test for `docs/agent-guide.md` command coverage —
+  `TestAgentGuideMentionsEveryTopLevelCommand` fails if a new
+  top-level `gaia` command merges without at least a substring
+  mention in the agent guide. Tolerates the documented baseline
+  (tracked by #271) until each remaining command is covered;
+  removing the last entry from `knownBaselineMissing` and deleting
+  the slice + skip block becomes the long-term unblock. Closes
+  #246, in #272.
+
+### Docs
+
+- `README.md` — added a top-of-page callout pointing first-time
+  readers (especially external AI agents) at `docs/agent-guide.md`.
+  Closes #244, in #268.
+- `CLAUDE.md` — close-the-loop discipline now explicitly requires
+  `docs/agent-guide.md` updates whenever a new top-level command
+  lands or an existing one changes meaningfully. The CI anti-rot
+  test (above) gates presence; humans gate quality. Closes #248,
+  in #270.
+- `docs/configuration.md` — substantial restructure. Now leads
+  with the project-local `.gaia/config.yaml` layer (the recommended
+  pattern for `default_profile` / `default_repo`), covers the
+  global layer second as "profile definitions only", and adds a
+  new **Multi-project safety** section documenting the
+  contamination footgun (a global `default_profile` applies to
+  every `gaia` call from any cwd, silently misrouting calls when
+  the cwd's git remote points at a different forge). New
+  per-field where-to-pin reference table, new repo-resolution
+  chain documentation (`--repo` → git-remote autodetect →
+  project `default_repo` → error). Closes #275, in #276.
+- `docs/auth.md` — corrected precedence wording (was reading
+  low-to-high) and added a callout linking to the new
+  multi-project safety section in #276.
+
+### Internal
+
+- Post-v0.3.0 housekeeping: `.claude/` worktrees directory added
+  to `.gitignore`; `Formula/gaia.rb` bumped to v0.3.0 (the
+  Homebrew formula auto-bump pipeline lands in the same release
+  via #265, but the v0.3.0 cut predated the fix). In #257.
+
 ## [0.3.0] — 2026-05-09
 
 Phase 4 complete. New `gaia actions` command group, cache-backed search,
@@ -556,6 +655,8 @@ Pre-v1.0, expect minor-bump churn at the public surface.
 - OS keychain backing for `credentials.yaml` (vs current 0600
   plaintext): `gh` does this, gaia doesn't yet.
 
-[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/stewartbrothers/gaia/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/stewartbrothers/gaia/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/stewartbrothers/gaia/releases/tag/v0.2.0
 [0.1.0]: https://github.com/stewartbrothers/gaia/releases/tag/v0.1.0
