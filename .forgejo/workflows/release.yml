@@ -80,7 +80,8 @@ jobs:
           fi
           echo "::notice::Tag $TAG resolves to commit $tag_sha on main — proceeding."
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
+      - id: setup-go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
         with:
           # Match CI's go-version. code.gitea.io/sdk/gitea v0.24.1
           # requires go1.26; bump CI + release together.
@@ -282,10 +283,19 @@ jobs:
           docker buildx rm multiarch 2>/dev/null || true
           docker buildx create --name multiarch --driver docker-container --use
 
+          # GO_VERSION is threaded from the setup-go step's resolved
+          # go-version output so the Dockerfile's build stage uses the
+          # same toolchain CI/the release workflow has standardised on.
+          # Without this build-arg the Dockerfile default (which can
+          # drift behind go.mod) is used and `go mod download` fails
+          # with "go.mod requires go >= X.Y" the first time the
+          # workflow's go-version is bumped past the Dockerfile default.
+          # See #259.
           if ! docker buildx build \
               --platform linux/amd64,linux/arm64 \
               --build-arg "VERSION=${TAG}" \
               --build-arg "COMMIT=${commit_sha}" \
+              --build-arg "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" \
               -t "ghcr.io/stewartbrothers/gaia-mcp:${TAG}" \
               -t "ghcr.io/stewartbrothers/gaia-mcp:latest" \
               --push \
