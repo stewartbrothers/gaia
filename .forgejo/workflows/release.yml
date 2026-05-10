@@ -15,8 +15,14 @@ name: Release
 #   3. shell-installs goreleaser (third-party actions don't mirror
 #      to code.forgejo.org; install via go install pinned to a
 #      specific version that matches local dev)
-#   4. runs goreleaser with --skip=publish (we publish ourselves);
-#      the brews block (#49) auto-pushes the Homebrew formula bump
+#   4. runs goreleaser. .goreleaser.yml has `release: disable: true`
+#      so goreleaser does NOT create or populate a Forgejo release
+#      record (we do that ourselves in step 6 via `gaia release
+#      publish`). The publish phase still runs, however, because
+#      that's the phase the `brews:` block uses to push the
+#      Formula/gaia.rb bump commit to this repo. Skipping the
+#      publish phase wholesale (e.g. `--skip=publish`) silently
+#      disables the brew tap auto-bump too — see #260.
 #   5. builds gaia (so we can dogfood it for the upload step)
 #   6. runs `gaia release publish` to attach artifacts to the
 #      Forgejo release (creates the release record if absent)
@@ -131,13 +137,25 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$(go env GOPATH)/bin:$PATH"
-          # Always skip publish (gaia release publish handles upload).
-          # Conditionally also skip homebrew when the tap secret is
-          # absent — see brew_gate step.
-          skip_list="publish,${{ steps.brew_gate.outputs.skip }}"
+          # No `--skip=publish` here. goreleaser v2's publish phase
+          # contains the brew tap pusher (brew.Pipe{} is registered
+          # under publishers); skipping the phase wholesale silently
+          # disables the Homebrew formula auto-bump. The Forgejo
+          # release record is already opted-out via
+          # `release: disable: true` in .goreleaser.yml, so dropping
+          # `--skip=publish` does NOT cause goreleaser to fight
+          # `gaia release publish` over the release record. See #260.
+          # The only conditional skip is `homebrew` when the tap
+          # secret is absent — see brew_gate step above.
+          skip_list="${{ steps.brew_gate.outputs.skip }}"
           # Trim trailing comma if no extra skips.
           skip_list="${skip_list%,}"
-          if ! goreleaser release --clean --skip="$skip_list" 2> "$RUNNER_TEMP/goreleaser.stderr"; then
+          if [ -n "$skip_list" ]; then
+            goreleaser_skip_args=(--skip="$skip_list")
+          else
+            goreleaser_skip_args=()
+          fi
+          if ! goreleaser release --clean "${goreleaser_skip_args[@]}" 2> "$RUNNER_TEMP/goreleaser.stderr"; then
             echo "::error::goreleaser failed — see stderr below."
             sed 's/^/::error::  /' "$RUNNER_TEMP/goreleaser.stderr"
             exit 1
