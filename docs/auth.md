@@ -87,10 +87,16 @@ With this committed, every contributor working in the checkout gets
 token (from env or `gaia auth ...`), but everything else is
 inferred.
 
-The layering order is **project > global > env > flags**; project
+The layering order is **flags > env > project > global**; project
 config can shadow a contributor's global default for one repo (e.g.,
 "in this checkout, use the corporate Forgejo, not my personal
 GitHub").
+
+> **Multi-project safety:** keep the global config to profile
+> *definitions* only — pin `default_profile` and `default_repo`
+> in each project's `.gaia/config.yaml`, never in the global file.
+> See [`docs/configuration.md`](configuration.md#multi-project-safety)
+> for the full rationale and checklist.
 
 ## Permissions
 
