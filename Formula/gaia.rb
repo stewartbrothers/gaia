@@ -17,27 +17,27 @@ class Gaia < Formula
   desc "Token-trimmed CLI + MCP server for Forgejo and GitHub"
   homepage "https://github.com/stewartbrothers/gaia"
   license "Apache-2.0"
-  version "0.2.8"
+  version "0.3.0"
 
   on_macos do
     on_arm do
-      url "https://github.com/stewartbrothers/gaia/releases/download/v0.2.8/gaia_v0.2.8_darwin_arm64.tar.gz"
-      sha256 "41e8d3ea837c807710342fa46f226b6f90ce307fdc54b1931378da116df163b7"
+      url "https://github.com/stewartbrothers/gaia/releases/download/v0.3.0/gaia_v0.3.0_darwin_arm64.tar.gz"
+      sha256 "bd5a1952330e62009cc6c3e7f629dfde6ea542ff7aaa5254dab95a467f962ad8"
     end
     on_intel do
-      url "https://github.com/stewartbrothers/gaia/releases/download/v0.2.8/gaia_v0.2.8_darwin_x86_64.tar.gz"
-      sha256 "6a8e8e17143750c966bd3a891866e284f78c3013a34c4145fa2a7fc6a6d0fdd5"
+      url "https://github.com/stewartbrothers/gaia/releases/download/v0.3.0/gaia_v0.3.0_darwin_x86_64.tar.gz"
+      sha256 "04b50fdb28c27a6d0cee840bc3f96283acdcd4deb47ba08dbdf5b2b1a4e1cc9c"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/stewartbrothers/gaia/releases/download/v0.2.8/gaia_v0.2.8_linux_arm64.tar.gz"
-      sha256 "dd9bfb816a3579d27a5b67fdbdffc13888a0a9d03b8ccf6bd16f1bcdff10f232"
+      url "https://github.com/stewartbrothers/gaia/releases/download/v0.3.0/gaia_v0.3.0_linux_arm64.tar.gz"
+      sha256 "38c2c168a0f0aaef0735fa622df56ac6e5133187681703b9772963ccb41d559d"
     end
     on_intel do
-      url "https://github.com/stewartbrothers/gaia/releases/download/v0.2.8/gaia_v0.2.8_linux_x86_64.tar.gz"
-      sha256 "2bd16c8270f652a69d07b428107ad7e1e82f1e1268efa671bdedf3aaf5710833"
+      url "https://github.com/stewartbrothers/gaia/releases/download/v0.3.0/gaia_v0.3.0_linux_x86_64.tar.gz"
+      sha256 "e48807a26902c0234018b6a33f0303d1f29b413a6d5647abeee86356c6df6cb9"
     end
   end
 
