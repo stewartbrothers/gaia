@@ -72,6 +72,13 @@ These are hard rules. Apply them on every change.
      exists and can use it rather than filing a duplicate gap issue.
    - **Add the bench measurement** to the relevant `bench/dogfood-<resource>.md`
      file so there is evidence the command trims output vs. raw API.
+   - **Update the agent guide** — `docs/agent-guide.md` is the canonical
+     public-facing primer. If the PR adds a new top-level command,
+     meaningfully changes an existing one, or alters the gaia-first
+     protocol, update the guide so external agents picking up gaia
+     cold see the current behaviour. The CI anti-rot test enforces
+     *presence* of the command name; humans/contributors are responsible
+     for *meaningful* coverage.
 
    The rationale: the gaia-first protocol is only as good as the coverage
    list. A command that exists but isn't listed will keep generating

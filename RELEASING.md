@@ -139,13 +139,18 @@ Either path triggers the `.forgejo/workflows/release.yml` workflow.
    the commit graph and refuses to release from a feature-branch
    tag. Caught early so the goreleaser run doesn't burn 5 minutes
    on artifacts that can't ship.
-3. `actions/setup-go@v5` with Go 1.25.
+3. `actions/setup-go@v5` with Go 1.26.
 4. Shell-installs `goreleaser/v2@v2.4.5` (third-party actions
    don't mirror to code.forgejo.org, so we install via `go install`).
-5. Runs `goreleaser release --clean --skip=publish`. The `brews:`
-   block (#49) writes a commit bumping `Formula/gaia.rb` to the
-   new tag's url + sha256 and pushes it to `main` (gated on
-   `GORELEASER_TAP_DEPLOY_KEY` being configured).
+5. Runs `goreleaser release --clean`. The `brews:` block (#49)
+   writes a commit bumping `Formula/gaia.rb` to the new tag's url
+   + sha256 and pushes it to `main` (gated on
+   `GORELEASER_TAP_DEPLOY_KEY` being configured). The Forgejo
+   release record itself is opted out via `release: disable: true`
+   in `.goreleaser.yml` — `gaia release publish` (step 7) creates
+   it. `--skip=publish` is **not** passed because that flag would
+   also disable the brew tap push (the brew pipe runs in
+   goreleaser's publish phase). See #260.
 6. Builds `bin/gaia` from this tag's source.
 7. Runs `gaia release publish "${TAG}" --asset 'dist/*' --notes-from CHANGELOG.md`,
    which creates the release record (Forgejo doesn't auto-create
@@ -175,8 +180,11 @@ Local recovery for the rare case the workflow can't be re-run:
 ```bash
 git checkout vX.Y.Z
 make release-snapshot              # NB: this writes -snapshot+SHA tags
-# — for a real release, run goreleaser without --snapshot:
-goreleaser release --clean --skip=publish
+# — for a real release, run goreleaser without --snapshot.
+# Don't pass --skip=publish: that also skips the brew tap push.
+# `release: disable: true` in .goreleaser.yml already opts out of
+# the Forgejo release-record creation.
+goreleaser release --clean
 gaia release publish vX.Y.Z \
   --asset 'dist/*.tar.gz' \
   --asset 'dist/*.zip' \
