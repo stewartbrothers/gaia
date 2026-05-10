@@ -2,6 +2,10 @@
 
 > **Latest: v0.3.0** — released 2026-05-09. See [`CHANGELOG.md`](CHANGELOG.md) for release notes.
 
+> 🤖 **AI coding agent reading this?** → see [`docs/agent-guide.md`](docs/agent-guide.md).
+> It's the cliff-notes guide to using gaia efficiently and safely. You can also
+> run `gaia learn` once gaia is installed.
+
 Token-trimmed, agent-friendly CLI and MCP server for **Forgejo,
 Gitea, and GitHub**. Built so that LLM-driven agents can interact with
 a forge over either shell tools or the Model Context Protocol without
@@ -80,6 +84,11 @@ $ gaia --repo o/r pr create --title "feat: ..." --head feature/x --base main
 $ gaia --repo o/r pr review 42 --state approve --body "ship it"
 $ gaia --repo o/r pr merge 42 --method squash
 ```
+
+When setting up a new project, append the recommended `.gitignore`
+block once: `gaia gitignore >> .gitignore` (or
+`gaia gitignore --check` to audit an existing one). Full list and
+rationale: [`docs/configuration.md`](docs/configuration.md#recommended-gitignore-entries).
 
 ## Command surface (current)
 

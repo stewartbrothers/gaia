@@ -1,0 +1,14 @@
+description: |
+  `gaia gitignore --check` flags missing entries. Exit code is
+  Generic (1) — not Usage — so a CI script can branch on $? to mean
+  "the project is out of date" rather than "the operator typed it
+  wrong". Output lists each missing entry one per line, in
+  recommended.txt order.
+
+stages:
+  - args:
+      - gitignore
+      - --check
+      - --path
+      - ${scenarioDir}/.gitignore.fixture
+    exit_code: 1

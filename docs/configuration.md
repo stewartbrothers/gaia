@@ -312,6 +312,64 @@ gaia --profile github --repo octocat/hello-world pr view 42
 Don't edit the global config to switch forges — pass `--profile`
 (or `GAIA_PROFILE=github`) for the single call.
 
+## Recommended `.gitignore` entries
+
+Every project that uses `gaia` should keep a small set of paths out
+of version control. The exact block is shipped as `gaia gitignore`
+so there is one source of truth — the docs you are reading and the
+CLI command read the same `//go:embed`'d
+`internal/gitignore/recommended.txt`.
+
+```
+# gaia credentials store (auto-installed by 'gaia auth')
+.gaia/credentials*
+
+# gaia insights DB (Phase 9, defaults to XDG state — catch in-tree overrides)
+.gaia/insights.db
+.gaia/insights.db-wal
+.gaia/insights.db-shm
+.gaia/insights/
+```
+
+| Entry | Why |
+|---|---|
+| `.gaia/credentials*` | `gaia auth ...` writes the credential file here. The auth command auto-installs this entry on first use, but the line is documented explicitly so a project that hand-rolls the credentials file (or copies it from another checkout) doesn't accidentally commit a token. |
+| `.gaia/insights.db`, `.gaia/insights.db-wal`, `.gaia/insights.db-shm` | Phase 9 (`gaia insights`) lands a SQLite-backed local-usage store. Defaults to XDG state, but operators who override the location into the working tree need every SQLite glob sibling gitignored. The `-wal` / `-shm` files are write-ahead log + shared memory; without them gitignored, they slip into commits. |
+| `.gaia/insights/` | Reserved directory in case a future override wants to scope insights state under a directory rather than a single DB file. |
+
+`.gaia/config.yaml` and `.gaia/chains/*.yaml` are deliberately **not**
+in the list — those are committable project artefacts (non-secret
+defaults and chain definitions). Adding them to the recommended
+block would push correct project state out of version control.
+
+### Append once
+
+```bash
+gaia gitignore >> .gitignore
+```
+
+### Audit existing projects
+
+```bash
+gaia gitignore --check
+```
+
+Exit code `0` if every recommended entry is present; non-zero
+otherwise, with the list of missing entries printed to stdout. Pair
+with `--quiet` for CI gating that wants the exit code only:
+
+```bash
+gaia gitignore --check --quiet || {
+  echo ".gitignore is out of date; run 'gaia gitignore >> .gitignore'"
+  exit 1
+}
+```
+
+The same content is exposed to MCP clients as a static resource at
+`gaia://gitignore` (MIME type `text/plain`). Agents driving
+`gaia-mcp` can `resources/read` the URI to pull the recommended
+block without shelling out.
+
 ## See also
 
 - [`docs/auth.md`](auth.md) — credentials store, token sourcing,

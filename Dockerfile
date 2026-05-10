@@ -12,7 +12,7 @@
 # deliberate: a `docker run gaia-mcp` with no further config fails
 # loud, never silently exposes an unauthenticated daemon.
 
-ARG GO_VERSION=1.25
+ARG GO_VERSION=1.26
 FROM golang:${GO_VERSION}-alpine AS build
 
 WORKDIR /src

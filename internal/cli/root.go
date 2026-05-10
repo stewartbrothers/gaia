@@ -82,6 +82,7 @@ auth setup.`,
 
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newLearnCmd(flags))
+	root.AddCommand(newGitignoreCmd(flags))
 	root.AddCommand(newWhoamiCmd(flags))
 	root.AddCommand(newServerCmd(flags))
 	root.AddCommand(newAuthCmd(flags))

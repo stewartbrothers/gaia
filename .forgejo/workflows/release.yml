@@ -15,8 +15,14 @@ name: Release
 #   3. shell-installs goreleaser (third-party actions don't mirror
 #      to code.forgejo.org; install via go install pinned to a
 #      specific version that matches local dev)
-#   4. runs goreleaser with --skip=publish (we publish ourselves);
-#      the brews block (#49) auto-pushes the Homebrew formula bump
+#   4. runs goreleaser. .goreleaser.yml has `release: disable: true`
+#      so goreleaser does NOT create or populate a Forgejo release
+#      record (we do that ourselves in step 6 via `gaia release
+#      publish`). The publish phase still runs, however, because
+#      that's the phase the `brews:` block uses to push the
+#      Formula/gaia.rb bump commit to this repo. Skipping the
+#      publish phase wholesale (e.g. `--skip=publish`) silently
+#      disables the brew tap auto-bump too — see #260.
 #   5. builds gaia (so we can dogfood it for the upload step)
 #   6. runs `gaia release publish` to attach artifacts to the
 #      Forgejo release (creates the release record if absent)
@@ -80,7 +86,8 @@ jobs:
           fi
           echo "::notice::Tag $TAG resolves to commit $tag_sha on main — proceeding."
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
+      - id: setup-go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
         with:
           # Match CI's go-version. code.gitea.io/sdk/gitea v0.24.1
           # requires go1.26; bump CI + release together.
@@ -130,13 +137,25 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$(go env GOPATH)/bin:$PATH"
-          # Always skip publish (gaia release publish handles upload).
-          # Conditionally also skip homebrew when the tap secret is
-          # absent — see brew_gate step.
-          skip_list="publish,${{ steps.brew_gate.outputs.skip }}"
+          # No `--skip=publish` here. goreleaser v2's publish phase
+          # contains the brew tap pusher (brew.Pipe{} is registered
+          # under publishers); skipping the phase wholesale silently
+          # disables the Homebrew formula auto-bump. The Forgejo
+          # release record is already opted-out via
+          # `release: disable: true` in .goreleaser.yml, so dropping
+          # `--skip=publish` does NOT cause goreleaser to fight
+          # `gaia release publish` over the release record. See #260.
+          # The only conditional skip is `homebrew` when the tap
+          # secret is absent — see brew_gate step above.
+          skip_list="${{ steps.brew_gate.outputs.skip }}"
           # Trim trailing comma if no extra skips.
           skip_list="${skip_list%,}"
-          if ! goreleaser release --clean --skip="$skip_list" 2> "$RUNNER_TEMP/goreleaser.stderr"; then
+          if [ -n "$skip_list" ]; then
+            goreleaser_skip_args=(--skip="$skip_list")
+          else
+            goreleaser_skip_args=()
+          fi
+          if ! goreleaser release --clean "${goreleaser_skip_args[@]}" 2> "$RUNNER_TEMP/goreleaser.stderr"; then
             echo "::error::goreleaser failed — see stderr below."
             sed 's/^/::error::  /' "$RUNNER_TEMP/goreleaser.stderr"
             exit 1
@@ -282,10 +301,19 @@ jobs:
           docker buildx rm multiarch 2>/dev/null || true
           docker buildx create --name multiarch --driver docker-container --use
 
+          # GO_VERSION is threaded from the setup-go step's resolved
+          # go-version output so the Dockerfile's build stage uses the
+          # same toolchain CI/the release workflow has standardised on.
+          # Without this build-arg the Dockerfile default (which can
+          # drift behind go.mod) is used and `go mod download` fails
+          # with "go.mod requires go >= X.Y" the first time the
+          # workflow's go-version is bumped past the Dockerfile default.
+          # See #259.
           if ! docker buildx build \
               --platform linux/amd64,linux/arm64 \
               --build-arg "VERSION=${TAG}" \
               --build-arg "COMMIT=${commit_sha}" \
+              --build-arg "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" \
               -t "ghcr.io/stewartbrothers/gaia-mcp:${TAG}" \
               -t "ghcr.io/stewartbrothers/gaia-mcp:latest" \
               --push \

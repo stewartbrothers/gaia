@@ -1,0 +1,13 @@
+description: |
+  `gaia gitignore --check --path <fixture>` against a .gitignore that
+  covers every recommended entry exits 0 and emits the confirmation
+  line. The fixture lives next to scenario.yaml so the goldens see
+  the exact bytes the test driver wrote.
+
+stages:
+  - args:
+      - gitignore
+      - --check
+      - --path
+      - ${scenarioDir}/.gitignore.fixture
+    exit_code: 0

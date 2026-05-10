@@ -72,6 +72,13 @@ These are hard rules. Apply them on every change.
      exists and can use it rather than filing a duplicate gap issue.
    - **Add the bench measurement** to the relevant `bench/dogfood-<resource>.md`
      file so there is evidence the command trims output vs. raw API.
+   - **Update the agent guide** — `docs/agent-guide.md` is the canonical
+     public-facing primer. If the PR adds a new top-level command,
+     meaningfully changes an existing one, or alters the gaia-first
+     protocol, update the guide so external agents picking up gaia
+     cold see the current behaviour. The CI anti-rot test enforces
+     *presence* of the command name; humans/contributors are responsible
+     for *meaningful* coverage.
 
    The rationale: the gaia-first protocol is only as good as the coverage
    list. A command that exists but isn't listed will keep generating
@@ -236,13 +243,19 @@ tight when scripting):
 
 - Identity: `gaia version`, `gaia whoami`, `gaia auth forgejo|gh|status|logout`
 - Self-documentation: `gaia learn` (prints the embedded agent guide; `--format json` for envelope shape)
+- Project setup: `gaia gitignore` (prints the recommended `.gitignore` block; `--check` audits an existing file, exits non-zero on missing entries; `--quiet` for CI gating)
 - Issues: `list | view | create | edit [--add-label/--remove-label] | close | reopen | comment | comment-edit | comment-delete`
 - PRs: `list | view | diff | comments | create | edit | close | reopen | comment-create | merge | review | checkout`
 - Labels: `list | create | edit | delete`
 - Releases: `list | view | create | edit | delete | publish`
 - Search: `gaia search <query>`
 - Webhooks: `list | view | create | edit | delete | deliveries | redeliver | test`
-- Actions: `list | view | logs [--failed-only] | rerun`
+- Actions: `list | view [--with-jobs] | logs | rerun`. Run IDs accept the
+  user-facing run number from the UI URL (e.g. `/actions/runs/362` →
+  `gaia actions view 362`); the provider resolves to Forgejo's internal
+  ID transparently. `logs` and `rerun` currently return an unsupported
+  error on Forgejo v15.0.1 because the API doesn't expose those
+  endpoints (gaps #266, #267) — use the run's `html_url` instead.
 
 For read paths, gaia is consistently smaller (often 5–25×, sometimes
 ~400× with `--fields`) than the raw API response. Headline summary:

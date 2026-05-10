@@ -1,0 +1,12 @@
+description: |
+  `gaia --format json gitignore` opts into the standard envelope
+  shape: {schema_version, data: {entries: [...]}}. MCP-style
+  consumers that want the metadata can ask for it; everyone else
+  gets raw text via the default path.
+
+stages:
+  - args:
+      - --format
+      - json
+      - gitignore
+    exit_code: 0

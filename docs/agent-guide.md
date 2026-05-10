@@ -49,6 +49,7 @@ cover something is to file a gap issue (see
 | Inspect Actions runs | `gaia actions list --status failure` |
 | Watch CI to completion | `gaia pr ci-wait 42 --timeout 15m` |
 | Run a saved chain | `gaia chain run pr-create-and-land --var head=feature/x` |
+| Recommend `.gitignore` entries | `gaia gitignore` (or `gaia gitignore --check` to audit) |
 
 `gaia --help` lists every top-level command; `gaia <cmd> --help`
 shows the per-command flags. Always rebuild before relying on
@@ -355,6 +356,13 @@ fallbacks are honored if no credential file is present
 `GH_TOKEN` for GitHub). `--profile <name>` selects between profiles
 defined in `config.yaml` when more than one forge is configured.
 
+When you set up a fresh project, append `gaia gitignore` to the
+project `.gitignore` (or run `gaia gitignore --check` to audit an
+existing one). The recommended block keeps `.gaia/credentials*` and
+the insights-DB paths out of version control; the same content is
+also exposed as the `gaia://gitignore` MCP resource. See
+[`docs/configuration.md`](configuration.md#recommended-gitignore-entries).
+
 Exit code `4` (Auth) means the token is missing or rejected — re-run
 `gaia auth ...` against the right host. Full reference:
 [`docs/auth.md`](auth.md).
@@ -365,6 +373,11 @@ If you're an MCP-aware agent, prefer `gaia-mcp` (stdio) over shelling
 out to `gaia`. Same envelope shape, same trust tagging, no process
 spawn cost per call. The `_trust: "external"` markers carry through
 identically. See [`docs/mcp.md`](mcp.md).
+
+`gaia-mcp` exposes this guide as the `gaia://learn` MCP resource
+(MIME `text/markdown`) — same `go:embed` source as `gaia learn`, so
+agents driving the server can fetch the briefing via `resources/read`
+without shelling out.
 
 ## Where to file gaps
 

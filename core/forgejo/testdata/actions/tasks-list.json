@@ -1,0 +1,35 @@
+{
+  "total_count": 2,
+  "workflow_runs": [
+    {
+      "created_at": "2026-05-10T11:32:08+10:00",
+      "display_title": "Merge pull request 'post-release v0.3.0: gitignore .claude/, update Homebrew formula' (#257) from fix/v0.3.0-post-release into main",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "d9b3a1b004342d3246d5b548fe7776571cacd8e5",
+      "id": 1873,
+      "name": "mirror",
+      "run_number": 362,
+      "run_started_at": "2026-05-10T11:32:08+10:00",
+      "status": "success",
+      "updated_at": "2026-05-10T11:32:49+10:00",
+      "url": "https://git.stewartbrothers.com.au/Gerwood/gaia/actions/runs/362",
+      "workflow_id": "mirror.yml"
+    },
+    {
+      "created_at": "2026-05-10T11:32:08+10:00",
+      "display_title": "Merge pull request 'post-release v0.3.0: gitignore .claude/, update Homebrew formula' (#257) from fix/v0.3.0-post-release into main",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "d9b3a1b004342d3246d5b548fe7776571cacd8e5",
+      "id": 1872,
+      "name": "check",
+      "run_number": 361,
+      "run_started_at": "2026-05-10T11:32:08+10:00",
+      "status": "success",
+      "updated_at": "2026-05-10T11:42:39+10:00",
+      "url": "https://git.stewartbrothers.com.au/Gerwood/gaia/actions/runs/361",
+      "workflow_id": "ci.yml"
+    }
+  ]
+}
