@@ -18,16 +18,23 @@ func newActionsCmd(flags *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "actions",
 		Short: "List, view, and manage Actions workflow runs",
-		Long: `Inspect Forgejo Actions workflow runs: list recent runs, view
-a run's jobs and steps, fetch job logs, and re-trigger failed runs.
+		Long: `Inspect Forgejo Actions workflow runs: list recent runs and
+view a run's jobs.
+
+The <run-id> arguments accept the user-facing run number from the
+UI URL (the integer in /actions/runs/362), not the internal database
+ID — gaia resolves it transparently.
 
   gaia actions list                     # recent runs (all statuses)
   gaia actions list --status failure    # only failed runs
   gaia actions view <run-id>            # status + summary
   gaia actions view <run-id> --with-jobs # include job list
-  gaia actions logs <run-id>            # all logs
-  gaia actions logs <run-id> --failed-only # logs of failed jobs only
-  gaia actions rerun <run-id>           # re-trigger the run`,
+  gaia actions logs <run-id>            # currently unsupported on Forgejo v15 (#266)
+  gaia actions rerun <run-id>           # currently unsupported on Forgejo v15 (#267)
+
+Forgejo v15.0.1 does not expose a logs or rerun API endpoint;
+both commands return a clear unsupported error with the run's UI
+URL so you can grab logs or re-trigger from the browser.`,
 	}
 	cmd.AddCommand(newActionsListCmd(flags))
 	cmd.AddCommand(newActionsViewCmd(flags))
@@ -192,6 +199,12 @@ func parseRunID(s string) (int64, error) {
 }
 
 // prettyRunList renders a []WorkflowRun as a tab-separated table.
+//
+// ID is the user-facing run number (matches the integer in the UI URL,
+// e.g. /actions/runs/362). RunID is the internal Forgejo database ID
+// the API needs for follow-up reads. Both are surfaced because agents
+// debugging from a UI URL want the first, while agents calling further
+// API endpoints want the second.
 func prettyRunList(w io.Writer, data any) error {
 	runs, ok := data.([]types.WorkflowRun)
 	if !ok {
@@ -202,13 +215,12 @@ func prettyRunList(w io.Writer, data any) error {
 		return nil
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(tw, "ID\tWORKFLOW\tSTATUS\tCONCLUSION\tBRANCH\tACTOR\tUPDATED")
+	_, _ = fmt.Fprintln(tw, "ID\tWORKFLOW\tSTATUS\tBRANCH\tACTOR\tUPDATED")
 	for _, r := range runs {
-		_, _ = fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\n",
 			r.ID,
 			truncate(r.WorkflowName, 30),
 			r.Status,
-			r.Conclusion,
 			truncate(r.Branch, 30),
 			r.Actor.Login,
 			r.UpdatedAt.Format("2006-01-02 15:04"),
@@ -226,14 +238,14 @@ func prettyRunView(w io.Writer, data any) error {
 	_, _ = fmt.Fprintf(w, "Run #%d — %s\n", run.ID, run.WorkflowName)
 	_, _ = fmt.Fprintf(w, "  Event:      %s\n", run.Event)
 	_, _ = fmt.Fprintf(w, "  Status:     %s\n", run.Status)
-	if run.Conclusion != "" {
-		_, _ = fmt.Fprintf(w, "  Conclusion: %s\n", run.Conclusion)
-	}
 	_, _ = fmt.Fprintf(w, "  Branch:     %s\n", run.Branch)
 	_, _ = fmt.Fprintf(w, "  SHA:        %s\n", run.HeadSHA)
 	_, _ = fmt.Fprintf(w, "  Actor:      %s\n", run.Actor.Login)
 	_, _ = fmt.Fprintf(w, "  Created:    %s\n", run.CreatedAt.Format("2006-01-02 15:04"))
 	_, _ = fmt.Fprintf(w, "  Updated:    %s\n", run.UpdatedAt.Format("2006-01-02 15:04"))
+	if run.HTMLURL != "" {
+		_, _ = fmt.Fprintf(w, "  URL:        %s\n", run.HTMLURL)
+	}
 	if run.HeadMessage != "" {
 		_, _ = fmt.Fprintln(w)
 		writeExternal(w, run.HeadMessage)
@@ -242,18 +254,7 @@ func prettyRunView(w io.Writer, data any) error {
 		_, _ = fmt.Fprintln(w)
 		_, _ = fmt.Fprintln(w, "Jobs:")
 		for _, j := range run.Jobs {
-			conclusion := j.Conclusion
-			if conclusion == "" {
-				conclusion = j.Status
-			}
-			_, _ = fmt.Fprintf(w, "  [%s] %s\n", conclusion, j.Name)
-			for _, s := range j.Steps {
-				sConclusion := s.Conclusion
-				if sConclusion == "" {
-					sConclusion = s.Status
-				}
-				_, _ = fmt.Fprintf(w, "    %d. [%s] %s\n", s.Number, sConclusion, s.Name)
-			}
+			_, _ = fmt.Fprintf(w, "  [%s] %s\n", j.Status, j.Name)
 		}
 	}
 	return nil
