@@ -26,7 +26,6 @@ import (
 var knownBaselineMissing = []string{
 	"cache",
 	"label",
-	"learn",
 	"packages",
 	"release",
 	"server",

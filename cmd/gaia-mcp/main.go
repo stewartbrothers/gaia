@@ -106,6 +106,7 @@ func buildServer() *server.MCPServer {
 	)
 	registerSmokeTools(s)
 	registerAllTools(s)
+	registerGitignoreResource(s)
 	registerLearnResource(s)
 	return s
 }

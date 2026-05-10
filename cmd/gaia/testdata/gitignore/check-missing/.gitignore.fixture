@@ -1,0 +1,3 @@
+# a project that hand-rolled credentials gitignoring but never picked
+# up the insights paths
+.gaia/credentials*
