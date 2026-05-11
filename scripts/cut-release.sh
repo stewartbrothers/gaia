@@ -126,6 +126,33 @@ git tag -a "$TAG" -m "release: $TAG"
 echo "==> Pushing $TAG to origin"
 git push origin "$TAG"
 
+# Derive the Forgejo web URL from .gaia/config.yaml's api_url so the
+# operator's printed link points at the actual workflow run, not
+# github.com (the GitHub mirror doesn't run release.yml). Falls back
+# to a generic note if the file or field is missing.
+forge_actions_url=""
+if [ -f .gaia/config.yaml ]; then
+  # api_url and default_repo in .gaia/config.yaml. Use sed (not awk -F':')
+  # because the api_url value itself contains ':' (https://...).
+  api_url=$(sed -nE 's|^[[:space:]]+api_url:[[:space:]]+(.+)$|\1|p' .gaia/config.yaml | head -1)
+  if [ -n "${api_url:-}" ]; then
+    forge_web="${api_url%/api/v*}"
+    forge_web="${forge_web%/}"
+    # Repo slug from `default_repo:` if set, else parsed from origin URL.
+    repo_slug=$(sed -nE 's|^default_repo:[[:space:]]+(.+)$|\1|p' .gaia/config.yaml | head -1)
+    if [ -z "${repo_slug:-}" ]; then
+      origin_url=$(git config --get remote.origin.url 2>/dev/null || true)
+      if [ -n "${origin_url:-}" ]; then
+        repo_slug=$(printf '%s\n' "$origin_url" \
+          | sed -E 's|\.git$||; s|.*[:/]([^/:]+/[^/]+)$|\1|')
+      fi
+    fi
+    if [ -n "${repo_slug:-}" ]; then
+      forge_actions_url="${forge_web}/${repo_slug}/actions"
+    fi
+  fi
+fi
+
 cat <<EOF
 
 ✓ Tag $TAG pushed.
@@ -133,7 +160,7 @@ cat <<EOF
 The release workflow at .forgejo/workflows/release.yml is now
 running. Watch it at:
 
-  https://github.com/stewartbrothers/gaia/actions
+  ${forge_actions_url:-(Forgejo Actions URL: set api_url in .gaia/config.yaml to enable auto-derivation)}
 
 Expected on success:
 
@@ -145,5 +172,5 @@ Expected on success:
     GITHUB_MIRROR_SSH_KEY secret — see docs/mirroring.md).
 
 If the workflow fails, see the per-step error annotations and the
-recovery steps in RELEASING.md.
+recovery steps in RELEASING.md (§ "If the workflow fails partway").
 EOF
