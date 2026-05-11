@@ -4,37 +4,65 @@ This doc covers the version convention + the cut-a-release procedure.
 
 ## Version convention
 
-gaia follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
+gaia follows [**Semantic Versioning 2.0.0**](https://semver.org/spec/v2.0.0.html).
+No project-specific exceptions — the rules below are summaries of
+the spec; the spec is authoritative if anything reads differently.
 
-### `0.x.y` (current era)
+### The three rules
 
-While we're on `0.x.y`, the standard SemVer carve-out applies:
-**breaking changes to the public surface may land at minor bumps.**
-Specifically:
+Given a version `MAJOR.MINOR.PATCH`, increment:
 
-- `0.MAJOR.0` — substantial new functionality, may include breaking
-  changes to CLI flag names, MCP tool names, envelope shape, exit
-  codes, config file format, or stored credentials shape. Breaking
-  changes are listed prominently in the CHANGELOG.
-- `0.x.PATCH` — backward-compatible bug fixes only. Any user with the
-  same `0.x` minor can take patch bumps without reading release notes.
+- **PATCH** when you make backwards-compatible **bug fixes only**
+  (SemVer §6). No new features, no surface change.
+- **MINOR** when you add **backwards-compatible new functionality**
+  (SemVer §7). New commands, new flags, new MCP tools, new
+  envelope fields, new chain step options, new provider support.
+- **MAJOR** when you make **backwards-incompatible** changes to
+  the public surface (SemVer §8).
 
-Pre-releases use `-rc.N` (release candidate) or `-beta.N` suffixes:
-`v0.2.0-rc.1`, `v0.2.0-beta.2`. These are tagged identically to
-stable releases but the workflow flags them as pre-release in the
-Forgejo UI.
+If a release contains a mix (some fixes plus some features), the
+highest applicable bump wins. A release with two features and one
+fix is **MINOR**.
 
-### `1.0.0` and beyond (future)
+The classification is mechanical from what's merged since the last
+tag — `scripts/next-version.sh` does it automatically by walking
+the conventional-commit subjects of intervening merges.
 
-`1.0.0` is the stability commitment. From there:
+### Pre-1.0 (current era)
 
-- **MAJOR**: breaking changes to the public surface. Reserved.
-- **MINOR**: backward-compatible additions. New CLI commands, new
-  MCP tools, new optional fields in the envelope, new exit codes.
-- **PATCH**: backward-compatible bug fixes. No new features, no
-  surface change.
+We are on `0.x.y`. SemVer §4 (verbatim):
 
-The "public surface" at `1.0.0` will explicitly include:
+> "Major version zero (0.y.z) is for initial development. Anything
+> MAY change at any time. The public API SHOULD NOT be considered
+> stable."
+
+This means the spec itself permits breaking changes during `0.x.y`
+without bumping to `1.0.0`. Within that latitude we apply our own
+discipline:
+
+- A backwards-incompatible change to the public surface MAY land
+  at a **MINOR** bump (instead of MAJOR). It **MUST** be flagged
+  prominently in `CHANGELOG.md` under a `Breaking` heading so
+  consumers see it before upgrading.
+- **PATCH** stays disciplined: backwards-compatible bug fixes
+  only, never feature additions. A user upgrading within the same
+  `0.x` minor can do so without reading release notes.
+
+When we cut `1.0.0` (see below) this latitude ends — breaking
+changes from that point on require a MAJOR bump.
+
+### Pre-releases
+
+Pre-release identifiers use `-rc.N` (release candidate) or
+`-beta.N` suffixes (SemVer §9): `v0.4.0-rc.1`, `v0.4.0-beta.2`.
+These are tagged identically to stable releases but the workflow
+flags them as pre-release in the Forgejo UI.
+
+### What `1.0.0` commits to
+
+`1.0.0` is the stability commitment. From that tag forward the
+SemVer §4 latitude is gone and the rules above apply strictly. The
+"public surface" at `1.0.0` will explicitly include:
 
 1. CLI command + subcommand names (`gaia issue list`, `gaia pr create`)
 2. CLI flag names + types (`--repo`, `--format`, `--fields`)
@@ -46,8 +74,24 @@ The "public surface" at `1.0.0` will explicitly include:
 7. Stored credential file YAML shape
 
 Implementation details (Go API surface, internal paths, how a
-particular tool is wired) are NOT public surface and may change
-between PATCH versions.
+particular tool is wired) are **not** public surface and may change
+between PATCH versions even after `1.0.0`.
+
+### Automatic bump selection
+
+```bash
+./scripts/next-version.sh                # since the latest semver tag
+./scripts/next-version.sh --since v0.3.0 # explicit base
+./scripts/next-version.sh --strict       # fail on unclassified commits
+```
+
+Walks the merge log since the last tag, classifies each commit
+subject by conventional-commit prefix (`feat:` → MINOR, `fix:`
+and other non-feature types → PATCH-eligible; `<type>!:` or
+`BREAKING CHANGE:` body trailers force MINOR pre-1.0 / MAJOR
+post-1.0), and prints the proposed next version. Operators still
+pass the chosen tag to `cut-release.sh` manually — the script is
+advisory, not enforcing.
 
 ## Cut-a-release procedure
 
