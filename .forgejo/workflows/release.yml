@@ -124,6 +124,78 @@ jobs:
             echo "skip=" >> "$GITHUB_OUTPUT"
           fi
 
+      # Pre-flight: verify the Homebrew tap deploy key actually has WRITE
+      # access on this repo. Forgejo deploy keys use a binary "Allow write
+      # access" checkbox at the repo Deploy Keys page — there's no scope
+      # string. The brew_gate step above only checks whether the secret is
+      # PRESENT, which is necessary but not sufficient: the v0.4.0 release
+      # (Job 2014, #284) failed because the registered public half was
+      # read-only, but the secret was set, so brew_gate let goreleaser try.
+      # Two minutes of artifact building was burned before Forgejo rejected
+      # the brew tap push with "Deploy Key: N: is not authorized to write".
+      #
+      # The probe attempts a no-op `git push :refs/heads/__probe__` over
+      # SSH using the deploy key. With write access, Forgejo replies "remote
+      # ref does not exist" (because there's nothing to delete) and exits 1
+      # — this is the expected success signal. Without write access, Forgejo
+      # replies "is not authorized to write" before considering the ref —
+      # this is the actionable failure signal. The push is a no-op either
+      # way (no ref state changes), so it's safe to run on every release.
+      #
+      # Gated on brew_gate.outputs.skip == '' so it only runs when goreleaser
+      # will actually attempt the brew push.
+      - name: Verify deploy key has write access
+        if: steps.brew_gate.outputs.skip == ''
+        env:
+          TAP_KEY: ${{ secrets.GORELEASER_TAP_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          KEYFILE=$(mktemp)
+          trap 'rm -f "$KEYFILE"' EXIT
+          printf '%s\n' "$TAP_KEY" > "$KEYFILE"
+          chmod 0600 "$KEYFILE"
+
+          # `|| true` because `git push :nonexistent-ref` always exits 1
+          # (you can't delete a ref that doesn't exist) even when auth
+          # succeeds. We classify by stderr content, not exit code.
+          GIT_SSH_COMMAND="ssh -i $KEYFILE -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
+            git push \
+              "git@repo.stewartbrothers.com.au:${{ github.repository }}.git" \
+              ":refs/heads/__deploy_key_write_probe__" \
+              2> "$RUNNER_TEMP/probe.stderr" || true
+
+          if grep -q "is not authorized to write" "$RUNNER_TEMP/probe.stderr"; then
+            echo "::error::GORELEASER_TAP_DEPLOY_KEY's registered public half lacks WRITE access on this repo."
+            echo "::error::Forgejo response:"
+            sed 's/^/::error::  /' "$RUNNER_TEMP/probe.stderr"
+            echo "::error::"
+            echo "::error::Fix: Forgejo deploy keys cannot have their permission flipped after creation."
+            echo "::error::  1. Go to: ${{ github.server_url }}/${{ github.repository }}/settings/keys"
+            echo "::error::  2. Delete the existing 'Gaia Deploy Key' entry"
+            echo "::error::  3. Re-add the same public half with 'Allow write access' ticked"
+            echo "::error::"
+            echo "::error::Then re-run this workflow."
+            exit 1
+          fi
+
+          if grep -qE "remote ref does not exist|unable to delete" "$RUNNER_TEMP/probe.stderr"; then
+            echo "::notice::Deploy key write access verified."
+            exit 0
+          fi
+
+          if grep -qE "Permission denied \(publickey\)|denied|denied$" "$RUNNER_TEMP/probe.stderr"; then
+            echo "::error::GORELEASER_TAP_DEPLOY_KEY private key is not authorised by Forgejo (publickey denied)."
+            sed 's/^/::error::  /' "$RUNNER_TEMP/probe.stderr"
+            echo "::error::Verify the secret value is the correct private half and matches a registered deploy key."
+            exit 1
+          fi
+
+          # Unexpected stderr — surface it loud but proceed; let goreleaser
+          # itself report the real failure if there is one. This avoids the
+          # pre-flight blocking a release on a probe-format surprise.
+          echo "::warning::Deploy key probe produced unexpected output; proceeding anyway:"
+          sed 's/^/::warning::  /' "$RUNNER_TEMP/probe.stderr"
+
       - name: Run goreleaser
         env:
           # `brews:` (#49) writes a commit bumping Formula/gaia.rb
@@ -196,7 +268,13 @@ jobs:
       # `docker pull ...:latest` always resolve to the current release.
       # Force-push is intentional — `latest` is a floating pointer, not
       # a permanent history marker.
+      #
+      # continue-on-error: failure here (e.g. transient network) should
+      # surface as a warning but not tank the remaining release steps
+      # (GitHub mirror publish, GHCR push, mirror tag push). `latest` can
+      # always be re-moved by hand: `git tag -f latest <tag> && git push -f`.
       - name: Move latest tag
+        continue-on-error: true
         run: |
           set -euo pipefail
           git tag -f latest
@@ -206,12 +284,32 @@ jobs:
       # Bump the "Latest: vX.Y.Z" badge in README.md and commit it back
       # to main so the repo landing page always reflects the current
       # release without a manual release-prep edit.
+      #
+      # The job's actions/checkout pinned us to the TAG's commit. Earlier
+      # steps in this workflow (goreleaser brew tap push, the
+      # `Move latest tag` step above) push to main, advancing the remote
+      # past our local checkout. A naive `git push origin HEAD:main` from
+      # the tag commit is non-fast-forward → rejected.
+      #
+      # Fix: realign with origin/main first, then re-apply the README edit
+      # on top of whatever main currently is. The README content doesn't
+      # depend on the tag's tree, only on the version string, so rebasing
+      # the bump on top of any newer main commits is safe.
+      #
+      # continue-on-error: a README-badge failure is cosmetic; it must not
+      # tank the subsequent GitHub release publish / GHCR / mirror steps.
+      # If this step warns, the operator can apply the badge bump manually.
       - name: Bump README latest-version badge
+        continue-on-error: true
         env:
           GITEA_TOKEN: ${{ secrets.FORGEJO_RELEASE_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          # Realign to origin/main so the README bump sits atop the latest
+          # commits (brew formula push, etc.) made earlier in this workflow.
+          git fetch origin main
+          git checkout -B main origin/main
           release_date=$(date +%Y-%m-%d)
           sed -i "s|^> \*\*Latest:.*|> **Latest: ${TAG}** — released ${release_date}. See [\`CHANGELOG.md\`](CHANGELOG.md) for release notes.|" README.md
           if git diff --quiet README.md; then
