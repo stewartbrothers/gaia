@@ -1,6 +1,6 @@
 # gaia — Git AI Access
 
-> **Latest: v0.3.0** — released 2026-05-09. See [`CHANGELOG.md`](CHANGELOG.md) for release notes.
+> **Latest: v0.4.0** — released 2026-05-11. See [`CHANGELOG.md`](CHANGELOG.md) for release notes.
 
 > 🤖 **AI coding agent reading this?** → see [`docs/agent-guide.md`](docs/agent-guide.md).
 > It's the cliff-notes guide to using gaia efficiently and safely. You can also
