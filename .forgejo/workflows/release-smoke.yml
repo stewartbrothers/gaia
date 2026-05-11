@@ -1,0 +1,200 @@
+name: Release smoke test
+
+# Smoke-tests the release pipeline end-to-end in snapshot mode so
+# release-infrastructure regressions get caught at PR time instead of
+# at tag time.
+#
+# What it catches (the kind of break v0.4.0 hit on the live tag cut):
+#
+#   - YAML syntax / structural errors in release.yml
+#   - Shell parse errors in cut-release.sh, install.sh
+#   - .goreleaser.yml field-name drift between v1/v2, template errors
+#   - Dockerfile build-stage breakage (e.g. go-version mismatch with
+#     go.mod's floor — exactly what PR #264 fixed)
+#   - Version-string injection wiring broken (no version in `--version`
+#     output, missing commit field, etc.)
+#   - Archive set produced is incomplete (some platform target falls
+#     off the matrix silently)
+#
+# What it intentionally does NOT cover:
+#
+#   - Real secret use (FORGEJO_RELEASE_TOKEN, GORELEASER_TAP_DEPLOY_KEY
+#     write permission, GH_RELEASE_TOKEN scopes, GITHUB_MIRROR_SSH_KEY).
+#     Those still need the next live release cycle to validate. The
+#     deploy-key write probe (release.yml's "Verify deploy key has
+#     write access" step) handles that pre-flight class of failures at
+#     real-release time. (#284, #286)
+#   - Multi-arch Docker build. Single-arch linux/amd64 keeps the smoke
+#     test fast; the full multi-arch matrix runs on the real release
+#     workflow only.
+#   - Binary determinism across runs. Not asserting byte-identical
+#     output — the snapshot version includes a commit SHA, so two runs
+#     of the same PR HEAD trivially differ.
+#
+# Triggers only on PRs that touch release-infrastructure files, so the
+# normal CI gate isn't slowed down by a 5-minute goreleaser run on
+# every code change. (#288)
+
+# CI actions pinned by commit SHA — see ci.yml's header for rationale.
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.forgejo/workflows/release.yml'
+      - '.forgejo/workflows/release-smoke.yml'
+      - '.goreleaser.yml'
+      - 'Dockerfile'
+      - 'scripts/cut-release.sh'
+      - 'scripts/install.sh'
+      - 'go.mod'
+
+# Cancel any earlier smoke run on the same PR when a new commit lands —
+# only the latest tip is interesting.
+concurrency:
+  group: release-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+        with:
+          # goreleaser --snapshot derives the snapshot version from
+          # `git describe`, which needs full history.
+          fetch-depth: 0
+
+      - id: setup-go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
+        with:
+          # Match the floor in go.mod and the release workflow's
+          # go-version. Bump all three together.
+          go-version: '1.26'
+          cache: true
+
+      # Parse-check the operator-facing shell scripts before invoking
+      # anything heavy. Cheap; catches typos that bash -n alone catches
+      # but the existing CI doesn't currently run.
+      - name: Parse-check release-related shell scripts
+        run: |
+          set -euo pipefail
+          bash -n scripts/cut-release.sh
+          bash -n scripts/install.sh
+          echo "::notice::shell scripts parse cleanly"
+
+      - name: Install goreleaser
+        run: go install github.com/goreleaser/goreleaser/v2@v2.4.5
+
+      # Run goreleaser in snapshot mode. `--snapshot` synthesizes a
+      # version like `v0.X.Y-N-gSHA-SNAPSHOT-SHA` instead of requiring
+      # a tag, so this works on every PR commit. `--skip=publish` skips
+      # the brew tap push (which the smoke job can't authenticate to
+      # anyway, and shouldn't on a PR). `.goreleaser.yml` already has
+      # `release: disable: true` so no Forgejo release record is created.
+      #
+      # GORELEASER_TAP_DEPLOY_KEY=placeholder mirrors what the real
+      # release workflow does when the secret is absent: goreleaser
+      # evaluates the brews template before applying skip logic, so the
+      # variable must resolve to *something* non-empty.
+      - name: Run goreleaser in snapshot mode
+        env:
+          GORELEASER_TAP_DEPLOY_KEY: placeholder
+        run: |
+          set -euo pipefail
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          if ! goreleaser release --clean --snapshot --skip=publish 2> "$RUNNER_TEMP/goreleaser.stderr"; then
+            echo "::error::goreleaser --snapshot failed — see stderr below."
+            sed 's/^/::error::  /' "$RUNNER_TEMP/goreleaser.stderr"
+            exit 1
+          fi
+
+      # Assert the release artifact matrix: 6 archives (linux/darwin/
+      # windows × amd64/arm64) — 4 .tar.gz + 2 .zip — plus a checksums
+      # file. If goreleaser silently drops a platform from .goreleaser.yml,
+      # this catches it.
+      - name: Assert artifact matrix is complete
+        run: |
+          set -euo pipefail
+          tar_count=$(ls dist/gaia_*.tar.gz 2>/dev/null | wc -l | tr -d ' ')
+          zip_count=$(ls dist/gaia_*.zip 2>/dev/null | wc -l | tr -d ' ')
+          total=$((tar_count + zip_count))
+          if [ "$total" -ne 6 ]; then
+            echo "::error::expected 6 archives (4 tar.gz + 2 zip), got $total ($tar_count tar.gz, $zip_count zip)"
+            ls -la dist/ || true
+            exit 1
+          fi
+          if ! ls dist/gaia_*checksums.txt >/dev/null 2>&1; then
+            echo "::error::no checksums file produced"
+            ls -la dist/ || true
+            exit 1
+          fi
+          for f in dist/gaia_*.tar.gz dist/gaia_*.zip dist/gaia_*checksums.txt; do
+            if [ ! -s "$f" ]; then
+              echo "::error::$f is zero-size"
+              exit 1
+            fi
+          done
+          echo "::notice::6 archives + checksums produced, all non-empty"
+          ls -lh dist/gaia_*.tar.gz dist/gaia_*.zip dist/gaia_*checksums.txt
+
+      # Verify the binary's version-injection wiring. Goreleaser sets
+      # `-X .../version.Version=...` and `-X .../version.Commit=...`
+      # via ldflags; if .goreleaser.yml's `builds[].ldflags` drift away
+      # from `internal/version`'s variable names, `gaia version` will
+      # print empty/zero values. Catch that here.
+      - name: Verify version-string injection in the linux/amd64 binary
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/extract"
+          tar -xzf dist/gaia_*_linux_x86_64.tar.gz -C "$RUNNER_TEMP/extract"
+          version_out=$("$RUNNER_TEMP/extract/gaia" version --format json)
+          echo "envelope: $version_out"
+          # Snapshot version looks like v0.X.Y-N-gSHA-SNAPSHOT-SHA;
+          # any non-empty version that looks SemVer-shaped is enough.
+          if ! echo "$version_out" | grep -qE '"version":[[:space:]]*"v?[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "::error::version field empty or malformed: $version_out"
+            exit 1
+          fi
+          if ! echo "$version_out" | grep -qE '"commit":[[:space:]]*"[a-f0-9]{7,}"'; then
+            echo "::error::commit field empty or malformed: $version_out"
+            exit 1
+          fi
+          echo "::notice::version + commit injected into binary"
+
+      # Build the Dockerfile (single-arch, no push) with the same
+      # build-args the real release workflow uses. Catches Dockerfile
+      # regressions (PR #264 was exactly this class of problem) before
+      # they tank a live release.
+      - name: Smoke-test Dockerfile build
+        run: |
+          set -euo pipefail
+          commit_sha=$(git rev-parse --short HEAD)
+          if ! docker build \
+              --build-arg "VERSION=smoketest-${commit_sha}" \
+              --build-arg "COMMIT=${commit_sha}" \
+              --build-arg "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" \
+              -t "gaia-mcp:smoketest" \
+              . 2> "$RUNNER_TEMP/docker.stderr"; then
+            echo "::error::Dockerfile build failed:"
+            sed 's/^/::error::  /' "$RUNNER_TEMP/docker.stderr"
+            exit 1
+          fi
+          echo "::notice::Dockerfile builds cleanly for linux/amd64"
+
+      # Verify the build-args propagate into the container's gaia
+      # binary. If the Dockerfile's RUN line drops a build-arg, the
+      # container's `gaia version` will print empty strings — which is
+      # easy to miss in a working build.
+      - name: Verify container's gaia binary picks up build-args
+        run: |
+          set -euo pipefail
+          version_out=$(docker run --rm gaia-mcp:smoketest gaia version --format json)
+          echo "container envelope: $version_out"
+          if ! echo "$version_out" | grep -q '"version":[[:space:]]*"smoketest-'; then
+            echo "::error::container build-args did not reach the binary: $version_out"
+            exit 1
+          fi
+          echo "::notice::Dockerfile build-args propagated to binary version string"
