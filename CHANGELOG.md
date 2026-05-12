@@ -10,6 +10,70 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-05-12
+
+Maintenance release. One user-facing fix (`brew install gaia` was
+broken on v0.4.0 due to a Formula/gaia.rb checksum mismatch); the rest
+of the work hardens the release pipeline so the v0.4.0-class breakage
+can't repeat.
+
+### Fixed
+
+- `Formula/gaia.rb` sha256 checksums for v0.4.0 now match the
+  archives published to the GitHub release. The v0.4.0 cut hit a
+  release-workflow failure that necessitated a manual artifact
+  re-upload from a locally-built `dist/`, producing binaries with
+  different checksums than the original goreleaser-CI build. Brew
+  users hit checksum mismatches on every install until this synced
+  the formula to the actually-published bytes. Closes the active
+  breakage; the cluster of pipeline issues that produced this trap
+  is documented in #284. (PR #283)
+
+### Internal — release pipeline hardening
+
+The bulk of this release; no user-visible behaviour changes.
+
+- **Pre-flight deploy-key write probe** — `release.yml` now SSH-probes
+  the `GORELEASER_TAP_DEPLOY_KEY` against Forgejo before running
+  goreleaser. Read-only keys fail in < 5 s with an actionable
+  "fix in Forgejo UI" message; previously the failure surfaced 2+
+  minutes into the run after the brew tap push was attempted.
+  Closes #284 (failure A). (PR #286)
+- **README badge bump race fix** — the README-bump step now refreshes
+  `origin/main` before pushing, so an earlier in-workflow push (brew
+  tap formula bump) doesn't make the README push non-fast-forward.
+  Closes #284 (failure B). (PR #286)
+- **Cosmetic-step resilience** — `Move latest tag` and `Bump README
+  latest-version badge` are now `continue-on-error: true`. A
+  cosmetic failure surfaces as a `::warning::` instead of tanking
+  the downstream GHCR / mirror / GitHub publish steps. (PR #286)
+- **`RELEASING.md` recovery procedure** — new "If the workflow fails
+  partway through" section codifying: re-run the workflow first;
+  never manually rebuild artifacts locally (that's the trap PR #283
+  fixed); never reach for `gh release` as a workaround. Closes #285.
+  (PR #286)
+- **`scripts/cut-release.sh` Forgejo URL fix** — the post-tag-push
+  message previously printed `https://github.com/.../actions` as the
+  workflow URL. Now derives the Forgejo Actions URL from
+  `.gaia/config.yaml`'s `api_url` and `default_repo`. (PR #286)
+- **PR-time release smoke test** — new
+  `.forgejo/workflows/release-smoke.yml` runs the build half of the
+  release pipeline (`goreleaser --snapshot`, Dockerfile build, version
+  injection) on every PR that touches release-infrastructure files.
+  Catches goreleaser config drift, Dockerfile breakage, shell-script
+  parse errors, and platform-target dropping out of the artifact
+  matrix before they reach a real tag. Closes #288. (PR #290)
+- **`brew_gate` + deploy-key probe consolidation** — merged the two
+  adjacent steps into one `brew_gate` step that handles both
+  PRESENCE (skip if secret unset) and WRITE PROBE (verify the
+  registered key has write access). Same behaviour, simpler shape,
+  no drift risk between the two checks. Closes #289. (PR #291)
+- **`release.yml` split into 4 parallel jobs** — `verify` →
+  `build-and-publish` plus parallel `ghcr` and `mirror`. A failure
+  in one publish surface no longer tanks the others; each downstream
+  job is independently re-runnable from the Forgejo Actions UI.
+  Closes #287. (PR #292)
+
 ## [0.4.0] — 2026-05-11
 
 New top-level `gaia gitignore` command, two MCP resources (`gaia://learn`
@@ -655,7 +719,8 @@ Pre-v1.0, expect minor-bump churn at the public surface.
 - OS keychain backing for `credentials.yaml` (vs current 0600
   plaintext): `gh` does this, gaia doesn't yet.
 
-[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/stewartbrothers/gaia/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/stewartbrothers/gaia/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/stewartbrothers/gaia/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/stewartbrothers/gaia/releases/tag/v0.2.0
