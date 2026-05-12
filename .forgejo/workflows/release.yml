@@ -6,39 +6,62 @@ name: Release
 #   # or, by hand:
 #   git tag -a vX.Y.Z -m "release: vX.Y.Z" && git push origin vX.Y.Z
 #
-# The workflow:
+# The workflow is split across four jobs so a deterministic failure
+# in one publish surface doesn't tank the others (the monolithic
+# pre-#287 version did exactly that — a README-bump race in v0.4.0
+# killed the GHCR push, GitHub mirror tag push, and GitHub release
+# publish that were sequenced after it). Each downstream job is
+# independently re-runnable from the Forgejo Actions UI.
 #
-#   1. checkout + setup Go (mirrors the CI workflow)
-#   2. verify the tag points at a commit on main (refuse to release
-#      from a feature branch — caught early so the goreleaser run
-#      doesn't burn 5 minutes producing artifacts that can't ship)
-#   3. shell-installs goreleaser (third-party actions don't mirror
-#      to code.forgejo.org; install via go install pinned to a
-#      specific version that matches local dev)
-#   4. runs goreleaser. .goreleaser.yml has `release: disable: true`
-#      so goreleaser does NOT create or populate a Forgejo release
-#      record (we do that ourselves in step 6 via `gaia release
-#      publish`). The publish phase still runs, however, because
-#      that's the phase the `brews:` block uses to push the
-#      Formula/gaia.rb bump commit to this repo. Skipping the
-#      publish phase wholesale (e.g. `--skip=publish`) silently
-#      disables the brew tap auto-bump too — see #260.
-#   5. builds gaia (so we can dogfood it for the upload step)
-#   6. runs `gaia release publish` to attach artifacts to the
-#      Forgejo release (creates the release record if absent)
-#   7. if GH_RELEASE_TOKEN is configured, creates a matching release
-#      on the GitHub mirror (github.com/stewartbrothers/gaia) with
-#      the same artifacts — the one-line installer downloads from
-#      GitHub so the mirror is the public release point
-#   8. if GITHUB_MIRROR_SSH_KEY is configured (#47), pushes the
-#      tag to the GitHub mirror so the release is reachable
+# Jobs:
 #
-# Each step is gated so a failure (goreleaser flake, network, etc.)
-# surfaces with a useful annotation instead of dumping the full
-# stderr into a wall-of-log. Re-running the workflow from the
-# Forgejo Actions UI is idempotent for the upload step
-# (`gaia release publish` no-ops on existing releases) and the
-# mirror push (git push converges on canonical state).
+#   verify (~30s)
+#     Refuse to release from a non-main commit. Fast-fail before
+#     any expensive work. Forgejo Actions doesn't gate tag pushes
+#     on which branch they were created on, so we do that check
+#     here.
+#
+#   build-and-publish (~5-10 min, needs verify)
+#     Everything that touches the dist/ artifact set:
+#       - goreleaser (binaries + brew tap formula push)
+#       - make build (gaia binary for the upload step)
+#       - gaia release publish (Forgejo)
+#       - Move latest tag                       [continue-on-error]
+#       - Bump README latest-version badge      [continue-on-error]
+#       - gaia release publish (GitHub mirror)
+#     This stays as one job because every step here shares dist/.
+#     Splitting it would require actions/upload-artifact /
+#     download-artifact, whose Forgejo Actions compatibility is
+#     uncertain. Keeping it monolithic is the conservative call
+#     for now (#287).
+#
+#   ghcr (~3 min, needs verify, parallel with build-and-publish)
+#     Multi-arch container build + push to ghcr.io. Doesn't need
+#     dist/ — the Dockerfile builds gaia + gaia-mcp from source.
+#     Running in parallel with build-and-publish cuts wall time
+#     by 2-3 minutes off the critical path.
+#
+#   mirror (~30s, needs verify, parallel with build-and-publish)
+#     `git push github refs/tags/X:refs/tags/X`. Doesn't need
+#     dist/ or even setup-go — just SSH and the tag itself.
+#
+# Failure isolation:
+#
+#   - verify fails → nothing runs (correct; can't release from a
+#     non-main commit).
+#   - build-and-publish fails → ghcr and mirror still run if they
+#     hadn't already; both depend only on verify. A goreleaser
+#     failure or gaia-release-publish failure does not prevent the
+#     container image being pushed or the tag being mirrored.
+#   - ghcr or mirror failing has no effect on build-and-publish or
+#     each other. Each can be re-run from the Forgejo UI
+#     independently.
+#
+# Re-running the workflow from the Forgejo Actions UI is idempotent
+# at each level: gaia release publish replaces existing assets (#219),
+# brew formula push diffs before committing, `latest` tag uses
+# force-push, docker buildx is idempotent on the tag, mirror push
+# converges on canonical state.
 
 # CI actions pinned by commit SHA — bump the SHA and the version
 # comment together when updating. See .forgejo/workflows/ci.yml's
@@ -55,14 +78,17 @@ on:
       - 'v*'
 
 jobs:
-  release:
+  # =====================================================================
+  # verify — fast pre-flight that gates every downstream job
+  # =====================================================================
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 2
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
         with:
-          # goreleaser's git-based changelog needs the full history
-          # to walk commits since the previous tag.
+          # Full history so `git merge-base --is-ancestor` can walk
+          # back to the divergence between tag and main.
           fetch-depth: 0
 
       # Refuse to release from a non-main commit. Forgejo Actions
@@ -85,6 +111,20 @@ jobs:
             exit 1
           fi
           echo "::notice::Tag $TAG resolves to commit $tag_sha on main — proceeding."
+
+  # =====================================================================
+  # build-and-publish — goreleaser + dist-dependent publish steps
+  # =====================================================================
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: verify
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+        with:
+          # goreleaser's git-based changelog needs the full history
+          # to walk commits since the previous tag.
+          fetch-depth: 0
 
       - id: setup-go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
@@ -272,8 +312,9 @@ jobs:
       #
       # continue-on-error: failure here (e.g. transient network) should
       # surface as a warning but not tank the remaining release steps
-      # (GitHub mirror publish, GHCR push, mirror tag push). `latest` can
-      # always be re-moved by hand: `git tag -f latest <tag> && git push -f`.
+      # (GitHub mirror publish, GHCR push in the `ghcr` job, mirror tag
+      # push in the `mirror` job). `latest` can always be re-moved by
+      # hand: `git tag -f latest <tag> && git push -f`.
       - name: Move latest tag
         continue-on-error: true
         run: |
@@ -287,7 +328,7 @@ jobs:
       # release without a manual release-prep edit.
       #
       # The job's actions/checkout pinned us to the TAG's commit. Earlier
-      # steps in this workflow (goreleaser brew tap push, the
+      # steps in this job (goreleaser brew tap push, the
       # `Move latest tag` step above) push to main, advancing the remote
       # past our local checkout. A naive `git push origin HEAD:main` from
       # the tag commit is non-fast-forward → rejected.
@@ -298,8 +339,9 @@ jobs:
       # the bump on top of any newer main commits is safe.
       #
       # continue-on-error: a README-badge failure is cosmetic; it must not
-      # tank the subsequent GitHub release publish / GHCR / mirror steps.
-      # If this step warns, the operator can apply the badge bump manually.
+      # tank the subsequent GitHub release publish step in this job, or
+      # the `ghcr` / `mirror` jobs running in parallel. If this step
+      # warns, the operator can apply the badge bump manually.
       - name: Bump README latest-version badge
         continue-on-error: true
         env:
@@ -362,6 +404,34 @@ jobs:
           fi
           echo "::notice::GitHub release ${{ github.ref_name }} published with all artifacts."
 
+  # =====================================================================
+  # ghcr — multi-arch container image, parallel with build-and-publish
+  # =====================================================================
+  #
+  # Doesn't need dist/ — the Dockerfile builds gaia + gaia-mcp from
+  # source. `needs: verify` (not `needs: build-and-publish`) so a
+  # goreleaser failure doesn't block container availability, and the
+  # GHCR push runs in parallel with the binary release.
+  ghcr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: verify
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+        with:
+          # Full history isn't strictly required for the Docker build,
+          # but `git rev-parse --short HEAD` in the build step is more
+          # informative when there's history to look at.
+          fetch-depth: 0
+
+      # setup-go is required to feed go-version into the Docker
+      # build-arg — see the comment on the buildx step below.
+      - id: setup-go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
+        with:
+          go-version: '1.26'
+          cache: false  # no Go build here; the cache would never be used
+
       # Container image: build multi-arch and push to GitHub Container
       # Registry (ghcr.io/stewartbrothers/gaia-mcp). Gated on
       # GH_RELEASE_TOKEN — the same PAT used for the release publish
@@ -422,6 +492,24 @@ jobs:
             exit 1
           fi
           echo "::notice::Container ghcr.io/stewartbrothers/gaia-mcp:${TAG} pushed."
+
+  # =====================================================================
+  # mirror — push the tag to github.com, parallel with build-and-publish
+  # =====================================================================
+  #
+  # Doesn't need dist/ or setup-go — just SSH and the tag itself.
+  # `needs: verify` (not `needs: build-and-publish`) so a build failure
+  # doesn't block tag mirror availability.
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: verify
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+        with:
+          # No full history needed — we're only pushing the tag's ref.
+          # checkout-default depth (1) plus the tag's own ref is fine.
+          fetch-depth: 1
 
       # Mirror the tag to GitHub so the release is reachable.
       # Gated on GITHUB_MIRROR_SSH_KEY (#47). When unset, the Forgejo
