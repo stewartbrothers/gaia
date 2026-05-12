@@ -275,6 +275,91 @@ tar -xzf gaia_vX.Y.Z_linux_x86_64.tar.gz
 Add a fresh `[Unreleased]` section to `CHANGELOG.md` for follow-up
 work to accumulate against.
 
+## If the workflow fails partway through
+
+If `.forgejo/workflows/release.yml` aborts after the tag has pushed
+but before every downstream surface (Forgejo release, brew tap,
+GitHub mirror release, GHCR image) is populated, **do not manually
+rebuild artifacts locally and upload them**. Local builds produce
+artifacts with different sha256s than the CI-built ones recorded in
+the Homebrew formula, which breaks `brew install gaia` for every tap
+user. The v0.4.0 cut hit exactly this trap — see issues #284, #285,
+and PR #283.
+
+### Correct recovery procedure
+
+1. **Re-run the workflow first.** Forgejo UI → repo → Actions →
+   open the failed run → "Re-run jobs" (or "Re-run failed jobs"
+   depending on the Forgejo version). The workflow's upload steps
+   are idempotent:
+   - `gaia release publish` uses replace semantics (#219); existing
+     same-named assets are deleted before re-upload.
+   - `git push origin -f refs/tags/latest` converges.
+   - `docker buildx build --push` is idempotent on the tag.
+   - The brew tap formula push checks `if git diff --quiet` and
+     no-ops when the formula is already correct.
+
+   If the first failure was a transient (runner death, registry
+   timeout), re-run alone fixes it. If the failure is deterministic
+   (auth, permission, race), continue.
+
+2. **Identify the failing step from the workflow log.** Common
+   failure modes and their fixes:
+
+   | Failure | Fix |
+   |---|---|
+   | "Deploy Key: N: ... is not authorized to write" during goreleaser brew push | Forgejo UI → Settings → Deploy Keys → delete the key → re-add the same public half with **Allow write access** ticked. Deploy keys' permission flag is set-at-creation; it can't be toggled in place. The new pre-flight probe step ("Verify deploy key has write access") catches this in < 5 seconds; if it fires, the goreleaser step never runs and no partial state is created. |
+   | `! [rejected] HEAD -> main (fetch first)` during README bump | The fix landed in this file's commit history: the step now `git fetch origin main && git checkout -B main origin/main` before sed+commit+push, so any concurrent push (brew tap, etc.) is automatically rebased over. The step is also `continue-on-error: true` — a README bump failure no longer tanks the GitHub release / GHCR / mirror steps that come after. |
+   | "Only signed in user is allowed to call APIs" / 403 from `gaia release publish` | The `FORGEJO_RELEASE_TOKEN` secret is missing, expired, or lacks `write:repository` scope. Rotate it (Forgejo UI → Settings → Secrets), then re-run. |
+   | GHCR push: `401 Unauthorized` or `403 Forbidden` | The `GH_RELEASE_TOKEN` secret needs the `write:packages` scope (not just `public_repo`). Fine-grained PATs can't push to GHCR — must be a classic PAT. |
+
+3. **After fixing the underlying issue, re-run the workflow** —
+   don't manually plug the gap. Re-running re-builds the same
+   artifacts (deterministic from the tag's source), recomputes the
+   same checksums, and writes the same formula. Manual rebuilds
+   break this invariant.
+
+### Why never use `gh release` as a workaround
+
+The gaia-first protocol applies to release operations: `gaia release
+publish` is the canonical command for both Forgejo and GitHub
+(`--provider github`). Reaching for `gh release create` instead has
+two failure modes:
+
+- **Different artifact checksums** — `gh release create <files>`
+  doesn't care where the files came from. If they're locally-rebuilt
+  binaries (different toolchain version, different `-trimpath`
+  state, different build host), their sha256s won't match the
+  workflow-built artifacts that `Formula/gaia.rb` references via
+  goreleaser. brew users hit checksum mismatches.
+- **Protocol drift** — every workaround that slips through without
+  a gap issue is invisible (CLAUDE.md "Dogfood: gaia-first protocol").
+  If `gaia --provider github release publish` doesn't work for your
+  recovery, file a `type:gap` issue with the exact failure mode so
+  it gets fixed, then re-run the workflow.
+
+### What if the runner is genuinely unrecoverable
+
+If Forgejo is down or the workflow can't be re-run at all, the
+**only** acceptable manual path is to preserve the canonical
+artifacts:
+
+1. Download the **existing Forgejo release**'s assets (they were
+   uploaded by `gaia release publish` before whatever step failed)
+   — those are the canonical artifacts that `Formula/gaia.rb`
+   references.
+2. Use `gaia --provider github release publish vX.Y.Z --asset
+   'downloaded/*' --notes-from CHANGELOG.md` to mirror them to the
+   GitHub release, **preserving the exact bytes (and therefore
+   the sha256s)**.
+3. Never run `goreleaser release` locally and upload its output.
+   The output will not byte-match what CI built.
+
+If the Forgejo release itself has no assets (everything failed
+before `gaia release publish`), the recovery is to re-run the
+workflow from a clean state — fixing whatever broke first — not to
+fabricate replacements locally.
+
 ## Hot-fix releases
 
 If a critical bug needs to ship faster than a normal cycle:
