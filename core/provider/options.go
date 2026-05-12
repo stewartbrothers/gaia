@@ -340,3 +340,47 @@ type GetWorkflowRunOptions struct {
 type GetWorkflowRunLogsOptions struct {
 	FailedOnly bool
 }
+
+// --- Milestones (#258) -------------------------------------------
+
+// ListMilestonesOptions filters and paginates a ListMilestones call.
+// State takes "open", "closed", "all", or "" → "open" (matches both
+// Forgejo and GitHub defaults). Name is a title substring filter
+// supported by Forgejo (`name=` query param); GitHub ignores it and
+// the CLI layer can client-side filter instead if needed.
+type ListMilestonesOptions struct {
+	State  string
+	Name   string
+	Limit  int
+	Cursor string
+}
+
+// CreateMilestoneOptions configures CreateMilestone. Title is
+// required. DueOn is a *time.Time so omitempty drops it cleanly when
+// the caller doesn't set a due date.
+type CreateMilestoneOptions struct {
+	Title       string     `json:"title"`
+	Description string     `json:"description,omitempty"`
+	DueOn       *time.Time `json:"due_on,omitempty"`
+}
+
+// EditMilestoneOptions configures EditMilestone. Empty string fields
+// mean "no change" (matches Forgejo's PATCH semantics). State takes
+// "open"/"closed"/"". DueOn is a *time.Time so nil = no change; an
+// explicit due-date clear isn't currently exposed (see Provider
+// interface docs).
+type EditMilestoneOptions struct {
+	Title       string     `json:"title,omitempty"`
+	Description string     `json:"description,omitempty"`
+	State       string     `json:"state,omitempty"`
+	DueOn       *time.Time `json:"due_on,omitempty"`
+}
+
+// ListMilestoneIssuesOptions paginates a ListMilestoneIssues call.
+// State narrows to "open" (default), "closed", "all". The milestone
+// ID itself is a positional argument on the call, not part of opts.
+type ListMilestoneIssuesOptions struct {
+	State  string
+	Limit  int
+	Cursor string
+}
