@@ -46,6 +46,9 @@ cover something is to file a gap issue (see
 | Open a PR | `gaia pr create --title "..." --head feature/x --base main --body "..."` |
 | Submit a review | `gaia pr review 42 --state approve --body "..."` |
 | Merge a PR | `gaia pr merge 42 --method squash` |
+| Plan a sprint | `gaia milestone create --title v0.5.0 --due 2026-06-01T00:00:00Z` |
+| Track sprint progress | `gaia milestone issues 7 --state all` (issues attached to milestone ID 7) |
+| Close a sprint | `gaia milestone edit 7 --state closed` |
 | Inspect Actions runs | `gaia actions list --status failure` |
 | Watch CI to completion | `gaia pr ci-wait 42 --timeout 15m` |
 | Run a saved chain | `gaia chain run pr-create-and-land --var head=feature/x` |
