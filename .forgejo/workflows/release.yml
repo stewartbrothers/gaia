@@ -99,20 +99,42 @@ jobs:
       - name: Install goreleaser
         run: go install github.com/goreleaser/goreleaser/v2@v2.4.5
 
-      # Decide upfront whether the goreleaser run should attempt the
-      # Homebrew formula push. The `brews:` block in .goreleaser.yml
-      # references `{{ .Env.GORELEASER_TAP_DEPLOY_KEY }}` — when that
-      # secret is unset, goreleaser substitutes empty, tries to use
-      # an empty SSH key, and fails the entire release run before
-      # the actual artifact upload step. Skipping the homebrew
-      # phase when the secret is absent keeps the release-publish
-      # path resilient: operators can ship the binaries first and
-      # add the tap-deploy key later.
-      - name: Check whether Homebrew tap secret is configured
+      # Validate the Homebrew tap configuration. Two checks in one
+      # step:
+      #
+      #  1. PRESENCE: if `GORELEASER_TAP_DEPLOY_KEY` is unset, set
+      #     skip=homebrew (and the placeholder env var goreleaser's
+      #     brews template needs to evaluate) and bail — the rest of
+      #     the release proceeds without the formula push, the tap
+      #     bump can be done by hand later.
+      #
+      #  2. WRITE PROBE: if the secret is set, verify the registered
+      #     public half actually has WRITE access on this repo. Forgejo
+      #     deploy keys use a binary "Allow write access" checkbox at
+      #     the repo Deploy Keys page — there's no scope string. The
+      #     v0.4.0 release (Job 2014, #284) failed because the
+      #     registered public half was read-only but the secret was
+      #     set, so the old presence-only check let goreleaser try; two
+      #     minutes of artifact building was burned before Forgejo
+      #     rejected the push.
+      #
+      # Probe technique: no-op `git push :refs/heads/__probe__` over
+      # SSH using the deploy key. Forgejo replies:
+      #   - "is not authorized to write"           → read-only key (FAIL)
+      #   - "remote ref does not exist"            → write OK (PASS)
+      #   - "Permission denied (publickey)"        → bad key       (FAIL)
+      #   - anything else                          → warn, proceed
+      #
+      # The push is a no-op either way (no ref state changes), so it's
+      # safe to run on every release.
+      - name: Validate Homebrew tap configuration
         id: brew_gate
         env:
           TAP_KEY: ${{ secrets.GORELEASER_TAP_DEPLOY_KEY }}
         run: |
+          set -euo pipefail
+
+          # 1. Presence: secret unset → skip the homebrew pipeline.
           if [ -z "${TAP_KEY:-}" ]; then
             echo "skip=homebrew," >> "$GITHUB_OUTPUT"
             # goreleaser evaluates {{ .Env.GORELEASER_TAP_DEPLOY_KEY }} in the
@@ -120,44 +142,23 @@ jobs:
             # to prevent a template-evaluation error when the secret is absent.
             echo "GORELEASER_TAP_DEPLOY_KEY=placeholder" >> "$GITHUB_ENV"
             echo "::notice::GORELEASER_TAP_DEPLOY_KEY not configured — skipping Homebrew formula bump for ${{ github.ref_name }}."
-          else
-            echo "skip=" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-      # Pre-flight: verify the Homebrew tap deploy key actually has WRITE
-      # access on this repo. Forgejo deploy keys use a binary "Allow write
-      # access" checkbox at the repo Deploy Keys page — there's no scope
-      # string. The brew_gate step above only checks whether the secret is
-      # PRESENT, which is necessary but not sufficient: the v0.4.0 release
-      # (Job 2014, #284) failed because the registered public half was
-      # read-only, but the secret was set, so brew_gate let goreleaser try.
-      # Two minutes of artifact building was burned before Forgejo rejected
-      # the brew tap push with "Deploy Key: N: is not authorized to write".
-      #
-      # The probe attempts a no-op `git push :refs/heads/__probe__` over
-      # SSH using the deploy key. With write access, Forgejo replies "remote
-      # ref does not exist" (because there's nothing to delete) and exits 1
-      # — this is the expected success signal. Without write access, Forgejo
-      # replies "is not authorized to write" before considering the ref —
-      # this is the actionable failure signal. The push is a no-op either
-      # way (no ref state changes), so it's safe to run on every release.
-      #
-      # Gated on brew_gate.outputs.skip == '' so it only runs when goreleaser
-      # will actually attempt the brew push.
-      - name: Verify deploy key has write access
-        if: steps.brew_gate.outputs.skip == ''
-        env:
-          TAP_KEY: ${{ secrets.GORELEASER_TAP_DEPLOY_KEY }}
-        run: |
-          set -euo pipefail
+          # Secret present — clear the skip output and probe write access.
+          echo "skip=" >> "$GITHUB_OUTPUT"
+
+          # 2. Write probe: try a no-op delete of a sentinel ref. Auth
+          # succeeds → Forgejo says "remote ref does not exist". Auth
+          # works but key is read-only → Forgejo says "not authorized
+          # to write". `|| true` because the push always exits 1 in
+          # either case (you can't delete a non-existent ref); we
+          # classify by stderr content, not exit code.
           KEYFILE=$(mktemp)
           trap 'rm -f "$KEYFILE"' EXIT
           printf '%s\n' "$TAP_KEY" > "$KEYFILE"
           chmod 0600 "$KEYFILE"
 
-          # `|| true` because `git push :nonexistent-ref` always exits 1
-          # (you can't delete a ref that doesn't exist) even when auth
-          # succeeds. We classify by stderr content, not exit code.
           GIT_SSH_COMMAND="ssh -i $KEYFILE -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
             git push \
               "git@repo.stewartbrothers.com.au:${{ github.repository }}.git" \
