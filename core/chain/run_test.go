@@ -975,13 +975,25 @@ func TestRunChildEnvScrubbed(t *testing.T) {
 	// Set the same set of token env-vars an operator would carry.
 	// t.Setenv resets at end of test, so we don't pollute later tests.
 	for k, v := range map[string]string{
-		"GITEA_TOKEN":     "secret-gitea-token",
-		"FORGEJO_TOKEN":   "secret-forgejo-token",
-		"GH_TOKEN":        "secret-gh-token",
-		"GITHUB_TOKEN":    "secret-github-token",
-		"AWS_ACCESS_KEY":  "AKIA-secret-aws-key",
-		"AWS_SECRET":      "secret-aws-shh",
-		"GAIA_RANDOM_VAR": "should-also-be-stripped",
+		"GITEA_TOKEN":           "secret-gitea-token",
+		"FORGEJO_TOKEN":         "secret-forgejo-token",
+		"GH_TOKEN":              "secret-gh-token",
+		"GITHUB_TOKEN":          "secret-github-token",
+		"AWS_ACCESS_KEY":        "AKIA-secret-aws-key",
+		"AWS_SECRET":            "secret-aws-shh",
+		"AWS_SECRET_ACCESS_KEY": "secret-aws-secret-access-key",
+		"GCP_SERVICE_ACCOUNT":   "secret-gcp-sa",
+		"AZURE_CLIENT_SECRET":   "secret-azure-client",
+		"GAIA_RANDOM_VAR":       "should-also-be-stripped",
+		// Adjacent prefixes: ensure prefix-match allowlists for
+		// LC_*, XDG_*, CONDA_* don't accidentally let through
+		// names that share a leading character with a token-bearing
+		// var. (Belt-and-braces: LCTOKEN, XDGSECRET, CONDATOKEN
+		// don't actually start with the allowed prefixes since the
+		// prefix includes the trailing underscore — but pin it.)
+		"LCTOKEN":    "should-not-leak-without-underscore",
+		"XDGSECRET":  "should-not-leak-without-underscore",
+		"CONDATOKEN": "should-not-leak-without-underscore",
 	} {
 		t.Setenv(k, v)
 	}
@@ -1009,7 +1021,13 @@ func TestRunChildEnvScrubbed(t *testing.T) {
 	// None of these names should appear in the child's env.
 	bannedKeys := []string{
 		"GITEA_TOKEN", "FORGEJO_TOKEN", "GH_TOKEN", "GITHUB_TOKEN",
-		"AWS_ACCESS_KEY", "AWS_SECRET", "GAIA_RANDOM_VAR",
+		"AWS_ACCESS_KEY", "AWS_SECRET", "AWS_SECRET_ACCESS_KEY",
+		"GCP_SERVICE_ACCOUNT", "AZURE_CLIENT_SECRET",
+		"GAIA_RANDOM_VAR",
+		// Names that share a leading character with an allowed
+		// prefix but don't actually start with the prefix
+		// (allowlist requires the trailing underscore).
+		"LCTOKEN", "XDGSECRET", "CONDATOKEN",
 	}
 	for _, k := range bannedKeys {
 		if strings.Contains(stdout, k+"=") {
@@ -1023,6 +1041,9 @@ func TestRunChildEnvScrubbed(t *testing.T) {
 		"secret-gitea-token", "secret-forgejo-token",
 		"secret-gh-token", "secret-github-token",
 		"AKIA-secret-aws-key", "secret-aws-shh",
+		"secret-aws-secret-access-key",
+		"secret-gcp-sa", "secret-azure-client",
+		"should-not-leak-without-underscore",
 	}
 	for _, v := range bannedVals {
 		if strings.Contains(stdout, v) {
@@ -1035,6 +1056,88 @@ func TestRunChildEnvScrubbed(t *testing.T) {
 	// chain immediately).
 	if !strings.Contains(stdout, "PATH=") {
 		t.Errorf("PATH was scrubbed — chain steps can't find any binaries; stdout=%s", stdout)
+	}
+}
+
+// TestRunChildEnvInheritsCallerToolEnv pins #247: chain `run:` steps
+// must inherit the caller's full tool environment (PATH + the
+// well-known *non-secret* env vars that venv / nvm / pyenv / asdf /
+// go-toolchain activation set) so that locally-installed tools work
+// inside chain steps without the operator needing to source an
+// activation script in every `run:` block.
+//
+// Without this, `make ci-parity` (or any step that shells out to a
+// tool whose wrapper relies on VIRTUAL_ENV, NVM_BIN, PYENV_VERSION,
+// etc.) silently fails or picks up the wrong interpreter, even
+// though the same command works in the caller's terminal. The
+// inherited set is strictly non-secret — forge tokens and cloud
+// creds are still scrubbed by TestRunChildEnvScrubbed.
+//
+// Repro: set a representative set of activation env vars in the
+// parent, run a chain step that prints them via `env`. Any name
+// missing means tools depending on that var won't activate inside
+// the chain step.
+func TestRunChildEnvInheritsCallerToolEnv(t *testing.T) {
+	// Representative set covering the four most common managers an
+	// operator's shell carries when they ran `gaia chain run`:
+	//
+	//   - python venv / virtualenv: VIRTUAL_ENV
+	//   - nvm:                       NVM_DIR, NVM_BIN
+	//   - pyenv:                     PYENV_ROOT, PYENV_VERSION
+	//   - go toolchain:              GOPATH, GOROOT, GOBIN,
+	//                                 GOCACHE, GOMODCACHE, GOFLAGS
+	//   - generic dev shell:         SHELL, TMPDIR
+	//   - locale/colour:             LC_*, XDG_*, CONDA_* (prefix match)
+	//
+	// Every name here is non-secret (it points at a directory or a
+	// shell name, never holds a credential). t.Setenv resets at
+	// end of test. PWD is intentionally excluded — POSIX `sh` always
+	// recomputes PWD from the inherited cwd, so it's not a useful
+	// inheritance assertion.
+	wanted := map[string]string{
+		"VIRTUAL_ENV":       "/tmp/fake-venv",
+		"NVM_DIR":           "/tmp/fake-nvm",
+		"NVM_BIN":           "/tmp/fake-nvm/versions/node/v20/bin",
+		"PYENV_ROOT":        "/tmp/fake-pyenv",
+		"PYENV_VERSION":     "3.12.0",
+		"GOPATH":            "/tmp/fake-gopath",
+		"GOROOT":            "/tmp/fake-goroot",
+		"GOBIN":             "/tmp/fake-gobin",
+		"GOCACHE":           "/tmp/fake-gocache",
+		"GOMODCACHE":        "/tmp/fake-gomodcache",
+		"GOFLAGS":           "-mod=mod",
+		"SHELL":             "/bin/zsh",
+		"TMPDIR":            "/tmp/fake-tmp",
+		"LC_TIME":           "en_US.UTF-8",
+		"XDG_CONFIG_HOME":   "/tmp/fake-xdg-config",
+		"CONDA_PREFIX":      "/tmp/fake-conda",
+		"CONDA_DEFAULT_ENV": "fake-env",
+	}
+	for k, v := range wanted {
+		t.Setenv(k, v)
+	}
+
+	c := &chain.Chain{
+		Name: "tool-env",
+		Steps: []chain.Step{
+			{ID: "dump", Run: "env"},
+		},
+	}
+	res, err := chain.Run(context.Background(), c, nil, chain.RunOptions{
+		MaxOutputBytes: 16 * 1024,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != chain.StatusSuccess {
+		t.Fatalf("status: %s, failure: %+v", res.Status, res.Failure)
+	}
+	stdout := res.Steps[0].Stdout
+	for k, v := range wanted {
+		want := k + "=" + v
+		if !strings.Contains(stdout, want) {
+			t.Errorf("child env missing %q — tools that depend on it (venv/nvm/pyenv/go) silently break in chain steps; stdout=%s", want, stdout)
+		}
 	}
 }
 
