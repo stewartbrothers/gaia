@@ -54,10 +54,11 @@ import (
 // can't be imported by a test in another package — duplicating the
 // types is the cleanest cross-cut.
 type scenarioYAML struct {
-	Description string         `yaml:"description,omitempty"`
-	ChainYAML   string         `yaml:"chain_yaml,omitempty"`
-	Mocks       []mockRuleYAML `yaml:"mocks,omitempty"`
-	Stages      []stageYAML    `yaml:"stages"`
+	Description string            `yaml:"description,omitempty"`
+	ChainYAML   string            `yaml:"chain_yaml,omitempty"`
+	Mocks       []mockRuleYAML    `yaml:"mocks,omitempty"`
+	Files       map[string]string `yaml:"files,omitempty"`
+	Stages      []stageYAML       `yaml:"stages"`
 }
 
 type mockRuleYAML struct {
@@ -169,6 +170,12 @@ func runCLIScenario(t *testing.T, dir string) {
 	tempDir := t.TempDir()
 	stateDir := filepath.Join(tempDir, "state")
 	chainFile := filepath.Join(tempDir, "chain.yaml")
+
+	if len(sc.Files) > 0 {
+		if err := writeCLIScenarioFiles(tempDir, sc.Files); err != nil {
+			t.Fatalf("write scenario files: %v", err)
+		}
+	}
 
 	t.Setenv("HOME", tempDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tempDir, "config"))
@@ -461,4 +468,42 @@ func assertCLIRequest(t *testing.T, f *cliFakeForge, a *requestAssertionYAML) {
 			t.Errorf("assert_request.header_has_auth: Authorization header missing; got headers %v", got.Header)
 		}
 	}
+}
+
+// writeCLIScenarioFiles mirrors cmd/gaia/main_test.go's
+// writeScenarioFiles so a scenario using the `files:` field works
+// from either harness. See that file for the leading
+// `#!mode:0xxx\n` header convention.
+func writeCLIScenarioFiles(tempDir string, files map[string]string) error {
+	for rel, body := range files {
+		if strings.Contains(rel, "..") || filepath.IsAbs(rel) {
+			return fmt.Errorf("files: %q escapes scenario tempdir", rel)
+		}
+		mode := os.FileMode(0o600)
+		if strings.HasPrefix(body, "#!mode:") {
+			nl := strings.IndexByte(body, '\n')
+			if nl == -1 {
+				return fmt.Errorf("files[%s]: mode header without newline", rel)
+			}
+			header := body[:nl]
+			body = body[nl+1:]
+			modeStr := strings.TrimPrefix(header, "#!mode:")
+			var parsed uint32
+			if _, err := fmt.Sscanf(modeStr, "%o", &parsed); err != nil {
+				return fmt.Errorf("files[%s]: parse mode %q: %w", rel, modeStr, err)
+			}
+			mode = os.FileMode(parsed)
+		}
+		full := filepath.Join(tempDir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+			return fmt.Errorf("files[%s]: mkdir parent: %w", rel, err)
+		}
+		if err := os.WriteFile(full, []byte(body), mode); err != nil {
+			return fmt.Errorf("files[%s]: write: %w", rel, err)
+		}
+		if err := os.Chmod(full, mode); err != nil {
+			return fmt.Errorf("files[%s]: chmod: %w", rel, err)
+		}
+	}
+	return nil
 }

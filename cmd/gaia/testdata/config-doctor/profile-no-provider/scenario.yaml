@@ -1,0 +1,23 @@
+description: |
+  Resolved profile has no provider set. Doctor ERRs at
+  `profile-no-provider` so the operator fixes the gap before
+  the first command 401s. We pin default_profile in a project
+  config (avoiding the multi-project-safety WARN) by NOT setting
+  it globally and passing --profile.
+
+stages:
+  - args:
+      - --profile
+      - broken
+      - config
+      - doctor
+    exit_code: 1
+    env:
+      # Need a global config so config.Resolve can find the profile.
+      GAIA_PROVIDER: ""
+
+files:
+  config/gaia/config.yaml: |
+    profiles:
+      broken:
+        api_url: https://example.com/api/v1

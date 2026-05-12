@@ -1,0 +1,8 @@
+ERR credentials-file-mode: global credentials file mode is 0644; tokens are world- or group-readable
+    fix: chmod 600 <TEMPDIR>/config/gaia/credentials.yaml
+    source: <TEMPDIR>/config/gaia/credentials.yaml
+INFO repo-resolution: repo not resolvable in cwd (no --repo, no git remote, no project default_repo)
+    fix: run inside a configured checkout, or pass --repo owner/name
+INFO config-layers: resolved from: global=<absent>, env=<none>
+
+summary: 1 ERR, 0 WARN, 3 total finding(s)

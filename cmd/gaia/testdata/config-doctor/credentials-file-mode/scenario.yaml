@@ -1,0 +1,17 @@
+description: |
+  Global credentials file is mode 0644 (world-readable). Doctor
+  ERRs at `credentials-file-mode` and exits 1.
+
+files:
+  config/gaia/credentials.yaml: |
+    #!mode:0644
+    forgejo:
+      example.com:
+        api_url: https://example.com/api/v1
+        token: redacted-fake-token
+
+stages:
+  - args:
+      - config
+      - doctor
+    exit_code: 1

@@ -1,0 +1,20 @@
+description: |
+  Profile sets token_env to a var that's empty and no canonical
+  fallback is set. Doctor WARNs at `token-env-empty`. Exit 0
+  (WARN, not ERR).
+
+stages:
+  - args:
+      - --profile
+      - p
+      - config
+      - doctor
+    exit_code: 0
+
+files:
+  config/gaia/config.yaml: |
+    profiles:
+      p:
+        provider: forgejo
+        api_url: https://example.com/api/v1
+        token_env: MY_CUSTOM_FORGE_TOKEN
