@@ -10,6 +10,27 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`gaia chain run` now inherits the caller's tool-environment** —
+  chain `run:` steps used to be invoked under a scrubbed env that
+  was deliberately narrow (only `PATH`, `HOME`, `USER`, `LOGNAME`,
+  `LANG`, `LC_ALL`, `TERM`). The scrub correctly prevented forge
+  tokens / cloud creds from leaking, but it also stripped the
+  well-known *non-secret* activation vars set by `venv`, `nvm`,
+  `pyenv`, `asdf`, and the Go toolchain. Net effect:
+  `make ci-parity` (and any other chain step that wraps
+  language-specific tooling) silently picked up the wrong
+  interpreter or failed outright, even though the same command
+  worked in the operator's terminal. The allowlist now passes
+  through `VIRTUAL_ENV`, `NVM_*`, `PYENV_*`, `ASDF_*`, `GO*`,
+  `JAVA_HOME`, `RUSTUP_HOME`, `CARGO_HOME`, plus prefix-matched
+  `LC_*` / `XDG_*` / `CONDA_*` families. Forge tokens
+  (`GITEA_TOKEN`, `FORGEJO_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`),
+  cloud creds (`AWS_*`, `GCP_*`, `AZURE_*`), and arbitrary
+  operator-scope vars are still stripped — the security
+  contract from #140 is unchanged. Closes #247.
+
 ## [0.4.1] — 2026-05-12
 
 Maintenance release. One user-facing fix (`brew install gaia` was
