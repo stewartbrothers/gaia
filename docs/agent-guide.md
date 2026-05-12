@@ -33,7 +33,9 @@ cover something is to file a gap issue (see
 
 | If you want to... | Use |
 |---|---|
+| Check the build you're talking to | `gaia version` |
 | Confirm auth works | `gaia whoami` |
+| Re-read this briefing | `gaia learn` (prints the embedded guide) |
 | List issues | `gaia issue list --state open --fields number,title,state` |
 | View an issue | `gaia issue view 42 --with-comments 5` |
 | List PRs | `gaia pr list --state all --fields number,title,state` |
@@ -54,6 +56,36 @@ cover something is to file a gap issue (see
 `gaia --help` lists every top-level command; `gaia <cmd> --help`
 shows the per-command flags. Always rebuild before relying on
 `bin/gaia` — the on-disk artefact can lag the source tree.
+
+## Beyond issues and PRs: full command surface
+
+Issues and PRs are the hot path, but the forge has more shape than
+that. The commands below are name-dropped here so you know they
+exist; reach for `gaia <cmd> --help` for the per-command flags, and
+file a gap issue (see [Where to file gaps](#where-to-file-gaps)) if
+the output isn't useful enough for what you're trying to do.
+
+| Resource / concern | Command surface |
+|---|---|
+| Repo labels (taxonomy) | `gaia label list \| create \| edit \| delete` — manage the label set issues + PRs reference |
+| Releases (tags + assets) | `gaia release list \| view \| create \| edit \| delete \| publish` — `publish` is the create-if-missing-then-upload-assets path |
+| Wiki pages | `gaia wiki list \| view \| search \| edit \| delete` — `list` is title-only (bodies fetched per-page via `view`) so a big wiki stays cheap to enumerate |
+| Webhooks + deliveries | `gaia webhook list \| view \| create \| edit \| delete \| deliveries \| redeliver \| test` — `deliveries` returns summaries (no payload bodies); `redeliver` re-fires a past delivery for a stuck receiver |
+| Package registry artifacts | `gaia packages list \| view \| delete \| upload` — Forgejo generic registry; `upload` publishes one artifact to a `<type>/<name>/<version>` triple |
+| Forge server identity | `gaia server version` — prints the forge instance's own version string (separate from `gaia version`, which prints the CLI build) |
+| Local read cache | `gaia cache nuke` — wipes gaia's on-disk cache of forge reads if you suspect stale data |
+
+Two of these deserve a note for agents:
+
+- **`gaia version` vs `gaia server version`** — different things.
+  `gaia version` reports the CLI's build (binary version, commit,
+  Go runtime); `gaia server version` reports the remote Forgejo /
+  GitHub instance's version. If a bug report says "gaia is broken",
+  the first datum to capture is `gaia version` output.
+- **`gaia cache nuke`** is the recovery hatch when reads look stale.
+  Cache invalidation is automatic for gaia's own writes, but if an
+  external actor changed forge state out-of-band (UI edit, another
+  tool's API call) you can wipe the cache and force fresh reads.
 
 ## Save tokens with `--fields`
 
