@@ -188,10 +188,17 @@ jobs:
       # binary. If the Dockerfile's RUN line drops a build-arg, the
       # container's `gaia version` will print empty strings — which is
       # easy to miss in a working build.
+      #
+      # The image's default ENTRYPOINT is /usr/local/bin/gaia-mcp; we
+      # override it here so the test invokes the CLI binary directly.
+      # Without --entrypoint, `docker run image gaia version ...` runs
+      # `gaia-mcp gaia version ...`, gaia-mcp doesn't recognise those
+      # args, and the output is silently empty — exactly the failure
+      # mode the first run of this workflow hit (#290).
       - name: Verify container's gaia binary picks up build-args
         run: |
           set -euo pipefail
-          version_out=$(docker run --rm gaia-mcp:smoketest gaia version --format json)
+          version_out=$(docker run --rm --entrypoint /usr/local/bin/gaia gaia-mcp:smoketest version --format json)
           echo "container envelope: $version_out"
           if ! echo "$version_out" | grep -q '"version":[[:space:]]*"smoketest-'; then
             echo "::error::container build-args did not reach the binary: $version_out"
