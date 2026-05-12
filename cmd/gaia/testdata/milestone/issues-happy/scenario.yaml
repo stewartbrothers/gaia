@@ -1,0 +1,42 @@
+description: |
+  `gaia milestone issues 7` lists issues filtered by milestone.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/issues
+    status: 200
+    body: |
+      [
+        {
+          "number": 50,
+          "title": "do the thing",
+          "state": "open",
+          "user": {"login": "alice"},
+          "labels": [{"name": "bug"}],
+          "created_at": "2026-04-01T00:00:00Z",
+          "updated_at": "2026-04-02T00:00:00Z"
+        },
+        {
+          "number": 51,
+          "title": "ship it",
+          "state": "open",
+          "user": {"login": "bob"},
+          "created_at": "2026-04-02T00:00:00Z",
+          "updated_at": "2026-04-03T00:00:00Z"
+        }
+      ]
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - milestone
+      - issues
+      - "7"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

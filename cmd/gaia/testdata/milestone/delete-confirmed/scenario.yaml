@@ -1,0 +1,26 @@
+description: |
+  `gaia milestone delete 7 --confirm` issues a DELETE.
+
+mocks:
+  - method: DELETE
+    path: /repos/o/r/milestones/7
+    status: 204
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - milestone
+      - delete
+      - "7"
+      - --confirm
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: DELETE
+      path: /repos/o/r/milestones/7

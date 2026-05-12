@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "data": {
+    "id": 42,
+    "title": {
+      "_trust": "external",
+      "_value": "Sprint 23"
+    },
+    "description": {
+      "_trust": "external",
+      "_value": "May focus"
+    },
+    "state": "open",
+    "due_on": "2026-06-01T00:00:00Z",
+    "open_issues": 0,
+    "closed_issues": 0,
+    "created_at": "2026-04-15T00:00:00Z",
+    "updated_at": "2026-04-15T00:00:00Z"
+  }
+}

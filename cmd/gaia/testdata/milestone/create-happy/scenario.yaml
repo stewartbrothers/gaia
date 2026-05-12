@@ -1,0 +1,43 @@
+description: |
+  `gaia milestone create` POSTs to /milestones.
+
+mocks:
+  - method: POST
+    path: /repos/o/r/milestones
+    status: 201
+    body: |
+      {
+        "id": 42,
+        "title": "Sprint 23",
+        "description": "May focus",
+        "state": "open",
+        "open_issues": 0,
+        "closed_issues": 0,
+        "created_at": "2026-04-15T00:00:00Z",
+        "updated_at": "2026-04-15T00:00:00Z",
+        "due_on": "2026-06-01T00:00:00Z"
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - milestone
+      - create
+      - --title
+      - "Sprint 23"
+      - --description
+      - "May focus"
+      - --due
+      - 2026-06-01T00:00:00Z
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: POST
+      path: /repos/o/r/milestones
+      body_contains: '"title":"Sprint 23"'
