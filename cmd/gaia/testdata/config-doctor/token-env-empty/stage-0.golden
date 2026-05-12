@@ -1,0 +1,7 @@
+WARN token-env-empty: profile "p" sets token_env="MY_CUSTOM_FORGE_TOKEN" but that variable is empty and no canonical fallback (FORGEJO_TOKEN, GITEA_TOKEN) is set
+    fix: export MY_CUSTOM_FORGE_TOKEN, or run `gaia auth forgejo <url>` to store a credential
+INFO repo-resolution: repo not resolvable in cwd (no --repo, no git remote, no project default_repo)
+    fix: run inside a configured checkout, or pass --repo owner/name
+INFO config-layers: resolved from: global=<TEMPDIR>/config/gaia/config.yaml, env=<none>
+
+summary: 0 ERR, 1 WARN, 3 total finding(s)

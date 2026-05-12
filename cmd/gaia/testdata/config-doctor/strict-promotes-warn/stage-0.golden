@@ -1,0 +1,7 @@
+ERR global-default-repo: global config sets default_repo="x/y" — globally meaningless (every project gets the same repo target)
+    fix: remove default_repo from the global file; set it per-project in .gaia/config.yaml
+    source: <TEMPDIR>/config/gaia/config.yaml
+INFO repo-resolution: repo would resolve to x/y (source: project .gaia/config.yaml default_repo)
+INFO config-layers: resolved from: global=<TEMPDIR>/config/gaia/config.yaml, env=<none>
+
+summary: 1 ERR, 0 WARN, 3 total finding(s)

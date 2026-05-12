@@ -363,6 +363,17 @@ the insights-DB paths out of version control; the same content is
 also exposed as the `gaia://gitignore` MCP resource. See
 [`docs/configuration.md`](configuration.md#recommended-gitignore-entries).
 
+When something is misconfigured and you can't tell whether the
+problem is the token, the profile, or a contaminating global
+default, run `gaia config doctor`. It lints the resolved config +
+credential surface and prints one line per finding (`OK` / `INFO` /
+`WARN` / `ERR`) with a remediation. `--strict` promotes `WARN` to
+`ERR` for CI gating; `--quiet` returns exit-code only. Common
+catches: a `default_profile` accidentally pinned in the global
+config (which contaminates every other project on the system), a
+project `.gaia/credentials.yaml` that isn't gitignored, and a
+profile whose `token_env` names an unset variable.
+
 Exit code `4` (Auth) means the token is missing or rejected — re-run
 `gaia auth ...` against the right host. Full reference:
 [`docs/auth.md`](auth.md).

@@ -1,0 +1,18 @@
+description: |
+  --strict flips WARN findings to ERR. A bare WARN-only run that
+  would exit 0 instead exits 1 under --strict — the CI gate.
+
+files:
+  config/gaia/config.yaml: |
+    default_repo: x/y
+    profiles:
+      p:
+        provider: forgejo
+        api_url: https://example.com/api/v1
+
+stages:
+  - args:
+      - config
+      - doctor
+      - --strict
+    exit_code: 1

@@ -1,0 +1,18 @@
+description: |
+  Global config sets default_profile — the #277 smoking gun. Doctor
+  emits a WARN at code `global-default-profile` with a remediation
+  pointing the operator at the per-project .gaia/config.yaml.
+
+files:
+  config/gaia/config.yaml: |
+    default_profile: contaminator
+    profiles:
+      contaminator:
+        provider: forgejo
+        api_url: https://example.com/api/v1
+
+stages:
+  - args:
+      - config
+      - doctor
+    exit_code: 0

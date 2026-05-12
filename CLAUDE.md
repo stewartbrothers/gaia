@@ -244,6 +244,7 @@ tight when scripting):
 - Identity: `gaia version`, `gaia whoami`, `gaia auth forgejo|gh|status|logout`
 - Self-documentation: `gaia learn` (prints the embedded agent guide; `--format json` for envelope shape)
 - Project setup: `gaia gitignore` (prints the recommended `.gitignore` block; `--check` audits an existing file, exits non-zero on missing entries; `--quiet` for CI gating)
+- Config diagnostics: `gaia config doctor` (lints resolved config + credentials; flags multi-project safety, credential hygiene, profile coherence; `--strict` promotes WARN to ERR; `--quiet` exits non-zero on ERR only; `--format json` for envelope shape)
 - Issues: `list | view | create | edit [--add-label/--remove-label] | close | reopen | comment | comment-edit | comment-delete`
 - PRs: `list | view | diff | comments | create | edit | close | reopen | comment-create | merge | review | checkout`
 - Labels: `list | create | edit | delete`

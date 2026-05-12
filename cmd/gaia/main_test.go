@@ -94,6 +94,17 @@ type scenario struct {
 	// started (chain scenarios don't need one).
 	Mocks []mockRule `yaml:"mocks,omitempty"`
 
+	// Files, when non-empty, writes arbitrary fixture files into
+	// the scenario tempdir before any stage runs. Map key is the
+	// relative path under ${tempdir}; value is the file body.
+	// Parent directories are created automatically with mode 0700.
+	// File mode defaults to 0600; override per-file via a leading
+	// `#!mode:0644\n` header on the body (consumed by the writer;
+	// not written to the file). Used by `gaia config doctor`
+	// scenarios to seed `${tempdir}/config/gaia/config.yaml` etc.
+	// without expanding the harness DSL further.
+	Files map[string]string `yaml:"files,omitempty"`
+
 	// Stages run sequentially. Each one produces a golden file
 	// named "stage-N.golden" by default (override per-stage with
 	// stage.golden).
@@ -259,6 +270,18 @@ func runScenario(t *testing.T, dir string) {
 			if err := os.WriteFile(filepath.Join(savedDir, fname), []byte(body), 0o600); err != nil {
 				t.Fatalf("write saved chain %q: %v", name, err)
 			}
+		}
+	}
+
+	// Arbitrary fixture files, written before any stage runs.
+	// Keys are relative paths under tempDir; values are file
+	// bodies. A `#!mode:0xxx\n` header on the body is consumed
+	// and applied as the file's mode (without becoming part of
+	// the written bytes). Defaults to 0600. Parent directories
+	// are created with 0700 mode.
+	if len(sc.Files) > 0 {
+		if err := writeScenarioFiles(tempDir, sc.Files); err != nil {
+			t.Fatalf("write scenario files: %v", err)
 		}
 	}
 
@@ -619,4 +642,50 @@ func assertRequest(t *testing.T, f *fakeForge, a *requestAssertion) {
 			t.Errorf("assert_request.header_has_auth: Authorization header missing; got headers %v", got.Header)
 		}
 	}
+}
+
+// writeScenarioFiles materializes the scenario.Files map under
+// tempDir. Each key is a path relative to tempDir; each value is
+// the file body. A leading `#!mode:0xxx\n` header on the body
+// (e.g. `#!mode:0644\n`) is parsed and applied as the file mode,
+// then stripped from the bytes that get written. Default mode is
+// 0600 so credentials fixtures default to safe permissions.
+//
+// Parent directories are created with mode 0700. The harness
+// rejects "/" or ".." segments to keep fixtures contained.
+func writeScenarioFiles(tempDir string, files map[string]string) error {
+	for rel, body := range files {
+		if strings.Contains(rel, "..") || filepath.IsAbs(rel) {
+			return fmt.Errorf("files: %q escapes scenario tempdir", rel)
+		}
+		mode := os.FileMode(0o600)
+		if strings.HasPrefix(body, "#!mode:") {
+			nl := strings.IndexByte(body, '\n')
+			if nl == -1 {
+				return fmt.Errorf("files[%s]: mode header without newline", rel)
+			}
+			header := body[:nl]
+			body = body[nl+1:]
+			modeStr := strings.TrimPrefix(header, "#!mode:")
+			var parsed uint32
+			if _, err := fmt.Sscanf(modeStr, "%o", &parsed); err != nil {
+				return fmt.Errorf("files[%s]: parse mode %q: %w", rel, modeStr, err)
+			}
+			mode = os.FileMode(parsed)
+		}
+		full := filepath.Join(tempDir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+			return fmt.Errorf("files[%s]: mkdir parent: %w", rel, err)
+		}
+		if err := os.WriteFile(full, []byte(body), mode); err != nil {
+			return fmt.Errorf("files[%s]: write: %w", rel, err)
+		}
+		// os.WriteFile honours mode only on create; explicit Chmod
+		// guarantees the requested permissions even if the file
+		// already existed (e.g., from a re-run of the same test).
+		if err := os.Chmod(full, mode); err != nil {
+			return fmt.Errorf("files[%s]: chmod: %w", rel, err)
+		}
+	}
+	return nil
 }

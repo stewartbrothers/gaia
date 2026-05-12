@@ -97,6 +97,7 @@ auth setup.`,
 	root.AddCommand(newWebhookCmd(flags))
 	root.AddCommand(newActionsCmd(flags))
 	root.AddCommand(newCacheCmd(flags))
+	root.AddCommand(newConfigCmd(flags))
 
 	return root
 }

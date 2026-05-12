@@ -1,0 +1,21 @@
+description: |
+  --format json returns the standard envelope with findings as
+  data records. The pretty-text path is exercised by every other
+  scenario in this directory; this one pins the envelope shape so
+  MCP-style consumers can branch on schema_version + level + code.
+
+files:
+  config/gaia/config.yaml: |
+    default_profile: contaminator
+    profiles:
+      contaminator:
+        provider: forgejo
+        api_url: https://example.com/api/v1
+
+stages:
+  - args:
+      - --format
+      - json
+      - config
+      - doctor
+    exit_code: 0
