@@ -1,0 +1,17 @@
+description: |
+  Resolved profile has no api_url. Doctor ERRs at
+  `profile-no-api-url`.
+
+stages:
+  - args:
+      - --profile
+      - broken
+      - config
+      - doctor
+    exit_code: 1
+
+files:
+  config/gaia/config.yaml: |
+    profiles:
+      broken:
+        provider: forgejo

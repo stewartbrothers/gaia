@@ -1,0 +1,8 @@
+WARN global-default-profile: global config sets default_profile="contaminator" — this routes every project on the system to that profile
+    fix: move default_profile into the per-project .gaia/config.yaml; keep profile definitions in the global file
+    source: <TEMPDIR>/config/gaia/config.yaml
+INFO repo-resolution: repo not resolvable in cwd (no --repo, no git remote, no project default_repo)
+    fix: run inside a configured checkout, or pass --repo owner/name
+INFO config-layers: resolved from: global=<TEMPDIR>/config/gaia/config.yaml, env=<none>
+
+summary: 0 ERR, 1 WARN, 3 total finding(s)

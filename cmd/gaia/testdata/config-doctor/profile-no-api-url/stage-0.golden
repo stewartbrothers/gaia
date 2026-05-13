@@ -1,0 +1,7 @@
+ERR profile-no-api-url: profile "broken" has no `api_url` set
+    fix: add `api_url: https://your-forge/api/v1` (or the GitHub API URL) under the profile
+INFO repo-resolution: repo not resolvable in cwd (no --repo, no git remote, no project default_repo)
+    fix: run inside a configured checkout, or pass --repo owner/name
+INFO config-layers: resolved from: global=<TEMPDIR>/config/gaia/config.yaml, env=<none>
+
+summary: 1 ERR, 0 WARN, 3 total finding(s)

@@ -1,0 +1,11 @@
+description: |
+  Pristine setup — no config, no credentials, not in a repo.
+  Doctor emits only INFO findings (repo-resolution + config-layers)
+  and exits 0. Smoke-test that the command runs at all and that
+  every check group can be skipped without panicking.
+
+stages:
+  - args:
+      - config
+      - doctor
+    exit_code: 0

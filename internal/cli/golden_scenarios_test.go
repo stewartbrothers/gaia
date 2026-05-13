@@ -54,10 +54,12 @@ import (
 // can't be imported by a test in another package — duplicating the
 // types is the cleanest cross-cut.
 type scenarioYAML struct {
-	Description string         `yaml:"description,omitempty"`
-	ChainYAML   string         `yaml:"chain_yaml,omitempty"`
-	Mocks       []mockRuleYAML `yaml:"mocks,omitempty"`
-	Stages      []stageYAML    `yaml:"stages"`
+	Description string            `yaml:"description,omitempty"`
+	ChainYAML   string            `yaml:"chain_yaml,omitempty"`
+	Mocks       []mockRuleYAML    `yaml:"mocks,omitempty"`
+	Files       map[string]string `yaml:"files,omitempty"`
+	Cwd         string            `yaml:"cwd,omitempty"`
+	Stages      []stageYAML       `yaml:"stages"`
 }
 
 type mockRuleYAML struct {
@@ -170,6 +172,12 @@ func runCLIScenario(t *testing.T, dir string) {
 	stateDir := filepath.Join(tempDir, "state")
 	chainFile := filepath.Join(tempDir, "chain.yaml")
 
+	if len(sc.Files) > 0 {
+		if err := writeCLIScenarioFiles(tempDir, sc.Files); err != nil {
+			t.Fatalf("write scenario files: %v", err)
+		}
+	}
+
 	t.Setenv("HOME", tempDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tempDir, "config"))
 	t.Setenv("XDG_STATE_HOME", stateDir)
@@ -185,8 +193,20 @@ func runCLIScenario(t *testing.T, dir string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	notGit := t.TempDir()
-	if err := os.Chdir(notGit); err != nil {
+	// chdir target: default is a NOT-git tempdir. If the scenario
+	// sets `cwd:`, chdir into a path under tempDir instead — lets a
+	// scenario plant a `.git` placeholder in `files:` and run as if
+	// inside that fake repo. Mirrors cmd/gaia/main_test.go.
+	var target string
+	if sc.Cwd != "" {
+		target = filepath.Join(tempDir, sc.Cwd)
+		if err := os.MkdirAll(target, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		target = t.TempDir()
+	}
+	if err := os.Chdir(target); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(cwd) })
@@ -318,6 +338,11 @@ func normalizeCLI(s, tempDir, stateDir, chainFile string) string {
 		s = strings.ReplaceAll(s, stateDir, "<STATEDIR>")
 	}
 	if tempDir != "" {
+		// See cmd/gaia/main_test.go normalize() for the macOS
+		// /private-prefix resolved-symlink rationale.
+		if resolved, err := filepath.EvalSymlinks(tempDir); err == nil && resolved != tempDir {
+			s = strings.ReplaceAll(s, resolved, "<TEMPDIR>")
+		}
 		s = strings.ReplaceAll(s, tempDir, "<TEMPDIR>")
 	}
 	s = cliDurationRE.ReplaceAllString(s, `"duration_ms": 0`)
@@ -461,4 +486,42 @@ func assertCLIRequest(t *testing.T, f *cliFakeForge, a *requestAssertionYAML) {
 			t.Errorf("assert_request.header_has_auth: Authorization header missing; got headers %v", got.Header)
 		}
 	}
+}
+
+// writeCLIScenarioFiles mirrors cmd/gaia/main_test.go's
+// writeScenarioFiles so a scenario using the `files:` field works
+// from either harness. See that file for the leading
+// `#!mode:0xxx\n` header convention.
+func writeCLIScenarioFiles(tempDir string, files map[string]string) error {
+	for rel, body := range files {
+		if strings.Contains(rel, "..") || filepath.IsAbs(rel) {
+			return fmt.Errorf("files: %q escapes scenario tempdir", rel)
+		}
+		mode := os.FileMode(0o600)
+		if strings.HasPrefix(body, "#!mode:") {
+			nl := strings.IndexByte(body, '\n')
+			if nl == -1 {
+				return fmt.Errorf("files[%s]: mode header without newline", rel)
+			}
+			header := body[:nl]
+			body = body[nl+1:]
+			modeStr := strings.TrimPrefix(header, "#!mode:")
+			var parsed uint32
+			if _, err := fmt.Sscanf(modeStr, "%o", &parsed); err != nil {
+				return fmt.Errorf("files[%s]: parse mode %q: %w", rel, modeStr, err)
+			}
+			mode = os.FileMode(parsed)
+		}
+		full := filepath.Join(tempDir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+			return fmt.Errorf("files[%s]: mkdir parent: %w", rel, err)
+		}
+		if err := os.WriteFile(full, []byte(body), mode); err != nil {
+			return fmt.Errorf("files[%s]: write: %w", rel, err)
+		}
+		if err := os.Chmod(full, mode); err != nil {
+			return fmt.Errorf("files[%s]: chmod: %w", rel, err)
+		}
+	}
+	return nil
 }

@@ -1,0 +1,19 @@
+description: |
+  default_profile names a profile that doesn't exist in the merged
+  map. Doctor WARNs at `default-profile-missing`. (The global
+  default_profile also trips the multi-project-safety WARN —
+  intentional: both findings carry independent useful signal.)
+
+files:
+  config/gaia/config.yaml: |
+    default_profile: ghost
+    profiles:
+      real:
+        provider: forgejo
+        api_url: https://example.com/api/v1
+
+stages:
+  - args:
+      - config
+      - doctor
+    exit_code: 0

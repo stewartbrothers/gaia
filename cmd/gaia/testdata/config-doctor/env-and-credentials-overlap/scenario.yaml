@@ -1,0 +1,23 @@
+description: |
+  FORGEJO_TOKEN is exported AND a stored credential exists for the
+  same forgejo host. Doctor WARNs at `env-and-credentials-overlap`
+  because rotation is ambiguous (rotating the stored credential
+  leaves the env var stale, or vice versa). Distinct concern from
+  `project-credentials-not-gitignored` (a token-leak ERR) — this
+  one is a hygiene WARN about which copy is authoritative.
+
+files:
+  config/gaia/credentials.yaml: |
+    forgejo:
+      example.com:
+        api_url: https://example.com/api/v1
+        token: glat_fake_stored_token_for_test
+        user: alice
+
+stages:
+  - args:
+      - config
+      - doctor
+    exit_code: 0
+    env:
+      FORGEJO_TOKEN: glat_fake_env_token_for_test

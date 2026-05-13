@@ -1422,36 +1422,149 @@ func execShell(ctx context.Context, cmd string) (stdout, stderr string, exitCode
 //   - USER / LOGNAME: tools that build paths or commit metadata
 //     (`git`, etc.) read these. Inert from a secrets-leak
 //     standpoint — the username isn't a secret.
-//   - LANG / LC_ALL: locale. Some tools (sort, awk, gettext-aware
-//     CLIs) misbehave or change output format without a locale.
-//   - TERM: terminal type. CLIs that emit colour respect TERM;
-//     dropping it sometimes flips them into a verbose ANSI-escape
-//     fallback that pollutes captures.
+//   - LANG / LC_ALL / LC_* / LANGUAGE: locale. Some tools (sort,
+//     awk, gettext-aware CLIs) misbehave or change output format
+//     without a locale.
+//   - TERM / COLORTERM / NO_COLOR / CLICOLOR / FORCE_COLOR:
+//     terminal capability hints. CLIs that emit colour respect
+//     these; dropping TERM sometimes flips tools into a verbose
+//     ANSI-escape fallback that pollutes captures.
+//   - SHELL / PWD / TMPDIR: well-known shell/runtime pointers.
+//     Some scripts read SHELL to spawn a sub-shell; PWD anchors
+//     relative paths; TMPDIR is where every tool stages
+//     intermediate files. None hold credentials.
+//   - VIRTUAL_ENV / VIRTUAL_ENV_PROMPT / CONDA_*: python venv /
+//     conda activation markers. Without them, `make`-driven
+//     pipelines that wrap `pytest`, `mypy`, etc. silently pick
+//     up the system interpreter or fail outright (#247).
+//   - NVM_DIR / NVM_BIN / NVM_INC / NVM_CD_FLAGS: nvm activation
+//     paths. PATH alone isn't enough — nvm scripts source these
+//     to locate the active node version's headers and shims.
+//   - PYENV_ROOT / PYENV_VERSION / PYENV_VIRTUALENV_INIT: pyenv
+//     activation. Same shape as nvm — PATH + a few markers.
+//   - ASDF_DIR / ASDF_DATA_DIR: asdf-vm version manager paths.
+//   - GOPATH / GOROOT / GOBIN / GOCACHE / GOMODCACHE / GOFLAGS /
+//     GOMODULE / GOPROXY / GOPRIVATE / GONOSUMCHECK: Go toolchain
+//     env. Required for any chain step that shells out to `go`.
+//   - JAVA_HOME / JDK_HOME: Java toolchain root.
+//   - RUSTUP_HOME / CARGO_HOME: rust toolchain roots.
+//   - XDG_*: user-config base dirs. Tools that respect XDG read
+//     these to find user-scoped (non-secret) state.
 //
 // Forge tokens, cloud creds, and arbitrary operator vars are NOT
 // on the list. If a chain author legitimately needs a secret in a
 // step, the right path is a per-step env declaration on the chain
 // schema (Phase 4) — not silent inheritance.
+//
+// Prefix-based passthroughs (LC_*, XDG_*, CONDA_*, NVM_*, PYENV_*,
+// GO* with the explicit exception of GO-secret-shaped names) are
+// handled in scrubbedChildEnv() below.
 var allowedChildEnvKeys = []string{
+	// Core shell/runtime.
 	"PATH",
 	"HOME",
 	"USER",
 	"LOGNAME",
+	"SHELL",
+	"PWD",
+	"TMPDIR",
+
+	// Locale.
 	"LANG",
 	"LC_ALL",
+	"LANGUAGE",
+
+	// Terminal / colour.
 	"TERM",
+	"COLORTERM",
+	"NO_COLOR",
+	"CLICOLOR",
+	"CLICOLOR_FORCE",
+	"FORCE_COLOR",
+
+	// Python venv.
+	"VIRTUAL_ENV",
+	"VIRTUAL_ENV_PROMPT",
+
+	// nvm.
+	"NVM_DIR",
+	"NVM_BIN",
+	"NVM_INC",
+	"NVM_CD_FLAGS",
+
+	// pyenv.
+	"PYENV_ROOT",
+	"PYENV_VERSION",
+	"PYENV_VIRTUALENV_INIT",
+
+	// asdf.
+	"ASDF_DIR",
+	"ASDF_DATA_DIR",
+
+	// Go toolchain.
+	"GOPATH",
+	"GOROOT",
+	"GOBIN",
+	"GOCACHE",
+	"GOMODCACHE",
+	"GOFLAGS",
+	"GOPROXY",
+	"GOPRIVATE",
+	"GONOSUMCHECK",
+	"GOTOOLCHAIN",
+
+	// Java / Rust toolchains.
+	"JAVA_HOME",
+	"JDK_HOME",
+	"RUSTUP_HOME",
+	"CARGO_HOME",
+}
+
+// allowedChildEnvPrefixes are matched against env-key prefixes,
+// not full keys. Anything matching a prefix is passed through.
+// The principle is the same as allowedChildEnvKeys: the prefix
+// must name a *family of non-secret tool-environment vars*. Forge
+// tokens, cloud creds, and AWS_* / GCP_* / AZURE_* style vars
+// remain dropped — they don't share a prefix with anything here.
+var allowedChildEnvPrefixes = []string{
+	"LC_",    // LC_TIME, LC_NUMERIC, LC_MESSAGES, …
+	"XDG_",   // XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME, …
+	"CONDA_", // CONDA_DEFAULT_ENV, CONDA_PREFIX, CONDA_PROMPT_MODIFIER, …
 }
 
 // scrubbedChildEnv returns the env slice (in `KEY=VALUE` shape that
-// exec.Cmd.Env wants) that chain step children should inherit. Only
-// keys in allowedChildEnvKeys with a non-empty value are included;
-// everything else is stripped. Nil/empty result is allowed — the
-// child runs with literally no env, which is the safest fallback.
+// exec.Cmd.Env wants) that chain step children should inherit. Two
+// match modes:
+//
+//   - Exact match against allowedChildEnvKeys (PATH, HOME, …).
+//   - Prefix match against allowedChildEnvPrefixes (LC_*, XDG_*, …).
+//
+// Everything else is stripped — including all token-bearing vars
+// (GITEA_TOKEN / FORGEJO_TOKEN / GH_TOKEN / GITHUB_TOKEN, AWS_* /
+// GCP_* / AZURE_* style cloud creds, and arbitrary operator vars).
+// Nil/empty result is allowed — the child runs with literally no
+// env, which is the safest fallback.
 func scrubbedChildEnv() []string {
-	out := make([]string, 0, len(allowedChildEnvKeys))
+	exact := make(map[string]struct{}, len(allowedChildEnvKeys))
 	for _, k := range allowedChildEnvKeys {
-		if v, ok := os.LookupEnv(k); ok {
-			out = append(out, k+"="+v)
+		exact[k] = struct{}{}
+	}
+	out := make([]string, 0, len(allowedChildEnvKeys))
+	for _, kv := range os.Environ() {
+		i := strings.IndexByte(kv, '=')
+		if i <= 0 {
+			continue
+		}
+		k := kv[:i]
+		if _, ok := exact[k]; ok {
+			out = append(out, kv)
+			continue
+		}
+		for _, p := range allowedChildEnvPrefixes {
+			if strings.HasPrefix(k, p) {
+				out = append(out, kv)
+				break
+			}
 		}
 	}
 	return out

@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "data": [
+    {
+      "level": "WARN",
+      "code": "global-default-profile",
+      "message": "global config sets default_profile=\"contaminator\" — this routes every project on the system to that profile",
+      "remediation": "move default_profile into the per-project .gaia/config.yaml; keep profile definitions in the global file",
+      "source_file": "<TEMPDIR>/config/gaia/config.yaml"
+    },
+    {
+      "level": "INFO",
+      "code": "repo-resolution",
+      "message": "repo not resolvable in cwd (no --repo, no git remote, no project default_repo)",
+      "remediation": "run inside a configured checkout, or pass --repo owner/name"
+    },
+    {
+      "level": "INFO",
+      "code": "config-layers",
+      "message": "resolved from: global=<TEMPDIR>/config/gaia/config.yaml, env=\u003cnone\u003e"
+    }
+  ]
+}

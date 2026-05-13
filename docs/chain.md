@@ -277,19 +277,48 @@ form.
 ### Security: env scrubbing
 
 Chain step children inherit a **scrubbed** environment, not the
-gaia process's full env. The allowlist is intentionally short:
+gaia process's full env. The allowlist is intentionally narrow —
+two match modes, exact and prefix:
+
+**Exact-match keys** (passed through 1:1 from the parent):
 
 | Var | Why it's allowed |
 |---|---|
 | `PATH` | Required so `sh -c` can find any binary at all |
 | `HOME` | `gaia` itself reads `~/.config/gaia/credentials.yaml`; child gaia invocations need it |
 | `USER`, `LOGNAME` | Tools like `git` use these; not secret |
-| `LANG`, `LC_ALL` | Locale; some tools change output without it |
-| `TERM` | Terminal type; CLIs that do colour respect it |
+| `SHELL`, `PWD`, `TMPDIR` | Well-known shell/runtime pointers; not secret |
+| `LANG`, `LC_ALL`, `LANGUAGE` | Locale; some tools change output without it |
+| `TERM`, `COLORTERM`, `NO_COLOR`, `CLICOLOR`, `CLICOLOR_FORCE`, `FORCE_COLOR` | Terminal/colour capability hints |
+| `VIRTUAL_ENV`, `VIRTUAL_ENV_PROMPT` | Python venv markers (#247) |
+| `NVM_DIR`, `NVM_BIN`, `NVM_INC`, `NVM_CD_FLAGS` | nvm activation paths (#247) |
+| `PYENV_ROOT`, `PYENV_VERSION`, `PYENV_VIRTUALENV_INIT` | pyenv activation (#247) |
+| `ASDF_DIR`, `ASDF_DATA_DIR` | asdf-vm version manager paths |
+| `GOPATH`, `GOROOT`, `GOBIN`, `GOCACHE`, `GOMODCACHE`, `GOFLAGS`, `GOPROXY`, `GOPRIVATE`, `GONOSUMCHECK`, `GOTOOLCHAIN` | Go toolchain env |
+| `JAVA_HOME`, `JDK_HOME` | Java toolchain root |
+| `RUSTUP_HOME`, `CARGO_HOME` | Rust toolchain roots |
+
+**Prefix-match families** (any var whose name starts with one of
+these prefixes is passed through):
+
+| Prefix | Why it's allowed |
+|---|---|
+| `LC_` | Extended locale categories (`LC_TIME`, `LC_NUMERIC`, …) |
+| `XDG_` | User-config base dirs (`XDG_CONFIG_HOME`, …) |
+| `CONDA_` | conda activation markers (`CONDA_PREFIX`, …) |
 
 Everything else — `GITEA_TOKEN`, `FORGEJO_TOKEN`, `GH_TOKEN`,
 `GITHUB_TOKEN`, `AWS_*`, `GCP_*`, `AZURE_*`, and any other
-operator-scope vars — is stripped from the child's view.
+operator-scope vars — is stripped from the child's view. None of
+those names share a leading character with any allowed prefix
+(the allowed prefixes all include a trailing underscore).
+
+Rationale for the expansion (#247): venv-, nvm-, pyenv-, asdf-,
+and go-toolchain-activated tools rely on more than `PATH` to
+function. Without these env vars, `make ci-parity` (or any
+chain step that wraps language-specific tools) silently picks up
+the wrong interpreter or fails outright, even though the same
+command works in the operator's terminal.
 
 Why: combined with the shell-quoting from #135, this closes the
 two-step exfiltration path "hostile forge response → shell-injection

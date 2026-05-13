@@ -1,0 +1,35 @@
+description: |
+  A `.gaia/credentials.yaml` file lives inside a git repo whose
+  `.gitignore` doesn't cover it. Doctor ERRs at
+  `project-credentials-not-gitignored` because the next commit will
+  ship the stored token to history — a token-leak risk, distinct
+  from `env-and-credentials-overlap` (a hygiene WARN about rotation
+  ambiguity).
+
+  Uses `cwd: "."` so the harness runs from the scenario tempdir
+  rather than the default not-git tempdir. The `.git` placeholder
+  + `.gitignore` (without the credentials* entry) make
+  `auth.ProjectRoot(cwd)` resolve here, and the doctor walks the
+  ignore list and finds the credentials file uncovered.
+
+cwd: "."
+
+files:
+  .git: ""
+  .gitignore: |
+    # Deliberately doesn't cover .gaia/credentials* — that's the
+    # scenario's whole point.
+    /dist/
+    *.log
+  .gaia/credentials.yaml: |
+    forgejo:
+      example.com:
+        api_url: https://example.com/api/v1
+        token: glat_fake_leaked_token_for_test
+        user: bob
+
+stages:
+  - args:
+      - config
+      - doctor
+    exit_code: 1

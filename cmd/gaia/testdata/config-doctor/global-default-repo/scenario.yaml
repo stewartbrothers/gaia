@@ -1,0 +1,18 @@
+description: |
+  Global config sets default_repo — globally meaningless, every
+  project on the system gets the same repo target. Doctor WARNs at
+  `global-default-repo`.
+
+files:
+  config/gaia/config.yaml: |
+    default_repo: alpha/beta
+    profiles:
+      x:
+        provider: forgejo
+        api_url: https://example.com/api/v1
+
+stages:
+  - args:
+      - config
+      - doctor
+    exit_code: 0
