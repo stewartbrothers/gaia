@@ -1,0 +1,8 @@
+ERR project-credentials-not-gitignored: .gaia/credentials.yaml exists in the project but .gitignore does not cover it — about to commit secrets
+    fix: run `gaia gitignore >> .gitignore`, or add `.gaia/credentials*` to .gitignore manually
+    source: <TEMPDIR>/.gaia/credentials.yaml
+INFO repo-resolution: repo not resolvable in cwd (no --repo, no git remote, no project default_repo)
+    fix: run inside a configured checkout, or pass --repo owner/name
+INFO config-layers: resolved from: global=<absent>, env=<none>
+
+summary: 1 ERR, 0 WARN, 3 total finding(s)

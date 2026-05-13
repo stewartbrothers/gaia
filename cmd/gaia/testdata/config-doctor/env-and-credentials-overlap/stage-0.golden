@@ -1,0 +1,7 @@
+WARN env-and-credentials-overlap: FORGEJO_TOKEN env var is set AND a stored credential exists for provider "forgejo" (host(s): example.com) — rotation is ambiguous
+    fix: pick one: unset FORGEJO_TOKEN, or remove the stored credential via `gaia auth logout`
+INFO repo-resolution: repo not resolvable in cwd (no --repo, no git remote, no project default_repo)
+    fix: run inside a configured checkout, or pass --repo owner/name
+INFO config-layers: resolved from: global=<absent>, env=FORGEJO_TOKEN
+
+summary: 0 ERR, 1 WARN, 3 total finding(s)

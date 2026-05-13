@@ -105,6 +105,16 @@ type scenario struct {
 	// without expanding the harness DSL further.
 	Files map[string]string `yaml:"files,omitempty"`
 
+	// Cwd, when non-empty, makes the harness chdir into a path
+	// rooted at the scenario tempdir instead of the default
+	// `notGit` tempdir. Use this when a scenario needs the test
+	// to run inside a fake project root (e.g., a `.git` placeholder
+	// in `files:` that `auth.ProjectRoot` will detect when walking
+	// up from cwd). Path is interpreted relative to ${tempdir}; "."
+	// means `${tempdir}` itself. Default (empty) preserves the
+	// not-git-repo behaviour every existing scenario relies on.
+	Cwd string `yaml:"cwd,omitempty"`
+
 	// Stages run sequentially. Each one produces a golden file
 	// named "stage-N.golden" by default (override per-stage with
 	// stage.golden).
@@ -303,14 +313,25 @@ func runScenario(t *testing.T, dir string) {
 		t.Setenv(k, "")
 	}
 
-	// chdir to a directory that's NOT a git repo so config
-	// auto-detection doesn't pull in the dev's actual project.
+	// chdir target: by default a NOT-git tempdir so config
+	// auto-detection doesn't pull in the dev's actual project. If
+	// the scenario sets `cwd:`, chdir into a path under tempDir
+	// instead — this lets a scenario plant a `.git` placeholder in
+	// `files:` and have the test run as if inside that fake repo.
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-	notGit := t.TempDir()
-	if err := os.Chdir(notGit); err != nil {
+	var target string
+	if sc.Cwd != "" {
+		target = filepath.Join(tempDir, sc.Cwd)
+		if err := os.MkdirAll(target, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		target = t.TempDir()
+	}
+	if err := os.Chdir(target); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(cwd) })
@@ -472,6 +493,15 @@ func normalize(s, tempDir, stateDir, chainFile string) string {
 		s = strings.ReplaceAll(s, stateDir, "<STATEDIR>")
 	}
 	if tempDir != "" {
+		// macOS quirk: `t.TempDir()` returns `/var/folders/...`, but
+		// once a scenario chdirs into tempDir, `os.Getwd()` returns the
+		// symlink-resolved `/private/var/folders/...` form. Doctor's
+		// path-reporting checks then emit the resolved form, which
+		// leaves a stray `/private` prefix after the tempDir replace.
+		// Replace the resolved form first (longest match wins).
+		if resolved, err := filepath.EvalSymlinks(tempDir); err == nil && resolved != tempDir {
+			s = strings.ReplaceAll(s, resolved, "<TEMPDIR>")
+		}
 		s = strings.ReplaceAll(s, tempDir, "<TEMPDIR>")
 	}
 	s = durationRE.ReplaceAllString(s, `"duration_ms": 0`)
