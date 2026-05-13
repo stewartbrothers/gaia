@@ -58,6 +58,7 @@ type scenarioYAML struct {
 	ChainYAML   string            `yaml:"chain_yaml,omitempty"`
 	Mocks       []mockRuleYAML    `yaml:"mocks,omitempty"`
 	Files       map[string]string `yaml:"files,omitempty"`
+	Cwd         string            `yaml:"cwd,omitempty"`
 	Stages      []stageYAML       `yaml:"stages"`
 }
 
@@ -192,8 +193,20 @@ func runCLIScenario(t *testing.T, dir string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	notGit := t.TempDir()
-	if err := os.Chdir(notGit); err != nil {
+	// chdir target: default is a NOT-git tempdir. If the scenario
+	// sets `cwd:`, chdir into a path under tempDir instead — lets a
+	// scenario plant a `.git` placeholder in `files:` and run as if
+	// inside that fake repo. Mirrors cmd/gaia/main_test.go.
+	var target string
+	if sc.Cwd != "" {
+		target = filepath.Join(tempDir, sc.Cwd)
+		if err := os.MkdirAll(target, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		target = t.TempDir()
+	}
+	if err := os.Chdir(target); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(cwd) })
@@ -325,6 +338,11 @@ func normalizeCLI(s, tempDir, stateDir, chainFile string) string {
 		s = strings.ReplaceAll(s, stateDir, "<STATEDIR>")
 	}
 	if tempDir != "" {
+		// See cmd/gaia/main_test.go normalize() for the macOS
+		// /private-prefix resolved-symlink rationale.
+		if resolved, err := filepath.EvalSymlinks(tempDir); err == nil && resolved != tempDir {
+			s = strings.ReplaceAll(s, resolved, "<TEMPDIR>")
+		}
 		s = strings.ReplaceAll(s, tempDir, "<TEMPDIR>")
 	}
 	s = cliDurationRE.ReplaceAllString(s, `"duration_ms": 0`)
