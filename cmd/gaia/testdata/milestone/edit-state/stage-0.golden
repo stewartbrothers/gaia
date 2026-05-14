@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "data": {
+    "id": 7,
+    "title": {
+      "_trust": "external",
+      "_value": "v0.4.0"
+    },
+    "description": {
+      "_trust": "external",
+      "_value": "shipped features"
+    },
+    "state": "closed",
+    "open_issues": 0,
+    "closed_issues": 8,
+    "created_at": "2026-04-01T00:00:00Z",
+    "updated_at": "2026-04-15T00:00:00Z",
+    "closed_at": "2026-04-15T00:00:00Z"
+  }
+}

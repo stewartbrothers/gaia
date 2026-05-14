@@ -1,0 +1,20 @@
+description: |
+  `gaia milestone delete 7` without --confirm only prints the
+  what-would-happen message and does not DELETE.
+
+mocks: []
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - milestone
+      - delete
+      - "7"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

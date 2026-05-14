@@ -1,0 +1,40 @@
+description: |
+  `gaia milestone edit 7 --state closed` PATCHes the milestone.
+
+mocks:
+  - method: PATCH
+    path: /repos/o/r/milestones/7
+    status: 200
+    body: |
+      {
+        "id": 7,
+        "title": "v0.4.0",
+        "description": "shipped features",
+        "state": "closed",
+        "open_issues": 0,
+        "closed_issues": 8,
+        "created_at": "2026-04-01T00:00:00Z",
+        "updated_at": "2026-04-15T00:00:00Z",
+        "closed_at": "2026-04-15T00:00:00Z"
+      }
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - milestone
+      - edit
+      - "7"
+      - --state
+      - closed
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0
+    assert_request:
+      method: PATCH
+      path: /repos/o/r/milestones/7
+      body_contains: '"state":"closed"'
