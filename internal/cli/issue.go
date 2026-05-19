@@ -53,6 +53,9 @@ func newIssueListCmd(flags *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := resolveAtMe(cmd.Context(), p, &opts.Assignee, &opts.Author); err != nil {
+				return err
+			}
 			po := provider.ListIssuesOptions{
 				State:    opts.State,
 				Labels:   opts.Label,
@@ -91,8 +94,8 @@ func newIssueListCmd(flags *globalFlags) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&opts.State, "state", "", "filter by state: open, closed, all")
 	cmd.Flags().StringSliceVar(&opts.Label, "label", nil, "filter by label (repeatable)")
-	cmd.Flags().StringVar(&opts.Assignee, "assignee", "", "filter by assignee login")
-	cmd.Flags().StringVar(&opts.Author, "author", "", "filter by author login")
+	cmd.Flags().StringVar(&opts.Assignee, "assignee", "", `filter by assignee login (accepts "@me" to resolve via whoami)`)
+	cmd.Flags().StringVar(&opts.Author, "author", "", `filter by author login (accepts "@me" to resolve via whoami)`)
 	cmd.Flags().StringVar(&opts.Since, "since", "", "filter to updated after RFC3339 timestamp")
 	cmd.Flags().StringVarP(&opts.Query, "query", "q", "", "search query")
 	return cmd
