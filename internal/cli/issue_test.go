@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/internal/cli"
 )
 
@@ -131,6 +132,218 @@ func TestIssueListFiltersThreaded(t *testing.T) {
 	})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v", err)
+	}
+}
+
+// TestIssueListAssigneeAtMeResolvesViaWhoami pins the #299 feature:
+// `--assignee @me` triggers one /user lookup and threads the resolved
+// login as Forgejo's `assigned_by` filter to /repos/.../issues.
+func TestIssueListAssigneeAtMeResolvesViaWhoami(t *testing.T) {
+	var whoamiCalls int
+	var capturedAssignedBy string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/user":
+			whoamiCalls++
+			_ = json.NewEncoder(w).Encode(map[string]any{"login": "Gerwood"})
+		case "/repos/o/r/issues":
+			capturedAssignedBy = r.URL.Query().Get("assigned_by")
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"--repo", "o/r",
+		"issue", "list",
+		"--assignee", "@me",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	if whoamiCalls != 1 {
+		t.Errorf("expected 1 Whoami call; got %d", whoamiCalls)
+	}
+	if capturedAssignedBy != "Gerwood" {
+		t.Errorf("expected assigned_by=Gerwood; got %q", capturedAssignedBy)
+	}
+}
+
+// TestIssueListAuthorAtMeResolvesViaWhoami pins #299 for --author @me.
+func TestIssueListAuthorAtMeResolvesViaWhoami(t *testing.T) {
+	var capturedCreatedBy string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/user":
+			_ = json.NewEncoder(w).Encode(map[string]any{"login": "Gerwood"})
+		case "/repos/o/r/issues":
+			capturedCreatedBy = r.URL.Query().Get("created_by")
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"--repo", "o/r",
+		"issue", "list",
+		"--author", "@me",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	if capturedCreatedBy != "Gerwood" {
+		t.Errorf("expected created_by=Gerwood; got %q", capturedCreatedBy)
+	}
+}
+
+// TestIssueListBothAtMeUsesSingleWhoamiCall pins that the resolver
+// makes one /user lookup even when both --assignee and --author are
+// @me — agents shouldn't pay round-trip per flag.
+func TestIssueListBothAtMeUsesSingleWhoamiCall(t *testing.T) {
+	var whoamiCalls int
+	var capturedAssignedBy, capturedCreatedBy string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/user":
+			whoamiCalls++
+			_ = json.NewEncoder(w).Encode(map[string]any{"login": "Gerwood"})
+		case "/repos/o/r/issues":
+			capturedAssignedBy = r.URL.Query().Get("assigned_by")
+			capturedCreatedBy = r.URL.Query().Get("created_by")
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"--repo", "o/r",
+		"issue", "list",
+		"--assignee", "@me",
+		"--author", "@me",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	if whoamiCalls != 1 {
+		t.Errorf("expected exactly 1 Whoami call; got %d", whoamiCalls)
+	}
+	if capturedAssignedBy != "Gerwood" || capturedCreatedBy != "Gerwood" {
+		t.Errorf("expected both filters resolved to Gerwood; got assigned_by=%q created_by=%q",
+			capturedAssignedBy, capturedCreatedBy)
+	}
+}
+
+// TestIssueListAtMeWhoamiAuthFailsMapsToExitCode4 pins the failure
+// mode: if @me is used but the token is rejected, the upstream issue
+// list never runs and the user gets the same Auth exit code as a
+// direct `gaia whoami` failure (no silent fallback to "@me" as a
+// literal login).
+func TestIssueListAtMeWhoamiAuthFailsMapsToExitCode4(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/user":
+			w.WriteHeader(401)
+		case "/repos/o/r/issues":
+			t.Errorf("issue list should not run when @me resolution fails")
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "BAD")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"--repo", "o/r",
+		"issue", "list",
+		"--assignee", "@me",
+	})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error when whoami is rejected")
+	}
+	if got := exitcode.Of(err); got != exitcode.Auth {
+		t.Errorf("exit code: got %d, want Auth(4)", got)
+	}
+}
+
+// TestIssueListNoAtMeSkipsWhoami pins that the resolver is a no-op
+// when neither flag carries the sentinel — a plain literal login keeps
+// the previous one-round-trip behavior.
+func TestIssueListNoAtMeSkipsWhoami(t *testing.T) {
+	var whoamiCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/user":
+			whoamiCalls++
+			_ = json.NewEncoder(w).Encode(map[string]any{"login": "Gerwood"})
+		case "/repos/o/r/issues":
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"--repo", "o/r",
+		"issue", "list",
+		"--assignee", "alice",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	if whoamiCalls != 0 {
+		t.Errorf("expected no Whoami call for literal login; got %d", whoamiCalls)
 	}
 }
 
