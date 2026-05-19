@@ -1,0 +1,24 @@
+description: |
+  `gaia milestone view 999` returns NotFound exit code on 404.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/milestones/999
+    status: 404
+    body: |
+      {"message": "Not Found"}
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - milestone
+      - view
+      - "999"
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 3

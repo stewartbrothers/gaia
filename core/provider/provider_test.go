@@ -216,6 +216,24 @@ func (*noopProvider) GetWorkflowRunLogs(_ context.Context, _, _ string, _ int64,
 func (*noopProvider) RerunWorkflowRun(_ context.Context, _, _ string, _ int64) error {
 	return errNotImplemented
 }
+func (*noopProvider) ListMilestones(_ context.Context, _, _ string, _ provider.ListMilestonesOptions) ([]types.Milestone, *provider.Page, error) {
+	return nil, nil, errNotImplemented
+}
+func (*noopProvider) GetMilestone(_ context.Context, _, _ string, _ int64) (*types.Milestone, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) CreateMilestone(_ context.Context, _, _ string, _ provider.CreateMilestoneOptions) (*types.Milestone, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) EditMilestone(_ context.Context, _, _ string, _ int64, _ provider.EditMilestoneOptions) (*types.Milestone, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) DeleteMilestone(_ context.Context, _, _ string, _ int64) error {
+	return errNotImplemented
+}
+func (*noopProvider) ListMilestoneIssues(_ context.Context, _, _ string, _ int64, _ provider.ListMilestoneIssuesOptions) ([]types.Issue, *provider.Page, error) {
+	return nil, nil, errNotImplemented
+}
 
 // Reference time.Time so an unused-import check never fires while tests
 // scaffold up. Removed once a real test uses it.

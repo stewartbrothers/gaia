@@ -98,6 +98,7 @@ auth setup.`,
 	root.AddCommand(newActionsCmd(flags))
 	root.AddCommand(newCacheCmd(flags))
 	root.AddCommand(newConfigCmd(flags))
+	root.AddCommand(newMilestoneCmd(flags))
 
 	return root
 }

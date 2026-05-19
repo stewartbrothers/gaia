@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "data": [
+    {
+      "number": 50,
+      "title": {
+        "_trust": "external",
+        "_value": "do the thing"
+      },
+      "state": "open",
+      "author": {
+        "login": "alice"
+      },
+      "labels": [
+        {
+          "name": "bug"
+        }
+      ],
+      "created_at": "2026-04-01T00:00:00Z",
+      "updated_at": "2026-04-02T00:00:00Z"
+    },
+    {
+      "number": 51,
+      "title": {
+        "_trust": "external",
+        "_value": "ship it"
+      },
+      "state": "open",
+      "author": {
+        "login": "bob"
+      },
+      "created_at": "2026-04-02T00:00:00Z",
+      "updated_at": "2026-04-03T00:00:00Z"
+    }
+  ]
+}

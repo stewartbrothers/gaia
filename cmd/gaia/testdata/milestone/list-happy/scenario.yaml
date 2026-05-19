@@ -1,0 +1,45 @@
+description: |
+  `gaia milestone list` returns open milestones by default.
+
+mocks:
+  - method: GET
+    path: /repos/o/r/milestones
+    status: 200
+    body: |
+      [
+        {
+          "id": 1,
+          "title": "v0.4.0",
+          "description": "shipped features",
+          "state": "open",
+          "open_issues": 5,
+          "closed_issues": 3,
+          "created_at": "2026-04-01T00:00:00Z",
+          "updated_at": "2026-04-15T00:00:00Z",
+          "due_on": "2026-05-01T00:00:00Z"
+        },
+        {
+          "id": 2,
+          "title": "v0.5.0",
+          "description": "next sprint",
+          "state": "open",
+          "open_issues": 8,
+          "closed_issues": 0,
+          "created_at": "2026-04-10T00:00:00Z",
+          "updated_at": "2026-04-15T00:00:00Z"
+        }
+      ]
+
+stages:
+  - args:
+      - --provider
+      - forgejo
+      - --api-url
+      - ${apiURL}
+      - --repo
+      - o/r
+      - milestone
+      - list
+    env:
+      FORGEJO_TOKEN: TEST
+    exit_code: 0

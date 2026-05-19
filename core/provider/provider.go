@@ -283,4 +283,35 @@ type Provider interface {
 	// RerunWorkflowRun re-triggers a run. Forgejo returns 204 on
 	// success; the run appears as a new run entry shortly after.
 	RerunWorkflowRun(ctx context.Context, owner, repo string, runID int64) error
+
+	// --- Milestones (#258) -------------------------------------------
+
+	// ListMilestones returns milestones matching opts. State takes
+	// "open" (default), "closed", or "all". The returned Page indicates
+	// truncation and supplies the cursor for the next call.
+	ListMilestones(ctx context.Context, owner, repo string, opts ListMilestonesOptions) ([]types.Milestone, *Page, error)
+
+	// GetMilestone returns a single milestone by its forge ID.
+	GetMilestone(ctx context.Context, owner, repo string, id int64) (*types.Milestone, error)
+
+	// CreateMilestone opens a new milestone and returns the trimmed
+	// view. Title is required; Description and DueOn are optional.
+	CreateMilestone(ctx context.Context, owner, repo string, opts CreateMilestoneOptions) (*types.Milestone, error)
+
+	// EditMilestone patches a milestone by ID. Empty option fields are
+	// "no change". State takes "open"/"closed"/"" (no change). DueOn is
+	// a *time.Time so a nil value means "no change" — clearing the due
+	// date isn't currently exposed (neither forge offers a clean
+	// per-field clear; an explicit follow-up can add a `--clear-due`
+	// flag if a real workflow requires it).
+	EditMilestone(ctx context.Context, owner, repo string, id int64, opts EditMilestoneOptions) (*types.Milestone, error)
+
+	// DeleteMilestone removes a milestone by ID. 204 is success.
+	DeleteMilestone(ctx context.Context, owner, repo string, id int64) error
+
+	// ListMilestoneIssues returns issues attached to a milestone. Thin
+	// wrapper over ListIssues with milestone filtering; provided as a
+	// dedicated method so a `gaia milestone issues <id>` subcommand
+	// stays one-liner-shaped on both sides of the interface.
+	ListMilestoneIssues(ctx context.Context, owner, repo string, id int64, opts ListMilestoneIssuesOptions) ([]types.Issue, *Page, error)
 }

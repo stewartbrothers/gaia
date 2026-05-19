@@ -251,6 +251,10 @@ tight when scripting):
 - Releases: `list | view | create | edit | delete | publish`
 - Search: `gaia search <query>`
 - Webhooks: `list | view | create | edit | delete | deliveries | redeliver | test`
+- Milestones: `list | view | create | edit | delete | issues`. Milestone IDs
+  are positional integers (forge-assigned); `list` defaults to `--state=open`,
+  `delete` is `--confirm`-gated, and `issues <id>` reuses the issue list
+  shape so per-milestone progress reads cheaply.
 - Actions: `list | view [--with-jobs] | logs | rerun`. Run IDs accept the
   user-facing run number from the UI URL (e.g. `/actions/runs/362` →
   `gaia actions view 362`); the provider resolves to Forgejo's internal
