@@ -14,7 +14,9 @@ package forgebuilder
 
 import (
 	"net/url"
+	"os"
 	"sort"
+	"strings"
 
 	"github.com/stewartbrothers/gaia/core/auth"
 	"github.com/stewartbrothers/gaia/core/cache"
@@ -25,6 +27,25 @@ import (
 	"github.com/stewartbrothers/gaia/core/github"
 	"github.com/stewartbrothers/gaia/core/provider"
 )
+
+// cacheDisabledByEnv reports whether GAIA_CACHE_ENABLED is set to a
+// value that means "off." Accepts the standard false-y values
+// ("false", "0", "no") case-insensitively; empty / unset means
+// "fall through to config" (default = enabled).
+//
+// Layered alongside the --no-cache flag and `cache.enabled: false`
+// YAML knob to give tests / CI / agents an env-var path to skip the
+// sqlite open without authoring a config file (#303). Exists because
+// every Build that opens the cache pays the modernc/pure-Go sqlite
+// fsync cost — fine in production, prohibitive at test-suite scale
+// on Linux runners.
+func cacheDisabledByEnv() bool {
+	switch strings.ToLower(os.Getenv("GAIA_CACHE_ENABLED")) {
+	case "false", "0", "no":
+		return true
+	}
+	return false
+}
 
 // Override mirrors the CLI's globalFlags subset that affects
 // provider construction. Token wins over the local credential
@@ -142,11 +163,13 @@ func Build(ov Override) (provider.Provider, *Info, error) {
 	//
 	// Config knob (`cache.enabled: false` in ~/.config/gaia/config.yaml)
 	// also bypasses the cache, same as the per-call --no-cache flag.
+	// `GAIA_CACHE_ENABLED=false` is the env-var equivalent, layered on
+	// for CI / tests / agents that can't author a config file (#303).
 	//
 	// forgebuilder is the entry point that wires `core/cache/sqlite`
 	// — the SQLite driver compile cost lands here, not in the
 	// downstream provider packages (#158).
-	cacheOff := ov.NoCache || !config.CacheEnabled(cfg.Cache)
+	cacheOff := ov.NoCache || cacheDisabledByEnv() || !config.CacheEnabled(cfg.Cache)
 	var ch cache.Cache
 	if !cacheOff {
 		if path, perr := cache.PathFor(resolved.Provider, resolved.APIURL); perr == nil {
