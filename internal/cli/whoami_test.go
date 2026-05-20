@@ -29,6 +29,14 @@ func clearGaiaEnv(t *testing.T) {
 	// Pin HOME to a directory with no gaia config so config.Load is a
 	// no-op rather than reading the dev's actual ~/.config/gaia.
 	t.Setenv("HOME", t.TempDir())
+	// Skip the sqlite cache open in CLI tests by default. The cache
+	// is irrelevant to the vast majority of CLI tests (they assert on
+	// what hits the upstream, not on what cache state was created),
+	// and opening a real on-disk sqlite DB per-test on Linux CI is
+	// fsync-bound enough to push the suite past go test's per-package
+	// 10-minute timeout once the test count climbs (#303). Cache-
+	// specific tests don't use clearGaiaEnv, so they're unaffected.
+	t.Setenv("GAIA_CACHE_ENABLED", "false")
 	// Chdir to a directory that's NOT inside a git repo, so
 	// auth.ProjectRoot(".") returns "" and we don't pick up THIS
 	// repo's .gaia/config.yaml. (The test's expectation is "no config
