@@ -15,11 +15,30 @@ GitHub. The roadmap and active work live in the repo's issue tracker.
 
 These are hard rules. Apply them on every change.
 
-1. **Feature branch per logical unit of work.** `feature/<slug>` → push → PR
-   → merge → delete the branch. Never commit work-in-progress directly to
-   `main`. The initial scaffold (commit `72a6698`, issue #6) landed on `main`
-   as a one-time bootstrap exception; from then on everything goes through a
-   PR.
+1. **Feature branch per logical unit of work — and branch from a fresh
+   `main`.** Before creating the branch, sync local main against the
+   remote so the branch doesn't start life behind:
+
+   ```bash
+   git fetch origin
+   git switch main
+   git pull --ff-only origin main
+   git switch -c feature/<slug>
+   ```
+
+   `--ff-only` is deliberate: if your local `main` has diverged from
+   the remote, that's a bug to investigate (manual merge? committed to
+   main by accident?), not something to paper over with a merge
+   commit. `feature/<slug>` → push → PR → merge → delete the branch.
+   Never commit work-in-progress directly to `main`. The initial
+   scaffold (commit `72a6698`, issue #6) landed on `main` as a
+   one-time bootstrap exception; from then on everything goes through
+   a PR.
+
+   *Why this rule exists:* PR #300 needed a rebase because the branch
+   was cut from a stale `main` while PR #297 (merged earlier the same
+   day) hadn't been pulled down. Skipping the fetch turns every
+   forgotten PR into avoidable churn on the next one.
 
 2. **One issue per change.** Every PR closes (or refs) at least one issue.
    Issues drive work, so a session interruption never loses the plan. Use
