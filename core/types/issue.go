@@ -11,12 +11,18 @@ import "time"
 // agents can distinguish operator input from attacker-controllable
 // data (#146).
 type Issue struct {
-	Number    int        `json:"number"`
-	Title     string     `json:"title" gaia:"trust=external"`
-	State     string     `json:"state"`
-	Author    User       `json:"author"`
-	Labels    []Label    `json:"labels,omitempty"`
-	Assignees []User     `json:"assignees,omitempty"`
+	Number    int     `json:"number"`
+	Title     string  `json:"title" gaia:"trust=external"`
+	State     string  `json:"state"`
+	Author    User    `json:"author"`
+	Labels    []Label `json:"labels,omitempty"`
+	Assignees []User  `json:"assignees,omitempty"`
+	// HTMLURL points at the issue's UI page. Useful when an agent
+	// needs to redirect a human to the forge (sharing, review) without
+	// reconstructing the URL from API-base + owner/repo/number — that
+	// reconstruction is brittle because it assumes the Forgejo /
+	// GitHub URL convention holds. Mirrors WorkflowRun.HTMLURL (#305).
+	HTMLURL   string     `json:"html_url,omitempty"`
 	Body      string     `json:"body,omitempty" gaia:"trust=external"`
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`

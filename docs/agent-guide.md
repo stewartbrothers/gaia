@@ -38,6 +38,7 @@ cover something is to file a gap issue (see
 | Re-read this briefing | `gaia learn` (prints the embedded guide) |
 | List issues | `gaia issue list --state open --fields number,title,state` |
 | List issues assigned to me | `gaia issue list --assignee @me --state open` (also `--author @me` for issues you opened — single `Whoami` lookup; #299) |
+| Get the forge UI URL for an issue/PR | `gaia issue view 42 --fields html_url --format json` (works on `issue list/view` and `pr list/view`; #305) |
 | View an issue | `gaia issue view 42 --with-comments 5` |
 | List PRs | `gaia pr list --state all --fields number,title,state` |
 | View a PR + CI | `gaia pr view 42 --with-ci` |

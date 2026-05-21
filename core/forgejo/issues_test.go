@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
@@ -26,6 +27,7 @@ type fakeIssue struct {
 	CreatedAt time.Time        `json:"created_at"`
 	UpdatedAt time.Time        `json:"updated_at"`
 	ClosedAt  *time.Time       `json:"closed_at"`
+	HTMLURL   string           `json:"html_url"`
 }
 
 func makeIssue(n int, title, state string) fakeIssue {
@@ -36,6 +38,7 @@ func makeIssue(n int, title, state string) fakeIssue {
 		Assignees: []map[string]any{{"login": "bob"}},
 		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		UpdatedAt: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
+		HTMLURL:   "https://forge.example.com/Gerwood/gaia/issues/" + strconv.Itoa(n),
 	}
 }
 
@@ -47,6 +50,45 @@ func newTestProvider(t *testing.T, baseURL string) *forgejo.Provider {
 		UserAgent: "gaia-test/1.0",
 		RetryWait: 1 * time.Millisecond,
 	})
+}
+
+// TestListIssuesPreservesHTMLURL pins #305: the issue's UI URL
+// threads through ListIssues into types.Issue.HTMLURL so agents
+// can redirect humans to the forge without reconstructing the URL
+// from API-base + owner/repo/number.
+func TestListIssuesPreservesHTMLURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]fakeIssue{makeIssue(42, "x", "open")})
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, _, err := p.ListIssues(context.Background(), "Gerwood", "gaia", provider.ListIssuesOptions{})
+	if err != nil {
+		t.Fatalf("ListIssues: %v", err)
+	}
+	want := "https://forge.example.com/Gerwood/gaia/issues/42"
+	if len(got) != 1 || got[0].HTMLURL != want {
+		t.Errorf("HTMLURL: got %q, want %q", got[0].HTMLURL, want)
+	}
+}
+
+// TestGetIssuePreservesHTMLURL pins #305 on the single-resource path.
+func TestGetIssuePreservesHTMLURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(makeIssue(7, "y", "open"))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, err := p.GetIssue(context.Background(), "Gerwood", "gaia", 7, provider.GetIssueOptions{})
+	if err != nil {
+		t.Fatalf("GetIssue: %v", err)
+	}
+	want := "https://forge.example.com/Gerwood/gaia/issues/7"
+	if got.HTMLURL != want {
+		t.Errorf("HTMLURL: got %q, want %q", got.HTMLURL, want)
+	}
 }
 
 func TestListIssuesBodyOmitted(t *testing.T) {

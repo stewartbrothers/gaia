@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/stewartbrothers/gaia/core/exitcode"
@@ -29,7 +30,14 @@ func makeIssue(n int, title, state string) map[string]any {
 		"labels":     []map[string]any{{"name": "bug"}},
 		"created_at": "2026-04-01T00:00:00Z",
 		"updated_at": "2026-04-02T00:00:00Z",
+		"html_url":   fmtIssueURL("o", "r", n),
 	}
+}
+
+// fmtIssueURL builds a github.com-shaped issue UI URL — what GitHub
+// puts in `html_url` on every issue/PR response.
+func fmtIssueURL(owner, repo string, n int) string {
+	return "https://github.com/" + owner + "/" + repo + "/issues/" + strconv.Itoa(n)
 }
 
 func makePR(n int, title string) map[string]any {
@@ -38,6 +46,43 @@ func makePR(n int, title string) map[string]any {
 	m := makeIssue(n, title, "open")
 	m["pull_request"] = map[string]any{}
 	return m
+}
+
+// TestListIssuesGHPreservesHTMLURL pins #305 on the github provider's
+// list path: html_url threads through to types.Issue.HTMLURL.
+func TestListIssuesGHPreservesHTMLURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{makeIssue(42, "x", "open")})
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, _, err := p.ListIssues(context.Background(), "o", "r", provider.ListIssuesOptions{})
+	if err != nil {
+		t.Fatalf("ListIssues: %v", err)
+	}
+	want := "https://github.com/o/r/issues/42"
+	if len(got) != 1 || got[0].HTMLURL != want {
+		t.Errorf("HTMLURL: got %q, want %q", got[0].HTMLURL, want)
+	}
+}
+
+// TestGetIssueGHPreservesHTMLURL pins #305 on the single-issue path.
+func TestGetIssueGHPreservesHTMLURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(makeIssue(7, "y", "open"))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, err := p.GetIssue(context.Background(), "o", "r", 7, provider.GetIssueOptions{})
+	if err != nil {
+		t.Fatalf("GetIssue: %v", err)
+	}
+	want := "https://github.com/o/r/issues/7"
+	if got.HTMLURL != want {
+		t.Errorf("HTMLURL: got %q, want %q", got.HTMLURL, want)
+	}
 }
 
 func TestListIssuesGHBodyOmitted(t *testing.T) {

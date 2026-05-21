@@ -7,15 +7,20 @@ import "time"
 // merged separately, and the consolidated value is more useful to agents
 // than reconstructing it from {state,merged_at}.
 type PullRequest struct {
-	Number    int        `json:"number"`
-	Title     string     `json:"title" gaia:"trust=external"`
-	State     string     `json:"state"`
-	Author    User       `json:"author"`
-	Labels    []Label    `json:"labels,omitempty"`
-	Head      BranchRef  `json:"head"`
-	Base      BranchRef  `json:"base"`
-	Mergeable *bool      `json:"mergeable,omitempty"`
-	Draft     bool       `json:"draft"`
+	Number    int       `json:"number"`
+	Title     string    `json:"title" gaia:"trust=external"`
+	State     string    `json:"state"`
+	Author    User      `json:"author"`
+	Labels    []Label   `json:"labels,omitempty"`
+	Head      BranchRef `json:"head"`
+	Base      BranchRef `json:"base"`
+	Mergeable *bool     `json:"mergeable,omitempty"`
+	Draft     bool      `json:"draft"`
+	// HTMLURL points at the PR's UI page. Used by agents to redirect
+	// humans to the forge (sharing, review, merge UI) without
+	// reconstructing the URL from API-base + owner/repo/number.
+	// Mirrors Issue.HTMLURL and WorkflowRun.HTMLURL (#305).
+	HTMLURL   string     `json:"html_url,omitempty"`
 	Body      string     `json:"body,omitempty" gaia:"trust=external"`
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`

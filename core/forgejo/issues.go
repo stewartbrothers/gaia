@@ -27,6 +27,7 @@ type apiIssue struct {
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	ClosedAt  *time.Time `json:"closed_at"`
+	HTMLURL   string     `json:"html_url"`
 }
 
 type apiUser struct {
@@ -52,6 +53,7 @@ func (a *apiIssue) toType() types.Issue {
 		Body:      a.Body,
 		State:     a.State,
 		Author:    types.User{Login: a.User.Login},
+		HTMLURL:   a.HTMLURL,
 		CreatedAt: a.CreatedAt,
 		UpdatedAt: a.UpdatedAt,
 		ClosedAt:  a.ClosedAt,
