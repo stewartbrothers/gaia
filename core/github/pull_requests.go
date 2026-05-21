@@ -28,6 +28,7 @@ type apiPullRequest struct {
 	UpdatedAt time.Time    `json:"updated_at"`
 	ClosedAt  *time.Time   `json:"closed_at,omitempty"`
 	MergedAt  *time.Time   `json:"merged_at,omitempty"`
+	HTMLURL   string       `json:"html_url"`
 }
 
 type apiBranchRef struct {
@@ -70,6 +71,7 @@ func (a *apiPullRequest) toType() types.PullRequest {
 		Base:      types.BranchRef{Ref: a.Base.Ref, SHA: a.Base.Sha},
 		Mergeable: a.Mergeable,
 		Draft:     a.Draft,
+		HTMLURL:   a.HTMLURL,
 		CreatedAt: a.CreatedAt,
 		UpdatedAt: a.UpdatedAt,
 		ClosedAt:  a.ClosedAt,

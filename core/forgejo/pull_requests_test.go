@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -30,6 +31,7 @@ type fakePR struct {
 	UpdatedAt time.Time        `json:"updated_at"`
 	ClosedAt  *time.Time       `json:"closed_at,omitempty"`
 	MergedAt  *time.Time       `json:"merged_at,omitempty"`
+	HTMLURL   string           `json:"html_url"`
 }
 
 func makePR(n int, title, state string, opts func(*fakePR)) fakePR {
@@ -51,11 +53,48 @@ func makePR(n int, title, state string, opts func(*fakePR)) fakePR {
 		},
 		CreatedAt: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
 		UpdatedAt: time.Date(2026, 4, 2, 0, 0, 0, 0, time.UTC),
+		HTMLURL:   "https://forge.example.com/Gerwood/gaia/pulls/" + strconv.Itoa(n),
 	}
 	if opts != nil {
 		opts(&pr)
 	}
 	return pr
+}
+
+// TestListPullRequestsPreservesHTMLURL pins #305 on the PR list path.
+func TestListPullRequestsPreservesHTMLURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]fakePR{makePR(42, "x", "open", nil)})
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, _, err := p.ListPullRequests(context.Background(), "Gerwood", "gaia", provider.ListPullRequestsOptions{})
+	if err != nil {
+		t.Fatalf("ListPullRequests: %v", err)
+	}
+	want := "https://forge.example.com/Gerwood/gaia/pulls/42"
+	if len(got) != 1 || got[0].HTMLURL != want {
+		t.Errorf("HTMLURL: got %q, want %q", got[0].HTMLURL, want)
+	}
+}
+
+// TestGetPullRequestPreservesHTMLURL pins #305 on the single-PR path.
+func TestGetPullRequestPreservesHTMLURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(makePR(7, "y", "open", nil))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, err := p.GetPullRequest(context.Background(), "Gerwood", "gaia", 7, provider.GetPullRequestOptions{})
+	if err != nil {
+		t.Fatalf("GetPullRequest: %v", err)
+	}
+	want := "https://forge.example.com/Gerwood/gaia/pulls/7"
+	if got.HTMLURL != want {
+		t.Errorf("HTMLURL: got %q, want %q", got.HTMLURL, want)
+	}
 }
 
 func TestListPullRequestsBodyOmitted(t *testing.T) {

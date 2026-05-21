@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync/atomic"
 	"testing"
 
@@ -20,6 +21,44 @@ func makeGHPR(n int, state string, merged bool) map[string]any {
 		"merged":     merged,
 		"created_at": "2026-04-01T00:00:00Z",
 		"updated_at": "2026-04-02T00:00:00Z",
+		"html_url":   "https://github.com/o/r/pull/" + strconv.Itoa(n),
+	}
+}
+
+// TestListPullRequestsGHPreservesHTMLURL pins #305 on the github
+// provider's PR list path: html_url threads through.
+func TestListPullRequestsGHPreservesHTMLURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{makeGHPR(42, "open", false)})
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, _, err := p.ListPullRequests(context.Background(), "o", "r", provider.ListPullRequestsOptions{})
+	if err != nil {
+		t.Fatalf("ListPullRequests: %v", err)
+	}
+	want := "https://github.com/o/r/pull/42"
+	if len(got) != 1 || got[0].HTMLURL != want {
+		t.Errorf("HTMLURL: got %q, want %q", got[0].HTMLURL, want)
+	}
+}
+
+// TestGetPullRequestGHPreservesHTMLURL pins #305 on the single-PR path.
+func TestGetPullRequestGHPreservesHTMLURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(makeGHPR(7, "open", false))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, err := p.GetPullRequest(context.Background(), "o", "r", 7, provider.GetPullRequestOptions{})
+	if err != nil {
+		t.Fatalf("GetPullRequest: %v", err)
+	}
+	want := "https://github.com/o/r/pull/7"
+	if got.HTMLURL != want {
+		t.Errorf("HTMLURL: got %q, want %q", got.HTMLURL, want)
 	}
 }
 
