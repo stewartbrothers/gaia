@@ -10,6 +10,54 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-21
+
+Feature release. Three new top-level commands (`milestone`,
+`config doctor`, `@me` sentinel on `issue list`), one new type
+field (`HTMLURL` on Issue + PullRequest), one CI hardening
+(GAIA_CACHE_ENABLED env), and one workflow-process tightening
+(rule 1 in CLAUDE.md mandates fresh-main before branching). No
+breaking changes to the public surface.
+
+### Added
+
+- **`gaia milestone list | view | create | edit | delete | issues`**
+  — new top-level command for managing repo milestones. Available
+  on both Forgejo and GitHub providers, with parallel MCP tool
+  exposure (`milestone_list`, `milestone_view`, etc.). Includes a
+  `--state` filter on `list` and an `issues` subcommand that
+  returns the issues attached to a given milestone ID. Useful for
+  sprint planning, release roll-ups, and any workflow where
+  multiple issues need to be grouped against a deadline. Closes
+  #258.
+
+- **`gaia config doctor`** — new diagnostic that lints the resolved
+  config + credentials for setup smells before they bite. Flags
+  multi-project safety issues (global `default_profile` /
+  `default_repo` overrides), credential file hygiene
+  (`credentials.yaml` mode > 0600, missing `.gitignore` for
+  project-scoped credentials), profile coherence (missing
+  `provider` or `api_url`, dangling `default_profile` references),
+  and env-vs-stored-credential overlap. Each finding carries a
+  stable `code` for greppable CI gating, a level (`ERR` / `WARN` /
+  `INFO`), and a one-line remediation. `--strict` promotes WARN to
+  ERR; `--quiet` exits non-zero on ERR only; `--format json`
+  returns the standard envelope. Closes #277.
+
+- **`gaia issue list --assignee @me` and `--author @me`** — sentinel
+  value that resolves to the configured user's login via one extra
+  `Whoami` call. Matches the gh / tea convention. Both flags
+  being `@me` still costs one lookup. Literal logins skip the
+  resolver entirely. Closes #299.
+
+- **`HTMLURL` field on `types.Issue` and `types.PullRequest`** —
+  mirrors `WorkflowRun.HTMLURL`. Threaded through both Forgejo and
+  GitHub providers on list + view paths. Eliminates the
+  brittle reconstruct-from-API-base workaround for the common
+  "give me the URL to share with a human" use case. Default-on;
+  `--fields` projection lets callers who don't need it drop it.
+  Adds ~72 bytes per record. Closes #305.
+
 ### Fixed
 
 - **`gaia chain run` now inherits the caller's tool-environment** —
@@ -30,6 +78,46 @@ reserved for breaking changes only.
   cloud creds (`AWS_*`, `GCP_*`, `AZURE_*`), and arbitrary
   operator-scope vars are still stripped — the security
   contract from #140 is unchanged. Closes #247.
+
+- **CI: `internal/cli` no longer times out on the per-package
+  10-min `go test` limit.** Every CLI test that called
+  `cli.NewRootCmd() + Execute()` was opening a real on-disk
+  sqlite cache DB via `forgebuilder.Build → sqlite.Open` and
+  never closing it. modernc/pure-Go sqlite + Linux fsync was slow
+  enough that the cumulative cost pushed the suite over the
+  timeout. Fix: honor `GAIA_CACHE_ENABLED=false` as a third path
+  to disable the cache (alongside `--no-cache` flag and
+  `cache.enabled` YAML key), and set it in the shared
+  `clearGaiaEnv` test helper so CLI tests that don't exercise the
+  cache stop paying the open cost. Cache-specific tests
+  (`internal/cli/cache_test.go`, `core/forgejo/cache_test.go`)
+  don't use the helper and continue to validate the caching
+  layer. Closes #303.
+
+### Documentation
+
+- **CLAUDE.md rule 1 now mandates `git fetch origin && git switch
+  main && git pull --ff-only` before creating a feature branch**,
+  with an explicit `--ff-only` to surface a diverged local main
+  as a real bug instead of papering over it with a merge commit.
+  Includes a "why this rule exists" footnote pointing at the
+  cost case (PR #300 needed a rebase because the branch was cut
+  from a stale local main while PR #297 had landed earlier the
+  same day). Closes #301.
+
+- **`docs/agent-guide.md` expanded** to cover the eight top-level
+  commands that had landed without entries in the agent-facing
+  quick-start (closes #271), plus rows for the new `milestone`,
+  `config doctor`, `@me` sentinel, and HTMLURL projection use
+  cases that landed this cycle.
+
+### Tests
+
+- **`config-doctor` golden scenarios for the two finding codes
+  missing from the initial PR** (`profile-no-provider`,
+  `default-profile-missing`). Brings golden-test coverage of
+  doctor findings to 100%. Closes the follow-up issue
+  identified during #277's review.
 
 ## [0.4.1] — 2026-05-12
 
@@ -740,7 +828,8 @@ Pre-v1.0, expect minor-bump churn at the public surface.
 - OS keychain backing for `credentials.yaml` (vs current 0600
   plaintext): `gh` does this, gaia doesn't yet.
 
-[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/stewartbrothers/gaia/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/stewartbrothers/gaia/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/stewartbrothers/gaia/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/stewartbrothers/gaia/compare/v0.2.0...v0.3.0
