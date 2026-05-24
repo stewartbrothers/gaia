@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -12,6 +13,7 @@ import (
 	"github.com/stewartbrothers/gaia/core/envelope"
 	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/provider"
+	"github.com/stewartbrothers/gaia/core/settings"
 	"github.com/stewartbrothers/gaia/internal/forgebuilder"
 )
 
@@ -72,8 +74,24 @@ func build(ctx context.Context) (provider.Provider, error) {
 // defaultBuilder.
 var builderFn = defaultBuilder
 
+// serverSettingsOnce ensures settings.Load runs exactly once per
+// gaia-mcp process — every tool call afterwards uses the cached
+// handle and only the per-request bearer token differs. Config,
+// credentials, and env are not re-read per request. (#311)
+var (
+	serverSettingsOnce sync.Once
+	serverSettings     settings.Settings
+	serverSettingsErr  error
+)
+
 func defaultBuilder(ctx context.Context) (provider.Provider, error) {
-	p, _, err := forgebuilder.Build(forgebuilder.Override{
+	serverSettingsOnce.Do(func() {
+		serverSettings, serverSettingsErr = settings.Load(settings.Override{})
+	})
+	if serverSettingsErr != nil {
+		return nil, serverSettingsErr
+	}
+	p, _, err := forgebuilder.Build(serverSettings, forgebuilder.BuildOverride{
 		Token: forgeTokenFromContext(ctx),
 	})
 	return p, err

@@ -263,6 +263,36 @@ cache:
 	}
 }
 
+func TestLoad_MissingProfileFromDefault_DegradesGracefully(t *testing.T) {
+	// default_profile in config names a missing profile entry. This
+	// is doctor's job to flag, not a fatal load error — the original
+	// cli/config.go's buildDoctorInputs deliberately skipped Resolve
+	// to preserve this behaviour. settings.Load must match.
+	dir := t.TempDir()
+	pinXDG(t, dir)
+	clearTokenEnv(t)
+
+	writeFile(t, dir, "gaia/config.yaml", `
+default_profile: missing
+profiles:
+  real:
+    provider: forgejo
+    api_url: https://real.example.com/api/v1
+`)
+
+	s, err := settings.Load(settings.Override{Cwd: dir})
+	if err != nil {
+		t.Fatalf("Load: implicit missing-profile should NOT be fatal, got: %v", err)
+	}
+	if got := s.Provider(); got != "" {
+		t.Errorf("Provider: want empty (resolution degraded), got %q", got)
+	}
+	// Inspector still surfaces the raw config so doctor can flag it.
+	if cfg := s.Inspector().GlobalConfig(); cfg == nil || cfg.DefaultProfile != "missing" {
+		t.Errorf("Inspector.GlobalConfig: raw layer must remain available for diagnostics")
+	}
+}
+
 func TestLoad_MissingProfileNamedByFlag_Errors(t *testing.T) {
 	dir := t.TempDir()
 	pinXDG(t, dir)
@@ -329,4 +359,79 @@ func TestFromContext_Empty(t *testing.T) {
 	if ok {
 		t.Errorf("FromContext: empty context should return ok=false")
 	}
+}
+
+// TestInspector_ExposesEveryLayer pins the diagnostic accessors that
+// `gaia config doctor` consumes via buildDoctorInputs. Each getter
+// returns the value Load resolved at construction time; reads here
+// double as a contract-test that the doctor input shape stays whole.
+func TestInspector_ExposesEveryLayer(t *testing.T) {
+	cwd := t.TempDir()
+	pinXDG(t, t.TempDir())
+	clearTokenEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "tok")
+
+	writeFile(t, cwd, ".git/HEAD", "ref: refs/heads/main\n")
+	writeFile(t, cwd, ".gaia/config.yaml", `
+default_profile: p
+default_repo: org/projrepo
+profiles:
+  p:
+    provider: forgejo
+    api_url: https://x/api/v1
+`)
+
+	s, err := settings.Load(settings.Override{
+		Cwd:     cwd,
+		Profile: "p",
+		Repo:    "flag/repo",
+	})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	i := s.Inspector()
+
+	if i.GlobalConfig() == nil {
+		t.Errorf("GlobalConfig: nil")
+	}
+	if i.ProjectConfig() == nil {
+		t.Errorf("ProjectConfig: nil")
+	}
+	if got := i.GlobalConfigPath(); got == "" {
+		t.Errorf("GlobalConfigPath: empty")
+	}
+	if got := i.ProjectConfigPath(); got == "" {
+		t.Errorf("ProjectConfigPath: empty")
+	}
+	if i.Credentials() == nil {
+		t.Errorf("Credentials: nil")
+	}
+	if got := i.GlobalCredentialsPath(); got == "" {
+		t.Errorf("GlobalCredentialsPath: empty")
+	}
+	if got := i.ProjectCredentialsPath(); got == "" {
+		t.Errorf("ProjectCredentialsPath: empty (cwd is a repo root)")
+	}
+	if got := i.Cwd(); got != cwd {
+		t.Errorf("Cwd: got %q want %q", got, cwd)
+	}
+	if got := i.RepoRoot(); got != cwd {
+		t.Errorf("RepoRoot: got %q want %q", got, cwd)
+	}
+	if i.EnvVars() == nil {
+		t.Errorf("EnvVars: nil snapshot")
+	}
+	if !i.EnvVars()["FORGEJO_TOKEN"] {
+		t.Errorf("EnvVars[FORGEJO_TOKEN]: want true (we set it)")
+	}
+	if got := i.ProfileFlag(); got != "p" {
+		t.Errorf("ProfileFlag: got %q want %q", got, "p")
+	}
+	if got := i.RepoFlag(); got != "flag/repo" {
+		t.Errorf("RepoFlag: got %q want %q", got, "flag/repo")
+	}
+	// GitRemoteRepo: cwd has no real git remote, so detection
+	// returns "" without erroring. Accept either empty or a value.
+	_ = i.GitRemoteRepo()
 }

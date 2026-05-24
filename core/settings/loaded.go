@@ -50,13 +50,13 @@ type ownerName struct {
 
 // --- Settings ---------------------------------------------------
 
-func (s *loadedSettings) Profile() string             { return s.profile }
-func (s *loadedSettings) Provider() string            { return s.provider }
-func (s *loadedSettings) APIURL() string              { return s.apiURL }
-func (s *loadedSettings) Token() string               { return s.token }
-func (s *loadedSettings) DefaultRepo() string         { return s.defaultRepo }
-func (s *loadedSettings) Cache() CacheSettings        { return s.cache }
-func (s *loadedSettings) Inspector() Inspector        { return (*loadedInspector)(s) }
+func (s *loadedSettings) Profile() string      { return s.profile }
+func (s *loadedSettings) Provider() string     { return s.provider }
+func (s *loadedSettings) APIURL() string       { return s.apiURL }
+func (s *loadedSettings) Token() string        { return s.token }
+func (s *loadedSettings) DefaultRepo() string  { return s.defaultRepo }
+func (s *loadedSettings) Cache() CacheSettings { return s.cache }
+func (s *loadedSettings) Inspector() Inspector { return (*loadedInspector)(s) }
 func (s *loadedSettings) Repo() (string, string, bool) {
 	return s.repo.owner, s.repo.name, s.repo.ok
 }
@@ -68,19 +68,19 @@ func (s *loadedSettings) Repo() (string, string, bool) {
 // underlying memory; different method set surfaced to callers.
 type loadedInspector loadedSettings
 
-func (i *loadedInspector) GlobalConfig() *config.Config       { return i.globalConfig }
-func (i *loadedInspector) ProjectConfig() *config.Config      { return i.projectConfig }
-func (i *loadedInspector) GlobalConfigPath() string           { return i.globalConfigPath }
-func (i *loadedInspector) ProjectConfigPath() string          { return i.projectConfigPath }
-func (i *loadedInspector) Credentials() *auth.Layered         { return i.credentials }
-func (i *loadedInspector) GlobalCredentialsPath() string      { return i.globalCredentialsPath }
-func (i *loadedInspector) ProjectCredentialsPath() string     { return i.projectCredentialsPath }
-func (i *loadedInspector) Cwd() string                        { return i.cwd }
-func (i *loadedInspector) RepoRoot() string                   { return i.repoRoot }
-func (i *loadedInspector) GitRemoteRepo() string              { return i.gitRemoteRepo }
-func (i *loadedInspector) EnvVars() map[string]bool           { return i.envVars }
-func (i *loadedInspector) ProfileFlag() string                { return i.profileFlag }
-func (i *loadedInspector) RepoFlag() string                   { return i.repoFlag }
+func (i *loadedInspector) GlobalConfig() *config.Config   { return i.globalConfig }
+func (i *loadedInspector) ProjectConfig() *config.Config  { return i.projectConfig }
+func (i *loadedInspector) GlobalConfigPath() string       { return i.globalConfigPath }
+func (i *loadedInspector) ProjectConfigPath() string      { return i.projectConfigPath }
+func (i *loadedInspector) Credentials() *auth.Layered     { return i.credentials }
+func (i *loadedInspector) GlobalCredentialsPath() string  { return i.globalCredentialsPath }
+func (i *loadedInspector) ProjectCredentialsPath() string { return i.projectCredentialsPath }
+func (i *loadedInspector) Cwd() string                    { return i.cwd }
+func (i *loadedInspector) RepoRoot() string               { return i.repoRoot }
+func (i *loadedInspector) GitRemoteRepo() string          { return i.gitRemoteRepo }
+func (i *loadedInspector) EnvVars() map[string]bool       { return i.envVars }
+func (i *loadedInspector) ProfileFlag() string            { return i.profileFlag }
+func (i *loadedInspector) RepoFlag() string               { return i.repoFlag }
 
 // --- helpers ----------------------------------------------------
 

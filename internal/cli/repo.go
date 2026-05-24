@@ -3,9 +3,6 @@ package cli
 import (
 	"strings"
 
-	"github.com/stewartbrothers/gaia/core/auth"
-	"github.com/stewartbrothers/gaia/core/autodetect"
-	"github.com/stewartbrothers/gaia/core/config"
 	"github.com/stewartbrothers/gaia/core/exitcode"
 )
 
@@ -16,6 +13,10 @@ import (
 //  3. project config's default_repo (.gaia/config.yaml in repo root).
 //  4. error — caller can't proceed without a target.
 //
+// The full resolution lives in core/settings.Load (#311); resolveRepo
+// is now a tiny adapter that reads s.Repo() and converts a "not
+// resolvable" answer into the standard usage error.
+//
 // The project-config fallback is the load-bearing one for forges
 // where the SSH push host and the HTTPS API host differ (e.g.,
 // repo.example.com vs git.example.com): autodetect parses the SSH
@@ -23,14 +24,17 @@ import (
 // result fails to resolve a credential. Pinning default_repo in
 // .gaia/config.yaml short-circuits that.
 func resolveRepo(flags *globalFlags) (owner, name string, err error) {
+	s, err := loadSettings(flags)
+	if err != nil {
+		return "", "", err
+	}
+	if owner, name, ok := s.Repo(); ok {
+		return owner, name, nil
+	}
+	// Distinguish "flag was supplied but malformed" from "nothing
+	// resolved." The malformed case helps the operator faster.
 	if flags.Repo != "" {
 		return splitOwnerName(flags.Repo, "--repo expected owner/name")
-	}
-	if detected, derr := autodetect.FromGitRemote(".", ""); derr == nil {
-		return detected.Owner, detected.Name, nil
-	}
-	if defaultRepo := projectDefaultRepo(); defaultRepo != "" {
-		return splitOwnerName(defaultRepo, "default_repo in .gaia/config.yaml expected owner/name")
 	}
 	return "", "", exitcode.Errorf(exitcode.Usage,
 		"no --repo given, could not auto-detect from git remote, and no default_repo in .gaia/config.yaml — pass --repo owner/name")
@@ -43,21 +47,4 @@ func splitOwnerName(slug, errPrefix string) (string, string, error) {
 			"%s, got %q", errPrefix, slug)
 	}
 	return parts[0], parts[1], nil
-}
-
-// projectDefaultRepo reads .gaia/config.yaml from the repo root and
-// returns its default_repo, or "" on any failure (no repo, no file,
-// parse error). Resolving silently to "" keeps the resolveRepo
-// fallback chain readable; the existing global config layer is
-// loaded separately by forgebuilder.
-func projectDefaultRepo() string {
-	root := auth.ProjectRoot(".")
-	if root == "" {
-		return ""
-	}
-	cfg, err := config.Load(config.ProjectPath(root))
-	if err != nil || cfg == nil {
-		return ""
-	}
-	return cfg.DefaultRepo
 }

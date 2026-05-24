@@ -39,13 +39,20 @@ type globalFlags struct {
 	// admin closed an issue out-of-band). Persistent flag — applies
 	// to every subcommand on the call. (#42)
 	NoCache bool
+
+	// settings is the per-invocation cache for the resolved
+	// [core/settings.Settings] handle. Populated lazily on first
+	// call to loadSettings; created fresh by NewRootCmd so tests
+	// that construct many roots in one process don't bleed Settings
+	// state. (#311)
+	settings *settingsCache
 }
 
 // NewRootCmd constructs a fresh root command tree. Each call returns
 // an independent *cobra.Command so tests don't share state across
 // invocations.
 func NewRootCmd() *cobra.Command {
-	flags := &globalFlags{}
+	flags := &globalFlags{settings: &settingsCache{}}
 
 	root := &cobra.Command{
 		Use:     "gaia",

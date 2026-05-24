@@ -3,14 +3,10 @@ package cli
 import (
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/stewartbrothers/gaia/core/auth"
-	"github.com/stewartbrothers/gaia/core/autodetect"
-	"github.com/stewartbrothers/gaia/core/config"
 	"github.com/stewartbrothers/gaia/core/doctor"
 	"github.com/stewartbrothers/gaia/core/exitcode"
 )
@@ -88,7 +84,7 @@ Out of scope (v1): auto-fix, cross-project scanning, MCP exposure.`,
 			explicitFormat := cmd.Flags().Changed("format")
 			format := flags.Format
 
-			in, err := buildDoctorInputs(flags.Profile, flags.Repo)
+			in, err := buildDoctorInputs(flags)
 			if err != nil {
 				return err
 			}
@@ -133,97 +129,37 @@ Out of scope (v1): auto-fix, cross-project scanning, MCP exposure.`,
 	return cmd
 }
 
-// buildDoctorInputs wires the same loaders the rest of gaia uses
-// so doctor inspects a view byte-identical to what `gaia issue
-// list` would see. Errors here are read failures we can't paper
-// over (corrupt YAML, etc.) — the CLI returns them and the
-// operator sees a usage-style error.
+// buildDoctorInputs assembles doctor.Inputs from the resolved
+// Settings handle. Every layer doctor inspects (configs, paths,
+// credentials, env-var snapshot, git-remote autodetect) is already
+// computed in settings.Load; we just project from the Inspector
+// view here. No file I/O happens in this function.
 //
 // One simplification vs forgebuilder.Build: doctor doesn't need
 // the resolved provider Token (we report on env-var presence
-// alone, never read the token value); we still drive token-env
-// detection from os.Getenv directly here.
-func buildDoctorInputs(profileFlag, repoFlag string) (doctor.Inputs, error) {
-	in := doctor.Inputs{Profile: profileFlag, RepoFlag: repoFlag}
-
-	// Global config.
-	gPath, err := config.DefaultPath()
-	if err == nil {
-		in.GlobalConfigPath = gPath
-		g, lerr := config.Load(gPath)
-		if lerr != nil {
-			return in, exitcode.Wrap(lerr, exitcode.Generic, "load global config")
-		}
-		in.Global = g
-	}
-
-	// Project layer + repo root.
-	cwd, _ := os.Getwd()
-	in.Cwd = cwd
-	if root := auth.ProjectRoot(cwd); root != "" {
-		in.RepoRoot = root
-		pPath := config.ProjectPath(root)
-		in.ProjectConfigPath = pPath
-		p, lerr := config.Load(pPath)
-		if lerr != nil {
-			return in, exitcode.Wrap(lerr, exitcode.Generic, "load project config")
-		}
-		in.Project = p
-		in.ProjectCredentialsPath = auth.ProjectPath(root)
-	}
-
-	// Credentials layers.
-	if gp, perr := auth.DefaultGlobalPath(); perr == nil {
-		in.GlobalCredentialsPath = gp
-	}
-	gStore := loadStoreOrEmpty(in.GlobalCredentialsPath)
-	var pStore *auth.Store
-	if in.ProjectCredentialsPath != "" {
-		pStore = loadStoreOrEmpty(in.ProjectCredentialsPath)
-	}
-	in.Credentials = &auth.Layered{Global: gStore, Project: pStore}
-
-	// Env var snapshot — bool only, never the value.
-	in.EnvVars = map[string]bool{}
-	for _, name := range []string{"GITEA_TOKEN", "FORGEJO_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"} {
-		in.EnvVars[name] = os.Getenv(name) != ""
-	}
-	// Also honour a profile-pinned token_env so the token-env-empty
-	// check can detect it. We only need presence, not value.
-	if in.Profile != "" || (in.Global != nil && in.Global.DefaultProfile != "") {
-		merged := config.Merge(in.Global, in.Project)
-		name := in.Profile
-		if name == "" {
-			name = merged.DefaultProfile
-		}
-		if p, ok := merged.Profiles[name]; ok && p.TokenEnv != "" {
-			in.EnvVars[p.TokenEnv] = os.Getenv(p.TokenEnv) != ""
-		}
-	}
-
-	// Git remote autodetect (best-effort; no error propagation).
-	if detected, derr := autodetect.FromGitRemote(".", ""); derr == nil {
-		in.GitRemoteRepo = detected.Owner + "/" + detected.Name
-	}
-
-	return in, nil
-}
-
-// loadStoreOrEmpty mirrors forgebuilder's loader semantics: a
-// missing file is the "no credentials yet" case (empty Store, no
-// error); parse errors degrade to empty so doctor still reports
-// what it can. We deliberately don't surface a parse error here
-// because the goal is to report — operator will see the offending
-// path in the CodeConfigLayers INFO and can investigate.
-func loadStoreOrEmpty(path string) *auth.Store {
-	if path == "" {
-		return &auth.Store{}
-	}
-	s, err := auth.Load(path)
+// alone, never read the token value), so the Settings.Token() field
+// is never consulted.
+func buildDoctorInputs(flags *globalFlags) (doctor.Inputs, error) {
+	s, err := loadSettings(flags)
 	if err != nil {
-		return &auth.Store{}
+		return doctor.Inputs{}, exitcode.Wrap(err, exitcode.Generic, "load settings")
 	}
-	return s
+	i := s.Inspector()
+	return doctor.Inputs{
+		Profile:                i.ProfileFlag(),
+		RepoFlag:               i.RepoFlag(),
+		GlobalConfigPath:       i.GlobalConfigPath(),
+		Global:                 i.GlobalConfig(),
+		ProjectConfigPath:      i.ProjectConfigPath(),
+		Project:                i.ProjectConfig(),
+		Cwd:                    i.Cwd(),
+		RepoRoot:               i.RepoRoot(),
+		GlobalCredentialsPath:  i.GlobalCredentialsPath(),
+		ProjectCredentialsPath: i.ProjectCredentialsPath(),
+		Credentials:            i.Credentials(),
+		EnvVars:                i.EnvVars(),
+		GitRemoteRepo:          i.GitRemoteRepo(),
+	}, nil
 }
 
 // countErrs is a tiny helper kept here so the CLI message is

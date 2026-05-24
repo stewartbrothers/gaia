@@ -60,13 +60,30 @@ func Load(ov Override) (Settings, error) {
 	mergedCfg := config.Merge(s.globalConfig, s.projectConfig)
 
 	// --- Resolve (provider, api url, token) -----------------------
+	//
+	// Resolve is *strict* on missing profile names — fine for the
+	// production path where the operator typed `--profile foo`, but
+	// fatal for `gaia config doctor`, whose whole job is to inspect
+	// broken configs. The original cli/config.go's buildDoctorInputs
+	// deliberately skipped Resolve for this reason.
+	//
+	// Compromise: surface Resolve errors as fatal ONLY when the
+	// operator explicitly named a profile via --profile. Implicit
+	// resolution failures (default_profile pointing at a missing
+	// entry, no default_profile when profiles exist) degrade to
+	// empty Resolved — production callers see s.Provider()=="" and
+	// surface their own usage error; doctor inspects the raw
+	// layers via Inspector().
 	resolved, err := config.Resolve(mergedCfg, config.Override{
 		Profile:  ov.Profile,
 		Provider: ov.Provider,
 		APIURL:   ov.APIURL,
 	})
 	if err != nil {
-		return nil, exitcode.Wrap(err, exitcode.Usage, "resolve config")
+		if ov.Profile != "" {
+			return nil, exitcode.Wrap(err, exitcode.Usage, "resolve config")
+		}
+		resolved = &config.Resolved{}
 	}
 	s.profile = resolved.Profile
 	s.provider = resolved.Provider
