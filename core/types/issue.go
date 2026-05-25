@@ -28,4 +28,14 @@ type Issue struct {
 	UpdatedAt time.Time  `json:"updated_at"`
 	ClosedAt  *time.Time `json:"closed_at,omitempty"`
 	Comments  []Comment  `json:"comments,omitempty"`
+	// Blockers are issues blocking this one (this issue depends on
+	// them). Populated only when GetIssueOptions.WithBlockers > 0.
+	// Each entry carries the trimmed Issue shape with Body="" and
+	// no further nested Blockers/Blocks — the inline view is
+	// one-level. See #317.
+	Blockers []Issue `json:"blockers,omitempty"`
+	// Blocks are issues this one is blocking. Populated only when
+	// GetIssueOptions.WithBlocks > 0. Same trim contract as
+	// Blockers.
+	Blocks []Issue `json:"blocks,omitempty"`
 }

@@ -142,6 +142,20 @@ func (p *Provider) GetIssue(ctx context.Context, owner, repo string, n int, opts
 		}
 		out.Comments = comments
 	}
+	if opts.WithBlockers > 0 {
+		blockers, _, err := p.ListIssueDependencies(ctx, owner, repo, n, provider.ListIssueDepsOptions{Limit: opts.WithBlockers})
+		if err != nil {
+			return nil, err
+		}
+		out.Blockers = blockers
+	}
+	if opts.WithBlocks > 0 {
+		blocks, _, err := p.ListIssueBlocks(ctx, owner, repo, n, provider.ListIssueDepsOptions{Limit: opts.WithBlocks})
+		if err != nil {
+			return nil, err
+		}
+		out.Blocks = blocks
+	}
 	return &out, nil
 }
 

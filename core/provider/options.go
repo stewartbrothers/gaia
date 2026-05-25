@@ -25,10 +25,21 @@ type ListIssuesOptions struct {
 	Cursor   string
 }
 
-// GetIssueOptions controls inline comment fetch. WithComments=0 returns
-// the issue with no comments; >0 inlines the most recent N.
+// GetIssueOptions controls what's reconciled into a single Issue
+// fetch. Each WithX flag costs an extra round-trip when > 0; defaults
+// (0) skip the call entirely. The fetched lists land in the
+// corresponding fields on types.Issue (Comments, Blockers, Blocks).
 type GetIssueOptions struct {
+	// WithComments=0 returns the issue with no comments; >0 inlines
+	// the most recent N.
 	WithComments int
+	// WithBlockers > 0 inlines up to N issues blocking this one
+	// (Forgejo's /dependencies endpoint). Cost: one extra round-trip.
+	// See #317.
+	WithBlockers int
+	// WithBlocks > 0 inlines up to N issues this one is blocking
+	// (Forgejo's /blocks endpoint). Cost: one extra round-trip.
+	WithBlocks int
 }
 
 // ListPullRequestsOptions filters and paginates a ListPullRequests call.

@@ -186,6 +186,71 @@ func TestRemoveIssueDependencyHappy(t *testing.T) {
 	}
 }
 
+// TestGetIssueWithBlockersHits dependencies pins that
+// GetIssueOptions.WithBlockers > 0 triggers a /dependencies fetch
+// inlined into the returned Issue.Blockers field.
+func TestGetIssueWithBlockersFetchesDependencies(t *testing.T) {
+	var depsHit int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/o/r/issues/42":
+			_ = json.NewEncoder(w).Encode(makeIssue(42, "host", "open"))
+		case "/repos/o/r/issues/42/dependencies":
+			depsHit++
+			_ = json.NewEncoder(w).Encode([]fakeIssue{
+				makeIssue(7, "blocker", "open"),
+			})
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, err := p.GetIssue(context.Background(), "o", "r", 42, provider.GetIssueOptions{WithBlockers: 5})
+	if err != nil {
+		t.Fatalf("GetIssue: %v", err)
+	}
+	if depsHit != 1 {
+		t.Errorf("expected 1 /dependencies call; got %d", depsHit)
+	}
+	if len(got.Blockers) != 1 || got.Blockers[0].Number != 7 {
+		t.Errorf("Blockers: got %+v", got.Blockers)
+	}
+}
+
+// TestGetIssueWithBlockingFetchesBlocks pins the inverse direction:
+// WithBlocks > 0 triggers a /blocks fetch into Issue.Blocks.
+func TestGetIssueWithBlockingFetchesBlocks(t *testing.T) {
+	var blocksHit int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/o/r/issues/7":
+			_ = json.NewEncoder(w).Encode(makeIssue(7, "host", "open"))
+		case "/repos/o/r/issues/7/blocks":
+			blocksHit++
+			_ = json.NewEncoder(w).Encode([]fakeIssue{
+				makeIssue(42, "downstream", "open"),
+			})
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, err := p.GetIssue(context.Background(), "o", "r", 7, provider.GetIssueOptions{WithBlocks: 5})
+	if err != nil {
+		t.Fatalf("GetIssue: %v", err)
+	}
+	if blocksHit != 1 {
+		t.Errorf("expected 1 /blocks call; got %d", blocksHit)
+	}
+	if len(got.Blocks) != 1 || got.Blocks[0].Number != 42 {
+		t.Errorf("Blocks: got %+v", got.Blocks)
+	}
+}
+
 func TestRemoveIssueDependencyNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
