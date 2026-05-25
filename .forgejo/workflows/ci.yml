@@ -18,7 +18,11 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 20-minute ceiling — bumped from 10 after PR #318 tipped over.
+    # Work-step subtotal alone (10m33s) had eaten the prior budget;
+    # post-action cache-save pushed total to 12m57s. Stopgap while
+    # #319 investigates the underlying test-runtime creep.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
 
