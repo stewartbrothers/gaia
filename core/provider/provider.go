@@ -314,4 +314,45 @@ type Provider interface {
 	// dedicated method so a `gaia milestone issues <id>` subcommand
 	// stays one-liner-shaped on both sides of the interface.
 	ListMilestoneIssues(ctx context.Context, owner, repo string, id int64, opts ListMilestoneIssuesOptions) ([]types.Issue, *Page, error)
+
+	// --- Issue dependencies (#317) ----------------------------------
+
+	// ListIssueDependencies returns the issues blocking issue n
+	// (Forgejo's GET /repos/{o}/{r}/issues/{n}/dependencies). The
+	// returned slice carries the trimmed Issue shape with Body=""
+	// (callers fetch the blocker individually if they need the body).
+	//
+	// Returns NotImplemented on providers that don't expose issue
+	// dependencies (GitHub REST as of 2026 — GitHub added an
+	// IssueDependency type to GraphQL in 2024 but no REST equivalent).
+	ListIssueDependencies(ctx context.Context, owner, repo string, n int, opts ListIssueDepsOptions) ([]types.Issue, *Page, error)
+
+	// ListIssueBlocks returns the issues that issue n blocks
+	// (Forgejo's GET /repos/{o}/{r}/issues/{n}/blocks) — the inverse
+	// view of ListIssueDependencies.
+	//
+	// Returns NotImplemented on providers that don't expose issue
+	// dependencies (see ListIssueDependencies).
+	ListIssueBlocks(ctx context.Context, owner, repo string, n int, opts ListIssueDepsOptions) ([]types.Issue, *Page, error)
+
+	// AddIssueDependency makes issue `dep` a blocker of issue `n`
+	// (Forgejo's POST /repos/{o}/{r}/issues/{n}/dependencies). The
+	// returned Issue is the added blocker.
+	//
+	// "X blocks Y" and "Y depends on X" are the same relationship;
+	// the CLI / MCP layers map both framings to this single op.
+	//
+	// Returns NotImplemented on providers that don't expose issue
+	// dependencies (see ListIssueDependencies). Returns a Generic
+	// error (409) when the dependency edge already exists.
+	AddIssueDependency(ctx context.Context, owner, repo string, n, dep int) (*types.Issue, error)
+
+	// RemoveIssueDependency removes the blocker relationship — `dep`
+	// no longer blocks `n` (Forgejo's DELETE
+	// /repos/{o}/{r}/issues/{n}/dependencies).
+	//
+	// Returns NotImplemented on providers that don't expose issue
+	// dependencies (see ListIssueDependencies). Returns NotFound when
+	// the dependency edge doesn't exist.
+	RemoveIssueDependency(ctx context.Context, owner, repo string, n, dep int) error
 }
