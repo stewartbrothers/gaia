@@ -5,8 +5,22 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stewartbrothers/gaia/core/settings"
 	"github.com/stewartbrothers/gaia/internal/forgebuilder"
 )
+
+// loadSettings is a per-test helper that constructs a Settings with
+// the override the migrated tests previously passed to Build directly.
+// settings.Load resolves config + credentials + env eagerly, so the
+// test exercises the same path Build now reads from.
+func loadSettings(t *testing.T, ov settings.Override) settings.Settings {
+	t.Helper()
+	s, err := settings.Load(ov)
+	if err != nil {
+		t.Fatalf("settings.Load: %v", err)
+	}
+	return s
+}
 
 // TestBuildSkipsCacheWhenEnvDisablesIt pins the #303 fix: setting
 // GAIA_CACHE_ENABLED=false short-circuits the sqlite open in Build,
@@ -24,15 +38,18 @@ func TestBuildSkipsCacheWhenEnvDisablesIt(t *testing.T) {
 	cacheDir := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_CACHE_HOME", cacheDir)
 	t.Setenv("FORGEJO_TOKEN", "X")
 	// Clear any inherited setting; this test owns it.
 	t.Setenv("GAIA_CACHE_ENABLED", "false")
 
-	_, _, err := forgebuilder.Build(forgebuilder.Override{
+	s := loadSettings(t, settings.Override{
 		Provider: "forgejo",
 		APIURL:   "https://example.test/api/v1",
 	})
+
+	_, _, err := forgebuilder.Build(s, forgebuilder.BuildOverride{})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -56,14 +73,17 @@ func TestBuildOpensCacheByDefault(t *testing.T) {
 	cacheDir := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_CACHE_HOME", cacheDir)
 	t.Setenv("FORGEJO_TOKEN", "X")
 	t.Setenv("GAIA_CACHE_ENABLED", "") // default = enabled
 
-	_, _, err := forgebuilder.Build(forgebuilder.Override{
+	s := loadSettings(t, settings.Override{
 		Provider: "forgejo",
 		APIURL:   "https://example.test/api/v1",
 	})
+
+	_, _, err := forgebuilder.Build(s, forgebuilder.BuildOverride{})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}

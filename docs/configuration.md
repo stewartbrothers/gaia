@@ -370,11 +370,43 @@ The same content is exposed to MCP clients as a static resource at
 `gaia-mcp` can `resources/read` the URI to pull the recommended
 block without shelling out.
 
+## How gaia loads it — `core/settings.Settings`
+
+For most operators the layering above is all you need. This section is
+for contributors curious about *when* and *how* gaia reads the layers.
+
+`gaia` loads its full configuration — global YAML, project YAML,
+credentials store, env-var snapshot, and git-remote autodetect —
+exactly **once** per process. The resolved view is a
+[`core/settings.Settings`](../core/settings/settings.go) handle that
+every subcommand consults. No subcommand re-reads the YAML or the
+credentials file; doctor, repo-resolution, and forgebuilder all read
+from the same in-memory snapshot.
+
+What this means in practice:
+
+- **YAML edits don't take effect mid-process.** Editing
+  `.gaia/config.yaml` while a long-running `gaia chain run` is
+  executing has no effect on that run. Start a new gaia invocation
+  for the change to be picked up.
+- **Credentials are read once per host per process.** A token rotation
+  doesn't propagate into a running gaia-mcp HTTP server until restart.
+- **`gaia config doctor` inspects the same view every other subcommand
+  sees.** No "doctor said it's fine but `gaia issue list` fails" gap.
+
+Tests can fake the handle; see `core/settings.Settings` for the
+interface and `core/settings/load.go` for the production loader.
+Sanctioned by [ADR 0001](adr/0001-internal-interfaces.md), issue #311.
+
 ## See also
 
 - [`docs/auth.md`](auth.md) — credentials store, token sourcing,
   gitignore rules.
 - [`docs/cache.md`](cache.md) — `cache:` block in detail.
-- `core/config/config.go` — the `Merge` function that folds project
-  over global.
+- [`docs/adr/0001-internal-interfaces.md`](adr/0001-internal-interfaces.md)
+  — when gaia introduces an internal interface like `Settings`.
+- `core/settings/settings.go` — the Settings interface.
+- `core/settings/load.go` — the production loader.
+- `core/config/config.go` — the `Merge` function Settings calls
+  internally.
 - `internal/cli/repo.go` — the repo resolution chain.
