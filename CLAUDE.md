@@ -264,7 +264,7 @@ tight when scripting):
 - Self-documentation: `gaia learn` (prints the embedded agent guide; `--format json` for envelope shape)
 - Project setup: `gaia gitignore` (prints the recommended `.gitignore` block; `--check` audits an existing file, exits non-zero on missing entries; `--quiet` for CI gating)
 - Config diagnostics: `gaia config doctor` (lints resolved config + credentials; flags multi-project safety, credential hygiene, profile coherence; `--strict` promotes WARN to ERR; `--quiet` exits non-zero on ERR only; `--format json` for envelope shape)
-- Issues: `list [--assignee @me|--author @me] | view | create | edit [--add-label/--remove-label] | close | reopen | comment | comment-edit | comment-delete`. `@me` on `--assignee`/`--author` resolves to the configured user via one extra `Whoami` call (#299).
+- Issues: `list [--assignee @me|--author @me] | view [--with-blockers N|--with-blocking N] | create | edit [--add-label/--remove-label] | close | reopen | comment | comment-edit | comment-delete | dep list|add|remove [--blocker|--blocks]`. `@me` on `--assignee`/`--author` resolves to the configured user via one extra `Whoami` call (#299). `dep` subcommand manages Forgejo issue dependencies; GitHub returns NotImplemented (#317).
 - PRs: `list | view | diff | comments | create | edit | close | reopen | comment-create | merge | review | checkout`
 - Labels: `list | create | edit | delete`
 - Releases: `list | view | create | edit | delete | publish`

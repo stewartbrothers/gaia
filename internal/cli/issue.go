@@ -26,6 +26,7 @@ func newIssueCmd(flags *globalFlags) *cobra.Command {
 	cmd.AddCommand(newIssueCommentCmd(flags))
 	cmd.AddCommand(newIssueCommentEditCmd(flags))
 	cmd.AddCommand(newIssueCommentDeleteCmd(flags))
+	cmd.AddCommand(newIssueDepCmd(flags))
 	return cmd
 }
 
@@ -102,7 +103,7 @@ func newIssueListCmd(flags *globalFlags) *cobra.Command {
 }
 
 func newIssueViewCmd(flags *globalFlags) *cobra.Command {
-	var withComments int
+	var withComments, withBlockers, withBlocks int
 
 	cmd := &cobra.Command{
 		Use:   "view <number>",
@@ -123,6 +124,8 @@ func newIssueViewCmd(flags *globalFlags) *cobra.Command {
 			}
 			issue, err := p.GetIssue(cmd.Context(), owner, repo, n, provider.GetIssueOptions{
 				WithComments: withComments,
+				WithBlockers: withBlockers,
+				WithBlocks:   withBlocks,
 			})
 			if err != nil {
 				return err
@@ -131,6 +134,8 @@ func newIssueViewCmd(flags *globalFlags) *cobra.Command {
 		},
 	}
 	cmd.Flags().IntVar(&withComments, "with-comments", 0, "inline this many recent comments (0 = none)")
+	cmd.Flags().IntVar(&withBlockers, "with-blockers", 0, "inline this many issues blocking this one (0 = none) — #317")
+	cmd.Flags().IntVar(&withBlocks, "with-blocking", 0, "inline this many issues this one is blocking (0 = none) — #317")
 	return cmd
 }
 
