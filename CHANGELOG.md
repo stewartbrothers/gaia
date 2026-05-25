@@ -111,6 +111,16 @@ breaking changes to the public surface.
   `config doctor`, `@me` sentinel, and HTMLURL projection use
   cases that landed this cycle.
 
+- **Provider contract + first ADR** — `docs/provider-contract.md`
+  pins the cross-cutting contract every `core.Provider`
+  implementation must satisfy (response shape, error mapping,
+  pagination, cache semantics, trust tagging) so future provider
+  additions have a single source of truth instead of cargo-culting
+  from `core/forgejo/`. `docs/adr/0001-internal-interfaces.md`
+  opens the ADR series with the project's rule of thumb for when
+  to introduce an internal Go interface vs. depending on a
+  concrete type (PR #308).
+
 ### Tests
 
 - **`config-doctor` golden scenarios for the two finding codes
