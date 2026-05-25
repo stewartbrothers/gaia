@@ -152,6 +152,7 @@ func registerAllTools(s *server.MCPServer) {
 	registerWebhookTools(s)
 	registerActionsTools(s)
 	registerMilestoneTools(s)
+	registerIssueDepTools(s)
 }
 
 // ctxBoundHandler is a tiny helper that runs an MCP tool handler
