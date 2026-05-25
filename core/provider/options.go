@@ -314,6 +314,17 @@ type ListDeliveriesOptions struct {
 	Cursor string
 }
 
+// --- Issue dependencies (#317) -----------------------------------
+
+// ListIssueDepsOptions paginates a ListIssueDependencies or
+// ListIssueBlocks call. Same shape as the other list option structs;
+// no per-resource filters today because Forgejo's endpoints don't
+// accept any beyond standard pagination.
+type ListIssueDepsOptions struct {
+	Limit  int
+	Cursor string
+}
+
 // --- Actions (#183) ---
 
 // ListWorkflowRunsOptions filters and paginates a ListWorkflowRuns call.

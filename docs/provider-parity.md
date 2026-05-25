@@ -65,6 +65,10 @@ provider source to know what to expect.
 | `GetWebhookDelivery` | ✓ | ✓ | `GET /repos/{o}/{r}/hooks/{id}/deliveries/{delivery_id}`. Carries full request + response headers/body. Forgejo flattens into `request_headers`/`request_body`/`response_headers`/`response_body`; GitHub nests under `request.{headers,payload}` and `response.{headers,payload}`. gaia maps both into the unified `WebhookDeliveryDetail`. |
 | `RedeliverWebhook` | ✓ | ✓ | **Different paths**: Forgejo uses `POST /hooks/{id}/deliveries/{delivery_id}` (post-to-the-resource); GitHub uses `POST /hooks/{id}/deliveries/{delivery_id}/attempts`. GitHub returns 202 (async); Forgejo returns 204 (sync). Both mapped to nil error on success. |
 | `TestWebhook` | ✓ | ✓ | `POST /repos/{o}/{r}/hooks/{id}/tests` on both. Forgejo dispatches a synthetic ping payload; GitHub dispatches a `push` event using the repo's most recent commit. 204 success. |
+| `ListIssueDependencies` | ✓ | × | Forgejo: `GET /repos/{o}/{r}/issues/{n}/dependencies`. GitHub has no REST equivalent (an `IssueDependency` type was added to GraphQL in 2024 but isn't wired); returns a documented NotImplemented error per #317. |
+| `ListIssueBlocks` | ✓ | × | Forgejo: `GET /repos/{o}/{r}/issues/{n}/blocks` — the inverse view. Same GitHub gap as `ListIssueDependencies`. |
+| `AddIssueDependency` | ✓ | × | Forgejo: `POST /repos/{o}/{r}/issues/{n}/dependencies` with body `{"index": M}`. Same-repo only in v1 (cross-repo body shape extends with `owner`+`repo`; filed as separate follow-up). Same GitHub gap. |
+| `RemoveIssueDependency` | ✓ | × | Forgejo: `DELETE /repos/{o}/{r}/issues/{n}/dependencies` with the same body. 404 → `exitcode.NotFound`. Same GitHub gap. |
 
 ## Cross-cutting differences
 

@@ -47,6 +47,7 @@ func TestOptionsZeroValuesUsable(t *testing.T) {
 	_ = provider.CreateWebhookOptions{}
 	_ = provider.EditWebhookOptions{}
 	_ = provider.ListDeliveriesOptions{}
+	_ = provider.ListIssueDepsOptions{}
 }
 
 // noopProvider is the always-fail stand-in used to compile-check the
@@ -233,6 +234,18 @@ func (*noopProvider) DeleteMilestone(_ context.Context, _, _ string, _ int64) er
 }
 func (*noopProvider) ListMilestoneIssues(_ context.Context, _, _ string, _ int64, _ provider.ListMilestoneIssuesOptions) ([]types.Issue, *provider.Page, error) {
 	return nil, nil, errNotImplemented
+}
+func (*noopProvider) ListIssueDependencies(_ context.Context, _, _ string, _ int, _ provider.ListIssueDepsOptions) ([]types.Issue, *provider.Page, error) {
+	return nil, nil, errNotImplemented
+}
+func (*noopProvider) ListIssueBlocks(_ context.Context, _, _ string, _ int, _ provider.ListIssueDepsOptions) ([]types.Issue, *provider.Page, error) {
+	return nil, nil, errNotImplemented
+}
+func (*noopProvider) AddIssueDependency(_ context.Context, _, _ string, _, _ int) (*types.Issue, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) RemoveIssueDependency(_ context.Context, _, _ string, _, _ int) error {
+	return errNotImplemented
 }
 
 // Reference time.Time so an unused-import check never fires while tests
