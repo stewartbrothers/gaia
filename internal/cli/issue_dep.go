@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"io"
+	"regexp"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -88,29 +90,35 @@ func newIssueDepListCmd(flags *globalFlags) *cobra.Command {
 	return cmd
 }
 
-// newIssueDepAddCmd makes issue M block issue N (creates a
-// dependency edge). The CLI accepts both framings via mutually-
-// exclusive flags:
+// newIssueDepAddCmd makes a dependency edge. The CLI accepts both
+// framings via mutually-exclusive flags, and either same-repo or
+// cross-repo (#325) refs:
 //
-//	--blocker M  → "M blocks N" — POST .../N/dependencies {"index": M}
-//	--blocks  M  → "N blocks M" — POST .../M/dependencies {"index": N}
+//	--blocker 7              → "7 blocks N" same-repo
+//	--blocker owner/repo#7   → "owner/repo#7 blocks N" cross-repo
+//	--blocks  M              → "N blocks M" same-repo (inverse framing)
+//	--blocks  owner/repo#M   → "N blocks owner/repo#M" cross-repo
 //
 // Same edge from different framings; the inverse is just the
-// argument swap. Forgejo echoes the added blocker back as the
-// response; we render it as a single-issue envelope.
+// host/target swap. The forge provider echoes the added blocker back
+// as the response; we render it as a single-issue envelope.
 func newIssueDepAddCmd(flags *globalFlags) *cobra.Command {
-	var blocker, blocks int
+	var blocker, blocks string
 
 	cmd := &cobra.Command{
 		Use:   "add <number>",
-		Short: "Add a dependency edge — either --blocker M (M blocks N) or --blocks M (N blocks M)",
+		Short: "Add a dependency edge — either --blocker M (M blocks N) or --blocks M (N blocks M); M may be `owner/repo#N` for cross-repo",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			n, err := parseIssueNumber(args[0])
 			if err != nil {
 				return err
 			}
-			depTarget, depHost, err := resolveDepDirection(n, blocker, blocks)
+			hostOwner, hostRepo, err := resolveRepo(flags)
+			if err != nil {
+				return err
+			}
+			host, target, err := resolveDepDirection(n, hostOwner, hostRepo, blocker, blocks)
 			if err != nil {
 				return err
 			}
@@ -118,37 +126,37 @@ func newIssueDepAddCmd(flags *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			owner, repo, err := resolveRepo(flags)
-			if err != nil {
-				return err
-			}
-			added, err := p.AddIssueDependency(cmd.Context(), owner, repo, depHost, depTarget)
+			added, err := p.AddIssueDependency(cmd.Context(), host.Owner, host.Repo, host.Number, target)
 			if err != nil {
 				return err
 			}
 			return renderEnvelope(cmd, flags, added, nil, prettyIssueView)
 		},
 	}
-	cmd.Flags().IntVar(&blocker, "blocker", 0,
-		"issue number that blocks the argument issue (M blocks N)")
-	cmd.Flags().IntVar(&blocks, "blocks", 0,
-		"issue number that the argument issue blocks (N blocks M)")
+	cmd.Flags().StringVar(&blocker, "blocker", "",
+		"issue that blocks the argument issue (bare number for same-repo, owner/repo#N for cross-repo)")
+	cmd.Flags().StringVar(&blocks, "blocks", "",
+		"issue that the argument issue blocks (bare number for same-repo, owner/repo#N for cross-repo)")
 	return cmd
 }
 
 func newIssueDepRemoveCmd(flags *globalFlags) *cobra.Command {
-	var blocker, blocks int
+	var blocker, blocks string
 
 	cmd := &cobra.Command{
 		Use:   "remove <number>",
-		Short: "Remove a dependency edge — same --blocker/--blocks shape as add",
+		Short: "Remove a dependency edge — same --blocker/--blocks shape as add (incl. owner/repo#N cross-repo refs)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			n, err := parseIssueNumber(args[0])
 			if err != nil {
 				return err
 			}
-			depTarget, depHost, err := resolveDepDirection(n, blocker, blocks)
+			hostOwner, hostRepo, err := resolveRepo(flags)
+			if err != nil {
+				return err
+			}
+			host, target, err := resolveDepDirection(n, hostOwner, hostRepo, blocker, blocks)
 			if err != nil {
 				return err
 			}
@@ -156,11 +164,7 @@ func newIssueDepRemoveCmd(flags *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			owner, repo, err := resolveRepo(flags)
-			if err != nil {
-				return err
-			}
-			if err := p.RemoveIssueDependency(cmd.Context(), owner, repo, depHost, depTarget); err != nil {
+			if err := p.RemoveIssueDependency(cmd.Context(), host.Owner, host.Repo, host.Number, target); err != nil {
 				return err
 			}
 			// Mirror the milestone-delete shape: no body, just an empty
@@ -168,17 +172,55 @@ func newIssueDepRemoveCmd(flags *globalFlags) *cobra.Command {
 			return renderEnvelope(cmd, flags, struct{}{}, nil, prettyIssueDepRemoveOK)
 		},
 	}
-	cmd.Flags().IntVar(&blocker, "blocker", 0,
-		"issue number that blocks the argument issue (M blocks N)")
-	cmd.Flags().IntVar(&blocks, "blocks", 0,
-		"issue number that the argument issue blocks (N blocks M)")
+	cmd.Flags().StringVar(&blocker, "blocker", "",
+		"issue that blocks the argument issue (bare number for same-repo, owner/repo#N for cross-repo)")
+	cmd.Flags().StringVar(&blocks, "blocks", "",
+		"issue that the argument issue blocks (bare number for same-repo, owner/repo#N for cross-repo)")
 	return cmd
 }
 
+// depAnchor is the parsed location of the host or target side of a
+// dependency edge. Same-repo refs inherit the host repo from the
+// active gaia config; cross-repo refs carry their own owner+repo.
+type depAnchor struct {
+	Owner  string
+	Repo   string
+	Number int
+}
+
+// crossRepoRefPattern matches the cross-repo CLI reference shape
+// `owner/repo#N` — the GitHub-flavored convention. Anchored so a
+// bare integer doesn't accidentally match.
+var crossRepoRefPattern = regexp.MustCompile(`^([^/\s#]+)/([^/\s#]+)#(\d+)$`)
+
+// parseDepRefString parses a CLI flag value like "7" (same-repo) or
+// "owner/repo#7" (cross-repo) into a (owner, repo, number) triple.
+// Empty owner/repo means the caller should fall back to the host's
+// repo. Returns a Usage exit-coded error for malformed input.
+func parseDepRefString(s string) (anchor depAnchor, err error) {
+	if m := crossRepoRefPattern.FindStringSubmatch(s); m != nil {
+		n, _ := strconv.Atoi(m[3]) // regex guarantees digits
+		if n <= 0 {
+			return depAnchor{}, exitcode.Errorf(exitcode.Usage,
+				"dep reference %q has non-positive issue number", s)
+		}
+		return depAnchor{Owner: m[1], Repo: m[2], Number: n}, nil
+	}
+	// Bare integer = same-repo.
+	n, perr := strconv.Atoi(s)
+	if perr != nil || n <= 0 {
+		return depAnchor{}, exitcode.Errorf(exitcode.Usage,
+			"dep reference %q must be a positive integer or owner/repo#N", s)
+	}
+	return depAnchor{Number: n}, nil
+}
+
 // resolveDepDirection enforces the mutual exclusion of --blocker /
-// --blocks and returns (depTarget, depHost) such that calling
-// AddIssueDependency(host, target) creates the edge "target blocks
-// host." The naming reads:
+// --blocks and returns (host, target) anchors such that calling
+// AddIssueDependency(host.Owner, host.Repo, host.Number, IssueDepRef{
+// target.Owner, target.Repo, target.Number}) creates the edge.
+//
+// Naming reads:
 //
 //   - --blocker M on issue N → "M blocks N." Edge stored on N's
 //     /dependencies. Host=N, Target=M.
@@ -186,20 +228,55 @@ func newIssueDepRemoveCmd(flags *globalFlags) *cobra.Command {
 //     the other side. Edge stored on M's /dependencies. Host=M,
 //     Target=N.
 //
-// Exactly one of the two flags must be > 0.
-func resolveDepDirection(n, blocker, blocks int) (target, host int, err error) {
+// Either side may be cross-repo — the host repo follows the side
+// that owns the edge, so e.g. --blocks owner/repo#M means the edge
+// lives on owner/repo's /dependencies (host = M in owner/repo).
+//
+// Exactly one of the two flags must be populated.
+func resolveDepDirection(n int, hostOwner, hostRepo, blocker, blocks string) (host depAnchor, target provider.IssueDepRef, err error) {
 	switch {
-	case blocker > 0 && blocks > 0:
-		return 0, 0, exitcode.Errorf(exitcode.Usage,
+	case blocker != "" && blocks != "":
+		return depAnchor{}, provider.IssueDepRef{}, exitcode.Errorf(exitcode.Usage,
 			"--blocker and --blocks are mutually exclusive")
-	case blocker > 0:
-		return blocker, n, nil
-	case blocks > 0:
-		return n, blocks, nil
+	case blocker != "":
+		// "M blocks N" — host=N (the argument), target=M (the flag).
+		other, err := parseDepRefString(blocker)
+		if err != nil {
+			return depAnchor{}, provider.IssueDepRef{}, err
+		}
+		host = depAnchor{Owner: hostOwner, Repo: hostRepo, Number: n}
+		target = provider.IssueDepRef{Owner: other.Owner, Repo: other.Repo, Number: other.Number}
+		return host, target, nil
+	case blocks != "":
+		// "N blocks M" — host=M (the flag), target=N (the argument).
+		other, err := parseDepRefString(blocks)
+		if err != nil {
+			return depAnchor{}, provider.IssueDepRef{}, err
+		}
+		hostOwnerFinal, hostRepoFinal := hostOwner, hostRepo
+		if !other.sameRepo() {
+			hostOwnerFinal, hostRepoFinal = other.Owner, other.Repo
+		}
+		host = depAnchor{Owner: hostOwnerFinal, Repo: hostRepoFinal, Number: other.Number}
+		target = provider.IssueDepRef{Number: n} // target = the argument issue, same as host repo
+		// But if --blocks pointed at a different repo, the target
+		// (which is the CLI argument issue) lives in OUR repo, not
+		// the flag's repo. Surface that via owner/repo on the ref.
+		if !other.sameRepo() {
+			target.Owner = hostOwner
+			target.Repo = hostRepo
+		}
+		return host, target, nil
 	default:
-		return 0, 0, exitcode.Errorf(exitcode.Usage,
-			"one of --blocker or --blocks is required (issue number > 0)")
+		return depAnchor{}, provider.IssueDepRef{}, exitcode.Errorf(exitcode.Usage,
+			"one of --blocker or --blocks is required")
 	}
+}
+
+// sameRepo reports whether the anchor has no owner/repo (and so
+// should inherit the host's).
+func (a depAnchor) sameRepo() bool {
+	return a.Owner == "" && a.Repo == ""
 }
 
 func prettyIssueDepRemoveOK(w io.Writer, _ any) error {
