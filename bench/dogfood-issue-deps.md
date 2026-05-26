@@ -58,9 +58,12 @@ Cache (#42) covers the issue GET only; the dep edges aren't cached
 ## Provider coverage
 
 - ✅ Forgejo (`core/forgejo/issue_dependencies.go`)
-- ❌ GitHub  — NotImplemented stub. GitHub's REST API has no
-  equivalent endpoints; GraphQL added `IssueDependency` in 2024 but
-  isn't wired. Tracked in #317's open follow-up.
+- ✅ GitHub  (`core/github/issue_dependencies.go`) — REST endpoints
+  landed in API version 2026-03-10. Wire shapes differ (GitHub uses
+  `issue_id` not `issue_number` in the POST body; DELETE puts id in
+  path not body) but the Provider contract is uniform — see
+  `docs/provider-parity.md`. Wired in #326. Add/Remove pay one
+  extra round-trip per op for the number → id resolution.
 
 ## Out of scope (this PR / v1)
 
