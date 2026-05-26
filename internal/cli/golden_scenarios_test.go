@@ -181,6 +181,11 @@ func runCLIScenario(t *testing.T, dir string) {
 	t.Setenv("HOME", tempDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tempDir, "config"))
 	t.Setenv("XDG_STATE_HOME", stateDir)
+	// Skip the sqlite cache open per-scenario — same fix as in
+	// cmd/gaia/main_test.go and clearGaiaEnv (#303 / #319).
+	// Scenarios that explicitly test cache behaviour can re-enable
+	// it via stage.env.
+	t.Setenv("GAIA_CACHE_ENABLED", "false")
 	for _, k := range []string{
 		"FORGEJO_TOKEN", "FORGEJO_API_URL",
 		"GITEA_TOKEN", "GITHUB_TOKEN", "GH_TOKEN",
