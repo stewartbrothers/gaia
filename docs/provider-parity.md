@@ -30,7 +30,7 @@ provider source to know what to expect.
 | `ListComments` | ✓ | ✓ | Three-endpoint merge (issue + review + inline) on both. Empty-body reviews dropped from the unified stream. |
 | `Search` | ✓ | △ | Different endpoints + shapes. Forgejo: `/repos/issues/search` (or repo-scoped `/repos/{o}/{r}/issues`), bare-array result. GitHub: `/search/issues` with a `{total_count, items}` wrapper; opts.Repo + opts.Kinds fold into the GitHub `q` qualifier (`repo:owner/name`, `is:issue`/`is:pr`). User queries pass through verbatim, so power-users can supply arbitrary GitHub search qualifiers (`label:bug state:closed`, etc.). |
 | `CreateIssue` | ✓ | ✓ | Same `POST /repos/{o}/{r}/issues` body on both. |
-| `EditIssue` | ✓ | ✓ | `omitempty` on title/body/state/assignees on both. AddLabels/RemoveLabels not yet plumbed in either — label list mutation is a follow-up. |
+| `EditIssue` | ✓ | ✓ | `omitempty` on title/body/state/assignees on both. AddLabels/RemoveLabels apply via per-forge label endpoints: Forgejo POSTs `/repos/{o}/{r}/issues/{n}/labels` for adds (after resolving names→IDs via ListLabels) and DELETEs per-ID for removes; GitHub POSTs `/repos/{o}/{r}/issues/{n}/labels` with `{labels:[...]}` for adds and DELETEs per-name for removes. Same callable contract on both. (#327) |
 | `CreateIssueComment` | ✓ | ✓ | Same endpoint family; same `{body}` body shape. |
 | `EditIssueComment` | ✓ | ✓ | `PATCH /issues/comments/{id}` on both. |
 | `DeleteIssueComment` | ✓ | ✓ | `DELETE /issues/comments/{id}`; 204 success. |
