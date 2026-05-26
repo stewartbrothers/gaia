@@ -28,6 +28,22 @@ reserved for breaking changes only.
   exit code did. SemVer-wise this is a backwards-compatible
   addition — no existing code value changed.
 
+### Fixed
+
+- **CI: golden scenarios stop opening sqlite cache per-run.** The
+  `clearGaiaEnv` fix from #303 set `GAIA_CACHE_ENABLED=false` in
+  the shared CLI test helper, but golden scenarios (in
+  `cmd/gaia/main_test.go` and `internal/cli/golden_scenarios_test.go`)
+  don't go through that helper — each scenario invokes the gaia
+  CLI in-process and picked up the default cache-enabled config.
+  Result: 30+ sqlite opens per package on Linux CI, each paying
+  the modernc-pure-Go fsync tax that pushed `internal/cli` past
+  the per-package 10-min `go test` timeout. Fix: harness-level
+  `t.Setenv("GAIA_CACHE_ENABLED", "false")` in both scenario
+  harnesses, mirroring the rationale of #303. Scenarios that
+  explicitly test cache behaviour can re-enable it via
+  `stage.env`. Closes #319.
+
 ## [0.5.0] — 2026-05-21
 
 Feature release. Three new top-level commands (`milestone`,
