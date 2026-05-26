@@ -31,7 +31,9 @@ Two directions exist:
 different framings. add/remove accept either --blocker or --blocks
 and map both to the same underlying op.
 
-Forgejo only; GitHub returns NotImplemented (no REST equivalent).`,
+Works on both Forgejo and GitHub (GitHub REST landed in API
+version 2026-03-10; the wire shapes differ but the gaia surface
+is uniform — see docs/provider-parity.md).`,
 	}
 	cmd.AddCommand(newIssueDepListCmd(flags))
 	cmd.AddCommand(newIssueDepAddCmd(flags))

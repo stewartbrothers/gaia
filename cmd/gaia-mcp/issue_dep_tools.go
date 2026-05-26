@@ -24,7 +24,7 @@ import (
 // NotImplemented per docs/provider-contract.md.
 func registerIssueDepTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("gaia_issue_dep_list",
-		mcp.WithDescription("List issue dependencies (blockers) or blocks. Returns trimmed Issue records. Forgejo only."),
+		mcp.WithDescription("List issue dependencies (blockers) or blocks. Returns trimmed Issue records. Forgejo + GitHub (REST, API version 2026-03-10)."),
 		mcp.WithString("repo", mcp.Required(), mcp.Description("owner/name")),
 		mcp.WithNumber("number", mcp.Required(), mcp.Description("issue number")),
 		mcp.WithString("direction", mcp.Description(`"blockers" (default — issues blocking this one) or "blocks" (issues this one blocks)`)),
@@ -33,7 +33,7 @@ func registerIssueDepTools(s *server.MCPServer) {
 	), ctxBoundHandler(handleIssueDepList))
 
 	s.AddTool(mcp.NewTool("gaia_issue_dep_add",
-		mcp.WithDescription(`Add a dependency edge. Two framings (mutually exclusive): blocker=M means "M blocks N" (where N is the `+"`number`"+` arg); blocks=M means "N blocks M". Same edge, opposite direction of argument flow. Forgejo only.`),
+		mcp.WithDescription(`Add a dependency edge. Two framings (mutually exclusive): blocker=M means "M blocks N" (where N is the `+"`number`"+` arg); blocks=M means "N blocks M". Same edge, opposite direction of argument flow. Forgejo + GitHub.`),
 		mcp.WithString("repo", mcp.Required()),
 		mcp.WithNumber("number", mcp.Required(), mcp.Description("the issue the edge is anchored to")),
 		mcp.WithNumber("blocker", mcp.Description(`M where "M blocks N"`)),
@@ -41,7 +41,7 @@ func registerIssueDepTools(s *server.MCPServer) {
 	), ctxBoundHandler(handleIssueDepAdd))
 
 	s.AddTool(mcp.NewTool("gaia_issue_dep_remove",
-		mcp.WithDescription("Remove a dependency edge. Same blocker/blocks framing as gaia_issue_dep_add. Forgejo only."),
+		mcp.WithDescription("Remove a dependency edge. Same blocker/blocks framing as gaia_issue_dep_add. Forgejo + GitHub."),
 		mcp.WithString("repo", mcp.Required()),
 		mcp.WithNumber("number", mcp.Required()),
 		mcp.WithNumber("blocker"),

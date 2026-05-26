@@ -40,7 +40,7 @@ cover something is to file a gap issue (see
 | List issues assigned to me | `gaia issue list --assignee @me --state open` (also `--author @me` for issues you opened — single `Whoami` lookup; #299) |
 | Get the forge UI URL for an issue/PR | `gaia issue view 42 --fields html_url --format json` (works on `issue list/view` and `pr list/view`; #305) |
 | View an issue | `gaia issue view 42 --with-comments 5` |
-| View issue + its blockers/blocking | `gaia issue view 42 --with-blockers 5 --with-blocking 5` (Forgejo only — #317) |
+| View issue + its blockers/blocking | `gaia issue view 42 --with-blockers 5 --with-blocking 5` (Forgejo + GitHub — #317 / #326) |
 | List issue dependencies | `gaia issue dep list 42` (defaults to blockers; `--direction blocks` for the inverse) |
 | Mark issue 7 as blocking issue 42 | `gaia issue dep add 42 --blocker 7` (or equivalent `gaia issue dep add 7 --blocks 42`) |
 | Remove a dependency edge | `gaia issue dep remove 42 --blocker 7` |
