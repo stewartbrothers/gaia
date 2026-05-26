@@ -77,14 +77,20 @@ func (p *Provider) listIssueEdges(ctx context.Context, owner, repo string, n int
 	return out, makePage(len(raw), limit, opts.Cursor), nil
 }
 
-// AddIssueDependency makes issue `dep` a blocker of issue `n`. GitHub
-// requires `issue_id` (internal stable primary key) in the body, so
-// we resolve `dep` (issue number) → id first via a GET /issues/{dep}
-// — one extra round-trip per add op. The resolve must succeed
-// before the POST runs; failures bubble up unchanged so the caller
-// sees the resolve's NotFound rather than a confusing post-error.
-func (p *Provider) AddIssueDependency(ctx context.Context, owner, repo string, n, dep int) (*types.Issue, error) {
-	depID, err := p.resolveIssueID(ctx, owner, repo, dep)
+// AddIssueDependency makes the issue identified by `dep` a blocker
+// of issue `n` in the host repo (owner/repo). GitHub requires
+// `issue_id` (internal stable primary key) in the body, so we
+// resolve `dep.Number` → id first via a GET /issues/{n} — one extra
+// round-trip per add op. The resolve runs against the dep's repo:
+// dep.Owner/Repo for cross-repo edges (#325), or the host
+// owner/repo when those are empty (same-repo, backwards-compat).
+//
+// The resolve must succeed before the POST runs; failures bubble up
+// unchanged so the caller sees the resolve's NotFound rather than a
+// confusing post-error.
+func (p *Provider) AddIssueDependency(ctx context.Context, owner, repo string, n int, dep provider.IssueDepRef) (*types.Issue, error) {
+	depOwner, depRepo := resolveDepRepo(owner, repo, dep)
+	depID, err := p.resolveIssueID(ctx, depOwner, depRepo, dep.Number)
 	if err != nil {
 		return nil, err
 	}
@@ -99,14 +105,28 @@ func (p *Provider) AddIssueDependency(ctx context.Context, owner, repo string, n
 
 // RemoveIssueDependency removes the edge. GitHub's DELETE takes the
 // blocker's ID in the URL path (no body), so we resolve number → id
-// the same way AddIssueDependency does.
-func (p *Provider) RemoveIssueDependency(ctx context.Context, owner, repo string, n, dep int) error {
-	depID, err := p.resolveIssueID(ctx, owner, repo, dep)
+// the same way AddIssueDependency does — against the dep's repo for
+// cross-repo edges.
+func (p *Provider) RemoveIssueDependency(ctx context.Context, owner, repo string, n int, dep provider.IssueDepRef) error {
+	depOwner, depRepo := resolveDepRepo(owner, repo, dep)
+	depID, err := p.resolveIssueID(ctx, depOwner, depRepo, dep.Number)
 	if err != nil {
 		return err
 	}
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/dependencies/blocked_by/%d", owner, repo, n, depID)
 	return p.client.Delete(ctx, path)
+}
+
+// resolveDepRepo returns the (owner, repo) the dep lives in. Cross-
+// repo refs (dep.Owner+Repo populated) target that pair; same-repo
+// refs fall back to the host's (owner, repo). The IssueDepRef
+// contract requires both Owner+Repo populated or neither — partial
+// population is caller error.
+func resolveDepRepo(hostOwner, hostRepo string, dep provider.IssueDepRef) (string, string) {
+	if dep.SameRepo() {
+		return hostOwner, hostRepo
+	}
+	return dep.Owner, dep.Repo
 }
 
 // resolveIssueID fetches an issue by its user-facing number and

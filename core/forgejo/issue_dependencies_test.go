@@ -120,7 +120,7 @@ func TestAddIssueDependencyHappy(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
-	got, err := p.AddIssueDependency(context.Background(), "Gerwood", "gaia", 42, 7)
+	got, err := p.AddIssueDependency(context.Background(), "Gerwood", "gaia", 42, provider.IssueDepRef{Number: 7})
 	if err != nil {
 		t.Fatalf("AddIssueDependency: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestAddIssueDependencyAlreadyExists(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
-	_, err := p.AddIssueDependency(context.Background(), "Gerwood", "gaia", 42, 7)
+	_, err := p.AddIssueDependency(context.Background(), "Gerwood", "gaia", 42, provider.IssueDepRef{Number: 7})
 	if err == nil {
 		t.Fatal("expected error on 409")
 	}
@@ -175,7 +175,7 @@ func TestRemoveIssueDependencyHappy(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
-	err := p.RemoveIssueDependency(context.Background(), "Gerwood", "gaia", 42, 7)
+	err := p.RemoveIssueDependency(context.Background(), "Gerwood", "gaia", 42, provider.IssueDepRef{Number: 7})
 	if err != nil {
 		t.Fatalf("RemoveIssueDependency: %v", err)
 	}
@@ -251,6 +251,57 @@ func TestGetIssueWithBlockingFetchesBlocks(t *testing.T) {
 	}
 }
 
+// TestAddIssueDependencyCrossRepo pins #325 on Forgejo: when dep
+// carries Owner+Repo, the POST body extends from {index} to
+// {index, owner, repo}. Same-repo refs still emit just {index}
+// (omitempty), proven by TestAddIssueDependencyHappy above.
+func TestAddIssueDependencyCrossRepo(t *testing.T) {
+	var capturedBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&capturedBody)
+		_ = json.NewEncoder(w).Encode(makeIssue(7, "cross-repo blocker", "open"))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	_, err := p.AddIssueDependency(context.Background(), "Gerwood", "gaia", 42,
+		provider.IssueDepRef{Owner: "other-owner", Repo: "other-repo", Number: 7})
+	if err != nil {
+		t.Fatalf("AddIssueDependency: %v", err)
+	}
+	if int(capturedBody["index"].(float64)) != 7 {
+		t.Errorf("body index: got %v", capturedBody["index"])
+	}
+	if capturedBody["owner"] != "other-owner" {
+		t.Errorf("body owner: got %v, want other-owner", capturedBody["owner"])
+	}
+	if capturedBody["repo"] != "other-repo" {
+		t.Errorf("body repo: got %v, want other-repo", capturedBody["repo"])
+	}
+}
+
+// TestAddIssueDependencySameRepoOmitsOwnerRepo pins the omitempty
+// contract: a same-repo ref's body must NOT include owner/repo
+// fields (existing Forgejo same-repo wire shape preserved).
+func TestAddIssueDependencySameRepoOmitsOwnerRepo(t *testing.T) {
+	var rawBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ = io.ReadAll(r.Body)
+		_ = json.NewEncoder(w).Encode(makeIssue(7, "blocker", "open"))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	_, err := p.AddIssueDependency(context.Background(), "Gerwood", "gaia", 42,
+		provider.IssueDepRef{Number: 7})
+	if err != nil {
+		t.Fatalf("AddIssueDependency: %v", err)
+	}
+	if string(rawBody) != `{"index":7}`+"\n" && string(rawBody) != `{"index":7}` {
+		t.Errorf("same-repo body must be just {index:7}; got %s", rawBody)
+	}
+}
+
 func TestRemoveIssueDependencyNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -259,7 +310,7 @@ func TestRemoveIssueDependencyNotFound(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
-	err := p.RemoveIssueDependency(context.Background(), "Gerwood", "gaia", 42, 999)
+	err := p.RemoveIssueDependency(context.Background(), "Gerwood", "gaia", 42, provider.IssueDepRef{Number: 999})
 	if err == nil {
 		t.Fatal("expected error on 404")
 	}

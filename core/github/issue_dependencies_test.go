@@ -135,7 +135,7 @@ func TestAddIssueDependencyGH(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
-	added, err := p.AddIssueDependency(context.Background(), "o", "r", 42, blockerNumber)
+	added, err := p.AddIssueDependency(context.Background(), "o", "r", 42, provider.IssueDepRef{Number: blockerNumber})
 	if err != nil {
 		t.Fatalf("AddIssueDependency: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestAddIssueDependencyGHResolveFails(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
-	_, err := p.AddIssueDependency(context.Background(), "o", "r", 42, 999)
+	_, err := p.AddIssueDependency(context.Background(), "o", "r", 42, provider.IssueDepRef{Number: 999})
 	if err == nil {
 		t.Fatal("expected error when resolve GET 404s")
 	}
@@ -217,12 +217,70 @@ func TestRemoveIssueDependencyGH(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
-	if err := p.RemoveIssueDependency(context.Background(), "o", "r", 42, blockerNumber); err != nil {
+	if err := p.RemoveIssueDependency(context.Background(), "o", "r", 42, provider.IssueDepRef{Number: blockerNumber}); err != nil {
 		t.Fatalf("RemoveIssueDependency: %v", err)
 	}
 	wantPath := "/repos/o/r/issues/42/dependencies/blocked_by/12345"
 	if gotDeletePath != wantPath {
 		t.Errorf("delete path: got %q, want %q", gotDeletePath, wantPath)
+	}
+}
+
+// TestAddIssueDependencyGHCrossRepo pins #325 on GitHub: when dep
+// carries Owner+Repo, the number→ID resolve targets the dep's repo
+// (not the host's). The POST still hits the host's
+// /dependencies/blocked_by endpoint with the resolved internal id.
+func TestAddIssueDependencyGHCrossRepo(t *testing.T) {
+	const (
+		hostNum       = 42
+		blockerNumber = 7
+		blockerID     = 99999
+	)
+	var (
+		gotResolvePath string
+		gotPostPath    string
+		gotPostBody    map[string]any
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/issues/7"):
+			gotResolvePath = r.URL.Path
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":         blockerID,
+				"number":     blockerNumber,
+				"title":      "cross-repo blocker",
+				"state":      "open",
+				"user":       map[string]any{"login": "alice"},
+				"created_at": "2026-01-01T00:00:00Z",
+				"updated_at": "2026-01-02T00:00:00Z",
+			})
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/dependencies/blocked_by"):
+			gotPostPath = r.URL.Path
+			_ = json.NewDecoder(r.Body).Decode(&gotPostBody)
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(makeIssue(blockerNumber, "cross-repo blocker", "open"))
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	_, err := p.AddIssueDependency(context.Background(), "host-owner", "host-repo", hostNum,
+		provider.IssueDepRef{Owner: "other-owner", Repo: "other-repo", Number: blockerNumber})
+	if err != nil {
+		t.Fatalf("AddIssueDependency: %v", err)
+	}
+	// Resolve targets the DEP's repo, not the host's.
+	if gotResolvePath != "/repos/other-owner/other-repo/issues/7" {
+		t.Errorf("resolve path: got %q, want /repos/other-owner/other-repo/issues/7", gotResolvePath)
+	}
+	// POST still targets the host's blocked_by endpoint.
+	if gotPostPath != "/repos/host-owner/host-repo/issues/42/dependencies/blocked_by" {
+		t.Errorf("post path: got %q", gotPostPath)
+	}
+	if int(gotPostBody["issue_id"].(float64)) != blockerID {
+		t.Errorf("post body issue_id: got %v, want %d", gotPostBody["issue_id"], blockerID)
 	}
 }
 
@@ -247,7 +305,7 @@ func TestRemoveIssueDependencyGHNotFound(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
-	err := p.RemoveIssueDependency(context.Background(), "o", "r", 42, 7)
+	err := p.RemoveIssueDependency(context.Background(), "o", "r", 42, provider.IssueDepRef{Number: 7})
 	if err == nil {
 		t.Fatal("expected error")
 	}

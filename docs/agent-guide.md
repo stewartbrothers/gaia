@@ -42,7 +42,7 @@ cover something is to file a gap issue (see
 | View an issue | `gaia issue view 42 --with-comments 5` |
 | View issue + its blockers/blocking | `gaia issue view 42 --with-blockers 5 --with-blocking 5` (Forgejo + GitHub — #317 / #326) |
 | List issue dependencies | `gaia issue dep list 42` (defaults to blockers; `--direction blocks` for the inverse) |
-| Mark issue 7 as blocking issue 42 | `gaia issue dep add 42 --blocker 7` (or equivalent `gaia issue dep add 7 --blocks 42`) |
+| Mark issue 7 as blocking issue 42 | `gaia issue dep add 42 --blocker 7` (or equivalent `gaia issue dep add 7 --blocks 42`); cross-repo: `--blocker owner/repo#7` (#325) |
 | Remove a dependency edge | `gaia issue dep remove 42 --blocker 7` |
 | List PRs | `gaia pr list --state all --fields number,title,state` |
 | View a PR + CI | `gaia pr view 42 --with-ci` |

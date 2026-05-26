@@ -23,11 +23,12 @@ import (
 // See docs/provider-contract.md §11 + the gap issue #317.
 
 // depsBody is the wire shape Forgejo accepts on
-// POST/DELETE .../dependencies for same-repo edges. Cross-repo edges
-// extend this with `owner` + `repo` fields; v1 ships same-repo only
-// per the design call in the gap issue.
+// POST/DELETE .../dependencies. For same-repo edges only `index` is
+// populated; Owner+Repo (omitempty) target cross-repo edges (#325).
 type depsBody struct {
-	Index int `json:"index"`
+	Index int    `json:"index"`
+	Owner string `json:"owner,omitempty"`
+	Repo  string `json:"repo,omitempty"`
 }
 
 // ListIssueDependencies returns issues blocking n.
@@ -63,12 +64,16 @@ func (p *Provider) listIssueEdges(ctx context.Context, owner, repo string, n int
 	return out, makePage(len(raw), limit, opts.Cursor), nil
 }
 
-// AddIssueDependency makes issue `dep` a blocker of issue `n`.
+// AddIssueDependency makes `dep` a blocker of issue `n`. For same-
+// repo deps (dep.Owner/Repo empty) the body is {index: N}; for
+// cross-repo (#325) it extends to {index, owner, repo} — omitempty
+// on the struct fields preserves the same-repo wire shape.
+//
 // Returns the added blocker issue as Forgejo echoes it back.
-func (p *Provider) AddIssueDependency(ctx context.Context, owner, repo string, n, dep int) (*types.Issue, error) {
+func (p *Provider) AddIssueDependency(ctx context.Context, owner, repo string, n int, dep provider.IssueDepRef) (*types.Issue, error) {
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/dependencies", owner, repo, n)
 	var raw apiIssue
-	if err := p.client.Post(ctx, path, depsBody{Index: dep}, &raw); err != nil {
+	if err := p.client.Post(ctx, path, depBodyFromRef(dep), &raw); err != nil {
 		return nil, err
 	}
 	out := raw.toType()
@@ -77,11 +82,19 @@ func (p *Provider) AddIssueDependency(ctx context.Context, owner, repo string, n
 
 // RemoveIssueDependency removes the edge — `dep` no longer blocks
 // `n`. Forgejo's DELETE on this endpoint requires a body identifying
-// which dependency to remove; we use the same shape as POST.
+// which dependency to remove; we use the same shape as POST and the
+// same cross-repo semantics.
 //
 // p.client.Delete is body-less; this method goes through the shared
 // writeRequest helper directly so we can attach the body.
-func (p *Provider) RemoveIssueDependency(ctx context.Context, owner, repo string, n, dep int) error {
+func (p *Provider) RemoveIssueDependency(ctx context.Context, owner, repo string, n int, dep provider.IssueDepRef) error {
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/dependencies", owner, repo, n)
-	return p.client.writeRequest(ctx, http.MethodDelete, path, depsBody{Index: dep}, nil)
+	return p.client.writeRequest(ctx, http.MethodDelete, path, depBodyFromRef(dep), nil)
+}
+
+// depBodyFromRef translates the Provider's IssueDepRef into Forgejo's
+// wire body. Same-repo refs emit just {index}; cross-repo emits
+// {index, owner, repo}.
+func depBodyFromRef(dep provider.IssueDepRef) depsBody {
+	return depsBody{Index: dep.Number, Owner: dep.Owner, Repo: dep.Repo}
 }
