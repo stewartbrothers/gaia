@@ -402,3 +402,133 @@ func TestIssueViewWithBlockingTriggersExtraCall(t *testing.T) {
 		t.Errorf("expected blocks field in output; got %q", stdout.String())
 	}
 }
+
+// TestIssueDepAddCrossRepoBlocker pins #325 at the CLI level:
+// --blocker owner/repo#7 on a host issue parses the cross-repo
+// reference and threads owner+repo into the upstream body.
+func TestIssueDepAddCrossRepoBlocker(t *testing.T) {
+	var capturedBody map[string]any
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&capturedBody)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"number": 7, "title": "cross-repo blocker", "state": "open",
+			"user":       map[string]any{"login": "alice"},
+			"created_at": "2026-04-01T00:00:00Z",
+			"updated_at": "2026-04-02T00:00:00Z",
+		})
+	}))
+	defer srv.Close()
+
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"--repo", "host-owner/host-repo",
+		"issue", "dep", "add", "42",
+		"--blocker", "other-owner/other-repo#7",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	// POST hits the HOST's /dependencies endpoint (host = the
+	// argument issue, lives in --repo).
+	if gotPath != "/repos/host-owner/host-repo/issues/42/dependencies" {
+		t.Errorf("path: got %q", gotPath)
+	}
+	if int(capturedBody["index"].(float64)) != 7 {
+		t.Errorf("body index: got %v", capturedBody["index"])
+	}
+	if capturedBody["owner"] != "other-owner" {
+		t.Errorf("body owner: got %v", capturedBody["owner"])
+	}
+	if capturedBody["repo"] != "other-repo" {
+		t.Errorf("body repo: got %v", capturedBody["repo"])
+	}
+}
+
+// TestIssueDepAddBlocksCrossRepoFlipsHost pins the inverse framing
+// with a cross-repo target: --blocks other-owner/other-repo#7 on
+// issue 42 means "42 (in --repo) blocks 7 (in other-owner/other-
+// repo)." Edge lives on the BLOCKED side (the flag's repo), so the
+// POST hits other-owner/other-repo's /dependencies path with the
+// body pointing back at --repo#42.
+func TestIssueDepAddBlocksCrossRepoFlipsHost(t *testing.T) {
+	var capturedBody map[string]any
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&capturedBody)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"number": 42, "title": "added", "state": "open",
+			"user":       map[string]any{"login": "alice"},
+			"created_at": "2026-04-01T00:00:00Z",
+			"updated_at": "2026-04-02T00:00:00Z",
+		})
+	}))
+	defer srv.Close()
+
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"--repo", "host-owner/host-repo",
+		"issue", "dep", "add", "42",
+		"--blocks", "other-owner/other-repo#7",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	// Edge stored on the BLOCKED side's repo (= --blocks's flag repo).
+	if gotPath != "/repos/other-owner/other-repo/issues/7/dependencies" {
+		t.Errorf("path: got %q, want /repos/other-owner/other-repo/issues/7/dependencies", gotPath)
+	}
+	if int(capturedBody["index"].(float64)) != 42 {
+		t.Errorf("body index: got %v, want 42", capturedBody["index"])
+	}
+	if capturedBody["owner"] != "host-owner" {
+		t.Errorf("body owner: got %v", capturedBody["owner"])
+	}
+	if capturedBody["repo"] != "host-repo" {
+		t.Errorf("body repo: got %v", capturedBody["repo"])
+	}
+}
+
+// TestIssueDepAddCrossRepoMalformed pins the parse-error path —
+// invalid owner/repo#N input surfaces as a Usage exit code.
+func TestIssueDepAddCrossRepoMalformed(t *testing.T) {
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", "http://x",
+		"--repo", "o/r",
+		"issue", "dep", "add", "42",
+		"--blocker", "not-a-valid-ref",
+	})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected usage error for malformed dep ref")
+	}
+	if got := exitcode.Of(err); got != exitcode.Usage {
+		t.Errorf("exit code: got %d, want Usage(2)", got)
+	}
+}
