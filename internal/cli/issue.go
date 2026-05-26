@@ -177,7 +177,33 @@ func prettyIssueView(w io.Writer, data any) error {
 			writeExternal(w, c.Body)
 		}
 	}
+	// Inlined dependency lists, populated when --with-blockers /
+	// --with-blocking is set on `gaia issue view`. Each entry is the
+	// trimmed Issue shape — number + state + title. Titles wrapped
+	// in <<<EXTERNAL>>> markers per #146 (Issue.Title carries
+	// `gaia:"trust=external"` so forge-supplied text never reaches an
+	// agent un-fenced). See #323.
+	if len(issue.Blockers) > 0 {
+		_, _ = fmt.Fprintln(w, "\n--- Blockers (this issue is blocked by) ---")
+		writeIssueDepList(w, issue.Blockers)
+	}
+	if len(issue.Blocks) > 0 {
+		_, _ = fmt.Fprintln(w, "\n--- Blocking (this issue is blocking) ---")
+		writeIssueDepList(w, issue.Blocks)
+	}
 	return nil
+}
+
+// writeIssueDepList renders an inlined dependency list, one issue per
+// stanza: a header line ("#<number> (<state>):") followed by the
+// fenced title. Mirrors the per-comment shape from the Comments
+// section above. Title is forge-supplied so writeExternal handles the
+// <<<EXTERNAL>>> fencing per #146.
+func writeIssueDepList(w io.Writer, issues []types.Issue) {
+	for _, i := range issues {
+		_, _ = fmt.Fprintf(w, "\n#%d (%s):\n", i.Number, i.State)
+		writeExternal(w, i.Title)
+	}
 }
 
 func joinLabelNames(labels []types.Label) string {
