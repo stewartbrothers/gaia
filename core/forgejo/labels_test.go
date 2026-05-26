@@ -36,7 +36,7 @@ func TestListLabels(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
-	got, err := p.ListLabels(context.Background(), "o", "r")
+	got, err := p.ListLabels(context.Background(), "o", "r", provider.ListLabelsOptions{})
 	if err != nil {
 		t.Fatalf("ListLabels: %v", err)
 	}
@@ -51,6 +51,57 @@ func TestListLabels(t *testing.T) {
 	}
 	if got[1].Description != "" {
 		t.Errorf("empty description should pass through; got %q", got[1].Description)
+	}
+}
+
+// TestListLabelsNameFilter pins #328: ListLabelsOptions.Name does
+// case-insensitive substring matching client-side (neither forge
+// offers a wire-level filter param on /labels). The full catalog
+// is fetched, then the slice is trimmed.
+func TestListLabelsNameFilter(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			labelJSON(1, "bug", "ff0000", ""),
+			labelJSON(2, "feature", "00ff00", ""),
+			labelJSON(3, "priority/high", "ff8800", ""),
+			labelJSON(4, "priority/low", "ffcc00", ""),
+			labelJSON(5, "P1", "ff0000", ""),
+		})
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+
+	// Substring "priority" matches the two priority labels.
+	got, err := p.ListLabels(context.Background(), "o", "r", provider.ListLabelsOptions{Name: "priority"})
+	if err != nil {
+		t.Fatalf("ListLabels: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("count: got %d, want 2 (priority/high + priority/low)", len(got))
+	}
+	for _, l := range got {
+		if !strings.Contains(strings.ToLower(l.Name), "priority") {
+			t.Errorf("filter let through non-matching label: %+v", l)
+		}
+	}
+
+	// Case-insensitive: "P" matches "P1" plus the two priority labels (which contain "p").
+	got2, err := p.ListLabels(context.Background(), "o", "r", provider.ListLabelsOptions{Name: "p"})
+	if err != nil {
+		t.Fatalf("ListLabels (case): %v", err)
+	}
+	if len(got2) != 3 {
+		t.Errorf("case-insensitive: got %d, want 3 (P1 + priority/high + priority/low)", len(got2))
+	}
+
+	// Empty Name means "no filter" — back to full catalog.
+	got3, err := p.ListLabels(context.Background(), "o", "r", provider.ListLabelsOptions{})
+	if err != nil {
+		t.Fatalf("ListLabels (empty): %v", err)
+	}
+	if len(got3) != 5 {
+		t.Errorf("empty filter: got %d, want 5 (all)", len(got3))
 	}
 }
 

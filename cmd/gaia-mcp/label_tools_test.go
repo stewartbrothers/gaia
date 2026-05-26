@@ -27,6 +27,31 @@ func TestLabelListTool(t *testing.T) {
 	}
 }
 
+// TestLabelListToolNameFilter pins #328 at the MCP level — name
+// arg triggers the same client-side substring filter the CLI uses.
+func TestLabelListToolNameFilter(t *testing.T) {
+	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"id": 1, "name": "bug"},
+			{"id": 2, "name": "priority/high"},
+			{"id": 3, "name": "priority/low"},
+		})
+	})
+	pinBuilder(t, p)
+
+	res, err := callTool(context.Background(), handleLabelList, map[string]any{
+		"repo": "o/r",
+		"name": "priority",
+	})
+	if err != nil || res.IsError {
+		t.Fatalf("err=%v res=%s", err, resultText(t, res))
+	}
+	arr := envelopeSlice(t, res)
+	if len(arr) != 2 {
+		t.Errorf("expected 2 priority labels; got %d", len(arr))
+	}
+}
+
 func TestLabelCreateTool(t *testing.T) {
 	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{

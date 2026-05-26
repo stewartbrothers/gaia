@@ -48,6 +48,7 @@ func TestOptionsZeroValuesUsable(t *testing.T) {
 	_ = provider.EditWebhookOptions{}
 	_ = provider.ListDeliveriesOptions{}
 	_ = provider.ListIssueDepsOptions{}
+	_ = provider.ListLabelsOptions{}
 }
 
 // noopProvider is the always-fail stand-in used to compile-check the
@@ -109,7 +110,7 @@ func (*noopProvider) EditPullRequest(_ context.Context, _, _ string, _ int, _ pr
 func (*noopProvider) MergePullRequest(_ context.Context, _, _ string, _ int, _ provider.MergePullRequestOptions) error {
 	return errNotImplemented
 }
-func (*noopProvider) ListLabels(_ context.Context, _, _ string) ([]types.Label, error) {
+func (*noopProvider) ListLabels(_ context.Context, _, _ string, _ provider.ListLabelsOptions) ([]types.Label, error) {
 	return nil, errNotImplemented
 }
 func (*noopProvider) CreateLabel(_ context.Context, _, _ string, _ provider.CreateLabelOptions) (*types.Label, error) {

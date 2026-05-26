@@ -12,8 +12,9 @@ import (
 
 func registerLabelTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("gaia_label_list",
-		mcp.WithDescription("List repo labels (name + color + description)."),
+		mcp.WithDescription("List repo labels (name + color + description), optionally filtered by case-insensitive name substring."),
 		mcp.WithString("repo", mcp.Required(), mcp.Description("owner/name")),
+		mcp.WithString("name", mcp.Description("case-insensitive substring filter on label name (#328)")),
 	), ctxBoundHandler(handleLabelList))
 
 	s.AddTool(mcp.NewTool("gaia_label_create",
@@ -50,7 +51,9 @@ func handleLabelList(ctx context.Context, args map[string]any) (*mcp.CallToolRes
 	if err != nil {
 		return toolError(err), nil
 	}
-	labels, err := p.ListLabels(ctx, owner, repo)
+	labels, err := p.ListLabels(ctx, owner, repo, provider.ListLabelsOptions{
+		Name: optString(args, "name"),
+	})
 	if err != nil {
 		return toolError(err), nil
 	}

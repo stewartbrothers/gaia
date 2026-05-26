@@ -37,7 +37,7 @@ provider source to know what to expect.
 | `CreatePullRequest` | ✓ | ✓ | `POST /repos/{o}/{r}/pulls`. Both accept `{title, head, base, body, draft, labels}`. |
 | `EditPullRequest` | ✓ | ✓ | `PATCH`. `Draft` is `*bool` so explicitly setting `false` works (flip a draft back to ready). |
 | `MergePullRequest` | ✓ | △ | Merge body field names differ. Forgejo: `do`/`MergeTitleField`/`MergeMessageField`/`delete_branch_after_merge`. GitHub: `merge_method`/`commit_title`/`commit_message`. **DeleteBranch is dropped on GitHub** — GitHub's merge endpoint doesn't accept it; the head ref deletion is a separate `/git/refs` DELETE. Tracked as a Phase 2 follow-up. |
-| `ListLabels` | ✓ | ✓ | Returns Name + Color + Description on both. |
+| `ListLabels` | ✓ | ✓ | Returns Name + Color + Description on both. `ListLabelsOptions.Name` is a case-insensitive substring filter applied **client-side** on both forges — neither `/labels` endpoint accepts a wire-level filter param (#328). |
 | `CreateLabel` | ✓ | ✓ | Hex color (no leading `#`); description optional. |
 | `EditLabel` | ✓ | ✓ | Forgejo: list-then-PATCH-by-ID (the upstream takes ID). GitHub: PATCH-by-name directly. Same callable contract; one hop on GitHub, two on Forgejo. |
 | `DeleteLabel` | ✓ | ✓ | Same contract as Edit. |

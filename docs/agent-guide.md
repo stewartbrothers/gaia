@@ -76,7 +76,7 @@ the output isn't useful enough for what you're trying to do.
 
 | Resource / concern | Command surface |
 |---|---|
-| Repo labels (taxonomy) | `gaia label list \| create \| edit \| delete` — manage the label set issues + PRs reference |
+| Repo labels (taxonomy) | `gaia label list [--name SUBSTR] \| create \| edit \| delete` — manage the label set issues + PRs reference; `--name` filters case-insensitively on both forges (#328) |
 | Releases (tags + assets) | `gaia release list \| view \| create \| edit \| delete \| publish` — `publish` is the create-if-missing-then-upload-assets path |
 | Wiki pages | `gaia wiki list \| view \| search \| edit \| delete` — `list` is title-only (bodies fetched per-page via `view`) so a big wiki stays cheap to enumerate |
 | Webhooks + deliveries | `gaia webhook list \| view \| create \| edit \| delete \| deliveries \| redeliver \| test` — `deliveries` returns summaries (no payload bodies); `redeliver` re-fires a past delivery for a stuck receiver |

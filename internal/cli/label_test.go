@@ -51,6 +51,52 @@ func TestLabelListJSON(t *testing.T) {
 	}
 }
 
+// TestLabelListNameFilter pins #328 at the CLI level — --name
+// triggers the client-side substring filter in the provider.
+func TestLabelListNameFilter(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"id": 1, "name": "bug", "color": "ff0000"},
+			{"id": 2, "name": "priority/high", "color": "ff8800"},
+			{"id": 3, "name": "priority/low", "color": "ffcc00"},
+		})
+	}))
+	defer srv.Close()
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"--repo", "o/r",
+		"label", "list",
+		"--name", "priority",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	var env struct {
+		Data []struct {
+			Name string `json:"name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("decode: %v\n%s", err, stdout.String())
+	}
+	if len(env.Data) != 2 {
+		t.Fatalf("expected 2 priority labels; got %d (%+v)", len(env.Data), env.Data)
+	}
+	for _, l := range env.Data {
+		if !strings.Contains(l.Name, "priority") {
+			t.Errorf("filter let through non-matching label: %q", l.Name)
+		}
+	}
+}
+
 func TestLabelCreate(t *testing.T) {
 	var captured []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

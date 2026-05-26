@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/core/types"
@@ -28,15 +29,22 @@ func (a *apiLabelFull) toType() types.Label {
 	}
 }
 
-// ListLabels returns every label on the repo.
-func (p *Provider) ListLabels(ctx context.Context, owner, repo string) ([]types.Label, error) {
+// ListLabels returns labels on the repo, optionally filtered by a
+// case-insensitive name substring (opts.Name). GitHub's /labels has
+// no wire-level filter param, so the filter runs client-side on the
+// fetched catalog (#328).
+func (p *Provider) ListLabels(ctx context.Context, owner, repo string, opts provider.ListLabelsOptions) ([]types.Label, error) {
 	path := fmt.Sprintf("/repos/%s/%s/labels?per_page=200", owner, repo)
 	var raw []apiLabelFull
 	if err := p.client.Get(ctx, path, &raw); err != nil {
 		return nil, err
 	}
+	needle := strings.ToLower(opts.Name)
 	out := make([]types.Label, 0, len(raw))
 	for i := range raw {
+		if needle != "" && !strings.Contains(strings.ToLower(raw[i].Name), needle) {
+			continue
+		}
 		out = append(out, raw[i].toType())
 	}
 	return out, nil
