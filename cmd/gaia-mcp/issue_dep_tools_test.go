@@ -193,7 +193,10 @@ func TestIssueDepRemoveTool(t *testing.T) {
 	if int(gotBody["index"].(float64)) != 7 {
 		t.Errorf("body.index: got %v, want 7", gotBody["index"])
 	}
-	if !strings.Contains(resultText(t, res), `"removed_edge_from":42`) {
+	// Confirmation envelope shape changed in #325 to carry owner+repo
+	// (so cross-repo edges identify themselves). Same-repo refs
+	// inherit the host's owner/repo: "o/r#42".
+	if !strings.Contains(resultText(t, res), `"removed_edge_from":"o/r#42"`) {
 		t.Errorf("expected confirmation envelope in result; got %q", resultText(t, res))
 	}
 }

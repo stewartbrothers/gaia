@@ -345,6 +345,36 @@ type ListIssueDepsOptions struct {
 	Cursor string
 }
 
+// IssueDepRef identifies the OTHER end of a dependency edge for
+// Add/RemoveIssueDependency. Owner/Repo are optional — empty means
+// "same repo as the host issue" (the common case, backwards-
+// compatible with the original int-only API). Populated values
+// target a cross-repo dependency edge (#325).
+//
+// Forgejo: cross-repo serialises as {index, owner, repo} in the
+// request body; omitempty preserves the same-repo {index} shape.
+//
+// GitHub: cross-repo means the number → issue_id resolve targets the
+// dep's repo, not the host's, then the POST body uses the same
+// {issue_id} shape (GitHub doesn't need an owner/repo in the body
+// because the issue_id is globally unique).
+type IssueDepRef struct {
+	// Owner is the owner segment of the dep's repo. Empty = same as
+	// the host issue.
+	Owner string
+	// Repo is the repo segment. Empty = same as the host issue.
+	// Must be empty if Owner is empty; populated together.
+	Repo string
+	// Number is the dep's user-facing issue number. Required.
+	Number int
+}
+
+// SameRepo reports whether the ref is in the host issue's own repo
+// (Owner and Repo both empty).
+func (r IssueDepRef) SameRepo() bool {
+	return r.Owner == "" && r.Repo == ""
+}
+
 // --- Actions (#183) ---
 
 // ListWorkflowRunsOptions filters and paginates a ListWorkflowRuns call.
