@@ -300,6 +300,15 @@ func runScenario(t *testing.T, dir string) {
 	t.Setenv("HOME", tempDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tempDir, "config"))
 	t.Setenv("XDG_STATE_HOME", stateDir)
+	// Skip the sqlite cache open by default — same rationale as
+	// clearGaiaEnv in internal/cli (#303). Golden scenarios assert
+	// on what hits the upstream HTTP fake, not on cache state, so
+	// opening a real on-disk sqlite DB per scenario on Linux CI is
+	// fsync-bound enough to push the suite over the per-package
+	// 10-minute timeout once the scenario count climbs (#319). A
+	// scenario that explicitly tests cache behaviour can re-enable
+	// it via stage.env.
+	t.Setenv("GAIA_CACHE_ENABLED", "false")
 	// Clear inherited tokens so the test environment is pristine —
 	// otherwise a developer with FORGEJO_TOKEN set inherits it,
 	// which leaks into write-path goldens (capturing tokens that
