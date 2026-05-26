@@ -22,7 +22,7 @@ func TestListLabelsGH(t *testing.T) {
 	defer srv.Close()
 
 	p := newTestProvider(t, srv.URL)
-	got, err := p.ListLabels(context.Background(), "o", "r")
+	got, err := p.ListLabels(context.Background(), "o", "r", provider.ListLabelsOptions{})
 	if err != nil {
 		t.Fatalf("ListLabels: %v", err)
 	}
@@ -31,6 +31,40 @@ func TestListLabelsGH(t *testing.T) {
 	}
 	if got[1].ID != 2 {
 		t.Errorf("ID should pass through; got %d", got[1].ID)
+	}
+}
+
+// TestListLabelsGHNameFilter pins #328 for the GitHub provider:
+// client-side substring match (GitHub's /labels has no name filter
+// either) with case-insensitive semantics.
+func TestListLabelsGHNameFilter(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"id": 1, "name": "bug"},
+			{"id": 2, "name": "priority/high"},
+			{"id": 3, "name": "priority/low"},
+			{"id": 4, "name": "P1"},
+		})
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+
+	got, err := p.ListLabels(context.Background(), "o", "r", provider.ListLabelsOptions{Name: "priority"})
+	if err != nil {
+		t.Fatalf("ListLabels: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("count: got %d, want 2", len(got))
+	}
+
+	// Case-insensitive.
+	got2, err := p.ListLabels(context.Background(), "o", "r", provider.ListLabelsOptions{Name: "P"})
+	if err != nil {
+		t.Fatalf("ListLabels (case): %v", err)
+	}
+	if len(got2) != 3 {
+		t.Errorf("case-insensitive: got %d, want 3", len(got2))
 	}
 }
 

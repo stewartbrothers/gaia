@@ -147,6 +147,15 @@ type MergePullRequestOptions struct {
 	DeleteBranch bool   `json:"delete_branch_after_merge,omitempty"`
 }
 
+// ListLabelsOptions filters the repo's label catalog. Name is a
+// case-insensitive substring match applied client-side — neither
+// Forgejo nor GitHub exposes a wire-level filter on /labels, so the
+// implementation fetches the whole catalog and trims (#328). Empty
+// Name means "no filter," same as before this option struct existed.
+type ListLabelsOptions struct {
+	Name string
+}
+
 // CreateLabelOptions: Name + Color required; Color is a hex string
 // without the leading "#". Description optional.
 type CreateLabelOptions struct {

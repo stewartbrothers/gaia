@@ -105,9 +105,13 @@ type Provider interface {
 	// GetPullRequest if it needs the updated state.
 	MergePullRequest(ctx context.Context, owner, repo string, n int, opts MergePullRequestOptions) error
 
-	// ListLabels returns every label on the repo (not paginated;
-	// repos rarely exceed the default page size for labels).
-	ListLabels(ctx context.Context, owner, repo string) ([]types.Label, error)
+	// ListLabels returns labels on the repo. The full catalog is
+	// fetched and an optional case-insensitive name-substring filter
+	// is applied client-side (neither forge exposes a wire-level
+	// filter on /labels). Pass ListLabelsOptions{} for the whole
+	// catalog. Not paginated — repos rarely exceed the default page
+	// size for labels.
+	ListLabels(ctx context.Context, owner, repo string, opts ListLabelsOptions) ([]types.Label, error)
 
 	// CreateLabel makes a new label.
 	CreateLabel(ctx context.Context, owner, repo string, opts CreateLabelOptions) (*types.Label, error)

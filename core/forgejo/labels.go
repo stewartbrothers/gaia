@@ -3,6 +3,7 @@ package forgejo
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/provider"
@@ -29,16 +30,22 @@ func (a *apiLabelFull) toType() types.Label {
 	}
 }
 
-// ListLabels returns every label on the repo. Forgejo's labels
+// ListLabels returns labels on the repo, optionally filtered by a
+// case-insensitive name substring (opts.Name). Forgejo's labels
 // endpoint isn't paginated for repo-level labels in practice, so we
-// don't expose Page here — there's nothing to paginate against.
-func (p *Provider) ListLabels(ctx context.Context, owner, repo string) ([]types.Label, error) {
+// don't expose Page here. The filter runs client-side after the
+// fetch — Forgejo's /labels takes no filter param (#328).
+func (p *Provider) ListLabels(ctx context.Context, owner, repo string, opts provider.ListLabelsOptions) ([]types.Label, error) {
 	raw, err := p.fetchLabels(ctx, owner, repo)
 	if err != nil {
 		return nil, err
 	}
+	needle := strings.ToLower(opts.Name)
 	out := make([]types.Label, 0, len(raw))
 	for i := range raw {
+		if needle != "" && !strings.Contains(strings.ToLower(raw[i].Name), needle) {
+			continue
+		}
 		out = append(out, raw[i].toType())
 	}
 	return out, nil

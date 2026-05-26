@@ -25,9 +25,10 @@ func newLabelCmd(flags *globalFlags) *cobra.Command {
 }
 
 func newLabelListCmd(flags *globalFlags) *cobra.Command {
-	return &cobra.Command{
+	var nameFilter string
+	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List repo labels",
+		Short: "List repo labels (optionally filtered by --name substring)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			p, _, err := buildForgejoProvider(flags)
 			if err != nil {
@@ -37,7 +38,9 @@ func newLabelListCmd(flags *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			labels, err := p.ListLabels(cmd.Context(), owner, repo)
+			labels, err := p.ListLabels(cmd.Context(), owner, repo, provider.ListLabelsOptions{
+				Name: nameFilter,
+			})
 			if err != nil {
 				return err
 			}
@@ -53,6 +56,8 @@ func newLabelListCmd(flags *globalFlags) *cobra.Command {
 			return renderEnvelope(cmd, flags, labels, nil, prettyLabelList)
 		},
 	}
+	cmd.Flags().StringVar(&nameFilter, "name", "", "case-insensitive substring filter on label name (#328)")
+	return cmd
 }
 
 func newLabelCreateCmd(flags *globalFlags) *cobra.Command {
