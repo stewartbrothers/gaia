@@ -49,6 +49,7 @@ func TestOptionsZeroValuesUsable(t *testing.T) {
 	_ = provider.ListDeliveriesOptions{}
 	_ = provider.ListIssueDepsOptions{}
 	_ = provider.ListLabelsOptions{}
+	_ = provider.IssueDepRef{}
 }
 
 // noopProvider is the always-fail stand-in used to compile-check the
@@ -242,10 +243,10 @@ func (*noopProvider) ListIssueDependencies(_ context.Context, _, _ string, _ int
 func (*noopProvider) ListIssueBlocks(_ context.Context, _, _ string, _ int, _ provider.ListIssueDepsOptions) ([]types.Issue, *provider.Page, error) {
 	return nil, nil, errNotImplemented
 }
-func (*noopProvider) AddIssueDependency(_ context.Context, _, _ string, _, _ int) (*types.Issue, error) {
+func (*noopProvider) AddIssueDependency(_ context.Context, _, _ string, _ int, _ provider.IssueDepRef) (*types.Issue, error) {
 	return nil, errNotImplemented
 }
-func (*noopProvider) RemoveIssueDependency(_ context.Context, _, _ string, _, _ int) error {
+func (*noopProvider) RemoveIssueDependency(_ context.Context, _, _ string, _ int, _ provider.IssueDepRef) error {
 	return errNotImplemented
 }
 

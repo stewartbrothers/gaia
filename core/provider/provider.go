@@ -339,9 +339,14 @@ type Provider interface {
 	// dependencies (see ListIssueDependencies).
 	ListIssueBlocks(ctx context.Context, owner, repo string, n int, opts ListIssueDepsOptions) ([]types.Issue, *Page, error)
 
-	// AddIssueDependency makes issue `dep` a blocker of issue `n`
-	// (Forgejo's POST /repos/{o}/{r}/issues/{n}/dependencies). The
+	// AddIssueDependency makes the issue identified by `dep` a
+	// blocker of issue `n` in the host repo (owner/repo). The
 	// returned Issue is the added blocker.
+	//
+	// `dep` carries the dep issue's Number plus optional Owner+Repo
+	// for cross-repo edges (#325). Empty Owner/Repo means "same as
+	// the host" — backwards-compatible with the original int-only
+	// API.
 	//
 	// "X blocks Y" and "Y depends on X" are the same relationship;
 	// the CLI / MCP layers map both framings to this single op.
@@ -349,14 +354,17 @@ type Provider interface {
 	// Returns NotImplemented on providers that don't expose issue
 	// dependencies (see ListIssueDependencies). Returns a Generic
 	// error (409) when the dependency edge already exists.
-	AddIssueDependency(ctx context.Context, owner, repo string, n, dep int) (*types.Issue, error)
+	AddIssueDependency(ctx context.Context, owner, repo string, n int, dep IssueDepRef) (*types.Issue, error)
 
 	// RemoveIssueDependency removes the blocker relationship — `dep`
 	// no longer blocks `n` (Forgejo's DELETE
-	// /repos/{o}/{r}/issues/{n}/dependencies).
+	// /repos/{o}/{r}/issues/{n}/dependencies, GitHub's DELETE on the
+	// blocked_by id endpoint).
+	//
+	// `dep` accepts the same cross-repo shape as AddIssueDependency.
 	//
 	// Returns NotImplemented on providers that don't expose issue
 	// dependencies (see ListIssueDependencies). Returns NotFound when
 	// the dependency edge doesn't exist.
-	RemoveIssueDependency(ctx context.Context, owner, repo string, n, dep int) error
+	RemoveIssueDependency(ctx context.Context, owner, repo string, n int, dep IssueDepRef) error
 }

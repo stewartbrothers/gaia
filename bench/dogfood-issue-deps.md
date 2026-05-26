@@ -65,16 +65,31 @@ Cache (#42) covers the issue GET only; the dep edges aren't cached
   `docs/provider-parity.md`. Wired in #326. Add/Remove pay one
   extra round-trip per op for the number → id resolution.
 
-## Out of scope (this PR / v1)
+## Cross-repo (#325)
 
-- **Cross-repo dependencies.** Forgejo's API supports a
-  `{"index": N, "owner": "o", "repo": "r"}` body for cross-repo
-  blockers. CLI surface for that (`--blocker owner/repo#7` syntax,
-  cross-fork edge cases) is its own design call.
+Both forges support cross-repo dependency edges since the #325
+landing:
+
+```bash
+gaia issue dep add  42 --blocker owner/repo#7   # owner/repo#7 blocks 42
+gaia issue dep add  42 --blocks  owner/repo#7   # 42 blocks owner/repo#7 (inverse)
+gaia issue dep remove 42 --blocker owner/repo#7
+```
+
+- **Forgejo:** the request body extends from `{index}` to `{index,
+  owner, repo}` (omitempty on Owner/Repo preserves the same-repo
+  wire shape).
+- **GitHub:** the number→id resolve targets the dep's repo, then
+  the POST/DELETE still hits the host's `/blocked_by` endpoint with
+  the resolved id. One extra round-trip per write op, same as
+  same-repo (no additional cost for cross-repo).
+
+Out of scope: **cross-fork** edges (different fork lineage on the
+same forge). Both forge APIs permit it but UI semantics differ;
+filed as a follow-up if a real workflow needs it.
+
+## Out of scope (still)
+
 - **`--with-blockers all` / no-limit shorthand.** Today you pass an
   explicit count. The `--limit` shape is consistent with
   `--with-comments` so muscle memory carries.
-- **Pretty rendering of the inlined blockers/blocking lists in
-  `gaia issue view --format pretty`.** Currently JSON-only inlines;
-  the pretty path shows the issue header but not the inlined lists.
-  Filed as a small follow-up.
