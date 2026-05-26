@@ -349,6 +349,133 @@ func TestIssueViewWithBlockersTriggersExtraCall(t *testing.T) {
 	}
 }
 
+// TestIssueViewPrettyRendersBlockersSection pins #323: the pretty
+// formatter renders inlined blockers under a "--- Blockers ---"
+// section, with each entry header + fenced title.
+func TestIssueViewPrettyRendersBlockersSection(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/o/r/issues/42":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number": 42, "title": "the host issue", "state": "open",
+				"user":       map[string]any{"login": "alice"},
+				"created_at": "2026-04-01T00:00:00Z",
+				"updated_at": "2026-04-02T00:00:00Z",
+			})
+		case "/repos/o/r/issues/42/dependencies":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"number": 7, "title": "first blocker", "state": "open",
+					"user":       map[string]any{"login": "alice"},
+					"created_at": "2026-04-01T00:00:00Z",
+					"updated_at": "2026-04-02T00:00:00Z",
+				},
+				{
+					"number": 8, "title": "second blocker", "state": "closed",
+					"user":       map[string]any{"login": "bob"},
+					"created_at": "2026-04-01T00:00:00Z",
+					"updated_at": "2026-04-02T00:00:00Z",
+				},
+			})
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"--repo", "o/r",
+		"--format", "pretty",
+		"issue", "view", "42",
+		"--with-blockers", "5",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "--- Blockers") {
+		t.Errorf("missing Blockers section header; got:\n%s", out)
+	}
+	if !strings.Contains(out, "#7 (open):") || !strings.Contains(out, "#8 (closed):") {
+		t.Errorf("missing per-blocker header lines; got:\n%s", out)
+	}
+	// Titles must be fenced (forge-supplied via #146).
+	if !strings.Contains(out, "first blocker") || !strings.Contains(out, "<<<EXTERNAL") {
+		t.Errorf("expected fenced title; got:\n%s", out)
+	}
+	// Blocking section absent (no --with-blocking flag).
+	if strings.Contains(out, "--- Blocking") {
+		t.Errorf("Blocking section should NOT appear without --with-blocking; got:\n%s", out)
+	}
+}
+
+// TestIssueViewPrettyRendersBlockingSection pins the inverse — the
+// Blocking section renders when --with-blocking is set, and the
+// Blockers section is absent when its flag isn't.
+func TestIssueViewPrettyRendersBlockingSection(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/o/r/issues/7":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number": 7, "title": "upstream", "state": "open",
+				"user":       map[string]any{"login": "alice"},
+				"created_at": "2026-04-01T00:00:00Z",
+				"updated_at": "2026-04-02T00:00:00Z",
+			})
+		case "/repos/o/r/issues/7/blocks":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"number": 100, "title": "downstream", "state": "open",
+					"user":       map[string]any{"login": "alice"},
+					"created_at": "2026-04-01T00:00:00Z",
+					"updated_at": "2026-04-02T00:00:00Z",
+				},
+			})
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"--repo", "o/r",
+		"--format", "pretty",
+		"issue", "view", "7",
+		"--with-blocking", "5",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "--- Blocking") {
+		t.Errorf("missing Blocking section header; got:\n%s", out)
+	}
+	if !strings.Contains(out, "#100 (open):") {
+		t.Errorf("missing per-blocking header line; got:\n%s", out)
+	}
+	if strings.Contains(out, "--- Blockers") {
+		t.Errorf("Blockers section should NOT appear without --with-blockers; got:\n%s", out)
+	}
+}
+
 // TestIssueViewWithBlockingTriggersExtraCall pins the inverse:
 // --with-blocking N hits /blocks and populates the blocks field.
 func TestIssueViewWithBlockingTriggersExtraCall(t *testing.T) {
