@@ -310,6 +310,11 @@ func TestGetWorkflowRunLogsUnsupported(t *testing.T) {
 	if !strings.Contains(msg, "https://") {
 		t.Errorf("error must include the run's html_url so callers can grab logs manually; got %q", msg)
 	}
+	// Per #324: the dedicated NotImplemented exit code surfaces the
+	// "unsupported on this forge version" signal cleanly.
+	if got := exitcode.Of(err); got != exitcode.NotImplemented {
+		t.Errorf("exit code: got %d, want NotImplemented(12)", got)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -330,5 +335,8 @@ func TestRerunWorkflowRunUnsupported(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not exposed") {
 		t.Errorf("error must explain rerun is unsupported; got %q", err)
+	}
+	if got := exitcode.Of(err); got != exitcode.NotImplemented {
+		t.Errorf("exit code: got %d, want NotImplemented(12)", got)
 	}
 }

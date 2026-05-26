@@ -1,9 +1,11 @@
 description: |
   `gaia actions rerun <run-id>` is currently unsupported on Forgejo
   v15.0.1 — the API does not expose a rerun endpoint. The provider
-  returns a clear unsupported error pointing at the UI rerun route
-  for manual action. The provider must NOT call any API endpoint to
-  reach this conclusion (verified by the absence of mocks).
+  returns a clear unsupported error (exit code 12 = NotImplemented
+  per #324; was Generic=1 before that landed) pointing at the UI
+  rerun route for manual action. The provider must NOT call any API
+  endpoint to reach this conclusion (verified by the absence of
+  mocks).
 
 stages:
   - args:
@@ -18,4 +20,4 @@ stages:
       - "362"
     env:
       FORGEJO_TOKEN: TEST
-    exit_code: 1
+    exit_code: 12

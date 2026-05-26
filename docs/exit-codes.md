@@ -18,6 +18,7 @@ the constants live in `core/exitcode`.
 | 9    | `PolicyViolation` | Branch protection blocked the op for another reason (e.g. missing required status check). |
 | 10   | `CheckFailed`     | `gaia pr ci-wait` saw a non-flaky CI check fail. |
 | 11   | `CheckFlaky`      | `gaia pr ci-wait` timed out while pending OR saw only flaky/retryable failures. |
+| 12   | `NotImplemented`  | The method exists on the Provider contract but this forge doesn't support it. Don't retry — fall back (use `html_url`, switch providers, etc.). See `docs/provider-contract.md` §10. |
 
 Codes 7–11 ship with chain Phase B-3 (#112). They let chain `yield_on:`
 / `abort_on:` route on merge / CI / policy outcomes via a structured

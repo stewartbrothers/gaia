@@ -434,4 +434,10 @@ func TestUploadPackageNotImplemented(t *testing.T) {
 	if !strings.Contains(err.Error(), "not implemented") {
 		t.Errorf("error: %q must mention 'not implemented'", err.Error())
 	}
+	// Per #324: NotImplemented stubs now surface the dedicated exit
+	// code so agents can branch on "unsupported on this forge" vs
+	// "transient failure" without parsing the message.
+	if got := exitcode.Of(err); got != exitcode.NotImplemented {
+		t.Errorf("exit code: got %d, want NotImplemented(12)", got)
+	}
 }

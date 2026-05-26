@@ -11,6 +11,6 @@ import (
 // version endpoint. GitHub Enterprise Server exposes /api/v3/meta but
 // that shape differs; add per-kind dispatch if GHES support is needed.
 func (p *Provider) ServerVersion(_ context.Context) (*types.ServerVersion, error) {
-	return nil, exitcode.Errorf(exitcode.Generic,
+	return nil, exitcode.Errorf(exitcode.NotImplemented,
 		"server version is not available for the GitHub provider")
 }
