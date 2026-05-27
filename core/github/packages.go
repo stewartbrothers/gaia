@@ -288,6 +288,6 @@ func packageVersionPath(scope, owner, pkgType, name string, versionID int64) str
 //
 // See `docs/provider-parity.md` row for `UploadPackage`.
 func (p *Provider) UploadPackage(_ context.Context, _, pkgType, _, _ string, _ provider.UploadPackageOptions, _ io.Reader) error {
-	return exitcode.Errorf(exitcode.Generic,
+	return exitcode.Errorf(exitcode.NotImplemented,
 		"GitHub Packages upload is not implemented for pkgType=%q — per-registry publish flows (npm publish, GHCR v2 push, ...) are tracked in a #122 follow-up", pkgType)
 }

@@ -10,6 +10,24 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+### Added
+
+- **`exitcode.NotImplemented` (code `12`)** — new exit code for the
+  case "method exists on the Provider contract but this forge
+  doesn't support it." `docs/provider-contract.md` §10 documented
+  the convention but the constant was missing; "not implemented"
+  stubs in `core/github` and `core/forgejo` used `Generic` (1)
+  instead, which gave callers no way to distinguish
+  "unsupported-on-this-forge" from "transient error." Closes #324.
+
+  Swept call sites: `core/github/server.go` (ServerVersion),
+  `core/github/packages.go` (UploadPackage), `core/github/actions.go`
+  (4 Actions stubs — Phase 2 follow-up), and `core/forgejo/actions.go`
+  (GetWorkflowRunLogs + RerunWorkflowRun — Forgejo v15 gaps #266 /
+  #267). The error messages didn't change; only the underlying
+  exit code did. SemVer-wise this is a backwards-compatible
+  addition — no existing code value changed.
+
 ### Fixed
 
 - **CI: golden scenarios stop opening sqlite cache per-run.** The

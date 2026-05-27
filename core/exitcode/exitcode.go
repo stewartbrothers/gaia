@@ -20,6 +20,9 @@
 //	11  CheckFlaky (CI checks finished, only flaky/retryable failures
 //	    seen, OR `gaia pr ci-wait` reached its deadline while still
 //	    pending — caller is expected to wait + retry)
+//	12  NotImplemented (method exists on the Provider contract but
+//	    this forge doesn't support it — caller should fall back, not
+//	    retry; see docs/provider-contract.md §10)
 //
 // Codes 7–11 ship with chain Phase B-3 (#112) so chains can route on
 // merge / CI / policy outcomes via structured `yield_on:` /
@@ -67,6 +70,13 @@ const (
 	// chain.YieldCheckFlaky; agents typically declare this in
 	// `yield_on:` so the chain can pause + the agent re-trigger CI.
 	CheckFlaky = 11
+	// NotImplemented — the method exists on the Provider contract but
+	// this forge doesn't support it. Agents branch on this to offer a
+	// fallback (the run's html_url instead of logs, a switch to the
+	// other provider, etc.) — never to retry. Lands per #324; the
+	// contract was always documented in docs/provider-contract.md §10
+	// but used Generic until this code existed.
+	NotImplemented = 12
 )
 
 // Error is the carrier type that lets a deep call site surface an exit

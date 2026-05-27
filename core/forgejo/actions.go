@@ -319,7 +319,7 @@ func (p *Provider) GetWorkflowRunLogs(ctx context.Context, owner, repo string, r
 	if run, err := p.GetWorkflowRun(ctx, owner, repo, runNumber, provider.GetWorkflowRunOptions{}); err == nil && run != nil && run.HTMLURL != "" {
 		htmlURL = run.HTMLURL
 	}
-	return nil, exitcode.Errorf(exitcode.Generic,
+	return nil, exitcode.Errorf(exitcode.NotImplemented,
 		"forgejo: action run logs are not exposed via the Forgejo v15 API. "+
 			"View logs in the UI: %s. Tracked upstream as gap #266.",
 		htmlURL)
@@ -330,7 +330,7 @@ func (p *Provider) GetWorkflowRunLogs(ctx context.Context, owner, repo string, r
 // available via the web UI (POST `/{owner}/{repo}/actions/runs/{n}/rerun`)
 // which requires session-cookie auth. Tracked as gap #267.
 func (p *Provider) RerunWorkflowRun(_ context.Context, owner, repo string, runNumber int64) error {
-	return exitcode.Errorf(exitcode.Generic,
+	return exitcode.Errorf(exitcode.NotImplemented,
 		"forgejo: rerunning workflow runs is not exposed via the Forgejo v15 API. "+
 			"Re-trigger via the UI: /%s/%s/actions/runs/%d. Tracked upstream as gap #267.",
 		owner, repo, runNumber)

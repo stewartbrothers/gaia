@@ -67,7 +67,8 @@ stages:
       - "362"
     env:
       FORGEJO_TOKEN: TEST
-    # exit_code 1 = Generic. The unsupported-on-this-server error
-    # uses Generic rather than NotFound so agents distinguish "missing
-    # capability" from "missing run".
-    exit_code: 1
+    # exit_code 12 = NotImplemented (per #324; was Generic=1 before
+    # the dedicated code existed). The unsupported-on-this-server
+    # error uses NotImplemented rather than NotFound so agents
+    # distinguish "missing capability" from "missing run."
+    exit_code: 12

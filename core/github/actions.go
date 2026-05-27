@@ -16,24 +16,24 @@ import (
 
 // ListWorkflowRuns is not yet implemented for GitHub. TODO: Phase 2.
 func (p *Provider) ListWorkflowRuns(_ context.Context, _, _ string, _ provider.ListWorkflowRunsOptions) ([]types.WorkflowRun, *provider.Page, error) {
-	return nil, nil, exitcode.Errorf(exitcode.Generic,
+	return nil, nil, exitcode.Errorf(exitcode.NotImplemented,
 		"GitHub Actions is not yet implemented — tracked in Phase 2 (#183)")
 }
 
 // GetWorkflowRun is not yet implemented for GitHub. TODO: Phase 2.
 func (p *Provider) GetWorkflowRun(_ context.Context, _, _ string, _ int64, _ provider.GetWorkflowRunOptions) (*types.WorkflowRun, error) {
-	return nil, exitcode.Errorf(exitcode.Generic,
+	return nil, exitcode.Errorf(exitcode.NotImplemented,
 		"GitHub Actions is not yet implemented — tracked in Phase 2 (#183)")
 }
 
 // GetWorkflowRunLogs is not yet implemented for GitHub. TODO: Phase 2.
 func (p *Provider) GetWorkflowRunLogs(_ context.Context, _, _ string, _ int64, _ provider.GetWorkflowRunLogsOptions) ([]types.WorkflowRunLogs, error) {
-	return nil, exitcode.Errorf(exitcode.Generic,
+	return nil, exitcode.Errorf(exitcode.NotImplemented,
 		"GitHub Actions is not yet implemented — tracked in Phase 2 (#183)")
 }
 
 // RerunWorkflowRun is not yet implemented for GitHub. TODO: Phase 2.
 func (p *Provider) RerunWorkflowRun(_ context.Context, _, _ string, _ int64) error {
-	return exitcode.Errorf(exitcode.Generic,
+	return exitcode.Errorf(exitcode.NotImplemented,
 		"GitHub Actions is not yet implemented — tracked in Phase 2 (#183)")
 }

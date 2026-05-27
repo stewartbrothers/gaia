@@ -26,6 +26,7 @@ func TestConstantsHaveDocumentedValues(t *testing.T) {
 		"PolicyViolation": {exitcode.PolicyViolation, 9},
 		"CheckFailed":     {exitcode.CheckFailed, 10},
 		"CheckFlaky":      {exitcode.CheckFlaky, 11},
+		"NotImplemented":  {exitcode.NotImplemented, 12},
 	}
 	for name, c := range cases {
 		if c.got != c.want {
