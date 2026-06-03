@@ -4,7 +4,7 @@ go 1.26.0
 
 // code.gitea.io/sdk/gitea v0.24.1 requires go1.26; bumped floor to match.
 // Toolchain pinned to the latest go1.26 patch at time of this commit.
-toolchain go1.26.3
+toolchain go1.26.4
 
 require (
 	github.com/mark3labs/mcp-go v0.50.0
