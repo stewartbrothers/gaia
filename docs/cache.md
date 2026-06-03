@@ -22,9 +22,17 @@ One SQLite file per `(provider, host)`:
 ├── forgejo/
 │   ├── your-forge.example.com.db
 │   └── codeberg.org.db
-└── github/
-    └── api.github.com.db
+├── github/
+│   └── api.github.com.db
+└── meta/
+    └── autodetect.db        # non-forge: git-remote parses (see Typed[T] below)
 ```
+
+The `meta/` file is not a forge cache. It holds provider-independent
+local lookups — currently just parsed git remotes keyed by checkout
+path — that have to be resolved *before* a provider (and therefore a
+`(provider, host)` file) is known. `gaia cache nuke` clears it along
+with the forge files, since nuke walks every `.db` under the root.
 
 Honors `$XDG_CACHE_HOME` (falls back to `$HOME/.cache`). Parent
 directories are created with mode `0700`; cache files with mode
@@ -138,6 +146,55 @@ A nil cache passes straight through, so the wiring is a no-op when
 caching is disabled. Future mutations whose impact is too broad to
 enumerate fall back to `Invalidator.FlushRepo` — soft flush of every
 list_index row for the repo.
+
+## For non-HTTP callers: `cache.Typed[T]`
+
+The sections above describe how the **HTTP clients** use the cache:
+raw response bytes, ETags, conditional GETs, list invalidation. That
+machinery is overkill for code that just wants "give me this value,
+computing it on a miss" — autodetect's git-remote parse, a doctor
+probe result, a chain step's memoised lookup.
+
+`cache.Typed[T]` is the narrow, type-safe slice for exactly that. It
+wraps any `cache.Cache` and speaks in a Go type `T`, hiding the
+`Key`/`Entry` plumbing and the JSON marshalling behind one call:
+
+```go
+gitRemotes := cache.Typed[*autodetect.Repo]{
+    Cache: c,                 // any cache.Cache; nil = no caching, passthrough
+    Kind:  "git-remote",      // partitions the key space
+    TTL:   24 * time.Hour,
+}
+
+// Lookup → miss → fetch → store, all in one call. fetch runs at most
+// once per miss; a live hit never calls it.
+repo, err := gitRemotes.GetOr(ctx, "", name, absPath, func(ctx context.Context) (*autodetect.Repo, error) {
+    return autodetect.FromGitRemote(dir, name)
+})
+```
+
+Contract:
+
+- **`GetOr(ctx, owner, repo, id, fetch)`** returns the cached value or,
+  on a miss/stale/undecodable entry, calls `fetch` exactly once, stores
+  the result under the `Typed`'s `TTL`, and returns it. A `fetch` error
+  propagates verbatim and **nothing is stored** — a failed upstream call
+  never pollutes the cache. The cache layer itself never surfaces an
+  error from `GetOr`: lookup, decode, and store failures all degrade to
+  "treat as a miss" / "the fetched value is still valid".
+- **`Invalidate(ctx, owner, repo, id)`** drops one entry.
+- **`InvalidateList(ctx, owner, repo)`** drops cached list rows for the
+  `Kind` (companion for callers that also cache lists under it).
+- An empty `owner` is mapped to a fixed sentinel so owner-less,
+  path-keyed values (like git remotes) satisfy the underlying store's
+  non-empty-owner contract without aliasing a real forge owner.
+- A **nil `Cache`** makes `GetOr` a plain `fetch` passthrough and the
+  invalidators no-ops, so callers wire it unconditionally and let the
+  "caching off" case fall through.
+
+The first adopter is `autodetect.FromGitRemoteCached`, which backs the
+`meta/autodetect.db` file above. See `core/cache/typed.go` and its
+runnable `ExampleTyped`.
 
 ## MCP transport: per-tenant safety
 

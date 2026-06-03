@@ -1,8 +1,12 @@
 package cli
 
 import (
+	"os"
+	"strings"
 	"sync"
 
+	"github.com/stewartbrothers/gaia/core/cache"
+	"github.com/stewartbrothers/gaia/core/cache/sqlite"
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/core/settings"
 	"github.com/stewartbrothers/gaia/internal/forgebuilder"
@@ -47,9 +51,37 @@ func loadSettings(flags *globalFlags) (settings.Settings, error) {
 			APIURL:   flags.APIURL,
 			Repo:     flags.Repo,
 			NoCache:  flags.NoCache,
+			Cache:    autodetectCache(flags),
 		})
 	})
 	return flags.settings.s, flags.settings.err
+}
+
+// autodetectCache opens the small "meta" SQLite cache that backs the
+// git-remote autodetect lookup (#314), or returns nil when caching is
+// disabled or the file can't be opened. It is deliberately separate from
+// the per-(provider, host) forge cache: autodetect runs before the
+// provider is resolved, so its result can't live in a provider-scoped
+// DB. The file lands under the shared cache dir as meta/autodetect.db,
+// so `gaia cache nuke` (which walks every .db under that root) clears it
+// too.
+//
+// Gating mirrors what the test harnesses already toggle: --no-cache and
+// GAIA_CACHE_ENABLED=false both skip the open, so golden/CLI tests pay
+// no SQLite cost and never touch the real cache dir.
+func autodetectCache(flags *globalFlags) cache.Cache {
+	if flags.NoCache || strings.EqualFold(os.Getenv("GAIA_CACHE_ENABLED"), "false") {
+		return nil
+	}
+	path, err := cache.PathFor("meta", "autodetect")
+	if err != nil {
+		return nil
+	}
+	c, err := sqlite.Open(path)
+	if err != nil {
+		return nil
+	}
+	return c
 }
 
 // buildForgejoProvider is the legacy name kept for backward-compat

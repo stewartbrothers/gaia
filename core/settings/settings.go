@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/stewartbrothers/gaia/core/auth"
+	"github.com/stewartbrothers/gaia/core/cache"
 	"github.com/stewartbrothers/gaia/core/config"
 )
 
@@ -146,6 +147,12 @@ type Override struct {
 	// and git-remote autodetect. Empty (the production default) calls
 	// os.Getwd at Load time.
 	Cwd string
+	// Cache, when non-nil, backs the git-remote autodetect lookup so
+	// repeated invocations in the same checkout skip the `git remote
+	// get-url` subprocess (#314). Nil — the common case for tests and
+	// the MCP server — degrades to an uncached lookup. The CLI supplies
+	// a small "meta" cache here when caching is enabled.
+	Cache cache.Cache
 }
 
 // ctxKey is the unexported type used to stash and retrieve Settings

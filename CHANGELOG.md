@@ -21,6 +21,19 @@ reserved for breaking changes only.
 
 ### Added
 
+- **`cache.Typed[T]` — type-safe cache-aside view** over `cache.Cache`,
+  broadening cache adoption beyond the HTTP clients (ADR 0001 / #314).
+  `GetOr(ctx, owner, repo, id, fetch)` collapses the
+  lookup → miss → fetch → store dance into one call: `fetch` runs at
+  most once per miss, a live hit never calls it, and a `fetch` error
+  never pollutes the cache. Companion `Invalidate` / `InvalidateList`
+  and nil-cache passthrough included. First adopter:
+  `autodetect.FromGitRemoteCached`, which memoises the `git remote
+  get-url` parse by checkout path (24h TTL) in a new provider-independent
+  `meta/autodetect.db` cache file (cleared by `gaia cache nuke` like any
+  other). The wide `Cache` interface is unchanged. See `docs/cache.md`
+  "For non-HTTP callers". Closes #314.
+
 - **`exitcode.NotImplemented` (code `12`)** — new exit code for the
   case "method exists on the Provider contract but this forge
   doesn't support it." `docs/provider-contract.md` §10 documented
