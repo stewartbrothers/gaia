@@ -184,13 +184,50 @@ no `ServerVersion` endpoint; Forgejo v15.0.1 has no
 - A method that works on some forge versions but not others is
   documented as such on its per-method docstring.
 
-## 11. Adding a new method
+## 11. Interface composition (resource ports)
+
+`Provider` is not a flat 50-method interface — it is a **composition of
+per-resource ports** declared in `core/provider/ports.go`:
+
+```go
+type Provider interface {
+    IdentityOps          // Whoami, ServerVersion
+    IssueOps             // List/Get/Create/EditIssue
+    IssueDependencyOps   // blocker/blocks graph (NotImplemented on GitHub)
+    CommentOps           // ListComments + issue/PR comment writes
+    PullRequestOps       // PR reads/writes + GetCommitStatus
+    SearchOps            // Search
+    LabelOps             // List/Create/Edit/DeleteLabel
+    ReleaseOps           // releases + assets
+    PackageOps           // owner-scoped registry
+    WikiOps              // wiki pages
+    WebhookOps           // webhooks + deliveries
+    ActionsOps           // workflow runs
+    MilestoneOps         // milestones + issue roll-up
+}
+```
+
+**Why (ADR 0001 §Decision criterion 2):** a consumer that needs one
+resource depends on the narrow port, not the whole surface. A CLI label
+handler takes `provider.LabelOps` (4 methods); a chain step that lists
+issues takes `provider.IssueOps`; a test for one resource implements one
+port instead of stubbing 45 unrelated methods. The wide `Provider` is
+unchanged for callers that genuinely need everything
+(`forgebuilder.Build`, the MCP tool dispatcher, the chain orchestrator),
+and any `Provider` value still satisfies every port, so existing call
+sites keep compiling.
+
+The split is **consumer-facing only** — `core/forgejo` and `core/github`
+stay monolithic and satisfy `Provider` by implementing every method.
+
+## 12. Adding a new method
 
 When extending `Provider`:
 
-1. Add the method to `provider.go` with a docstring covering
-   inputs, outputs, error modes, and any contract deviations from
-   this document (preferably none).
+1. Add the method to the relevant resource port in
+   `core/provider/ports.go` (or add a new `XxxOps` port and embed it in
+   `Provider`) with a docstring covering inputs, outputs, error modes,
+   and any contract deviations from this document (preferably none).
 2. Implement on both `core/forgejo` and `core/github`. A missing
    implementation must return `exitcode.NotImplemented` with the
    forge name.
@@ -204,7 +241,7 @@ contract — return value, error mode, idempotency — must be the same
 shape across both, with the unsupported forge returning
 `NotImplemented` rather than a wrong-shape stub.
 
-## 12. What is NOT in the contract
+## 13. What is NOT in the contract
 
 The following are implementation details, not contract:
 

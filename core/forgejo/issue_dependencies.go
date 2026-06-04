@@ -20,7 +20,7 @@ import (
 // "X blocks Y" and "Y depends on X" describe the same edge from
 // different framings, so we only expose Add/Remove on the dependency
 // direction; the CLI / MCP layers map both framings to the same call.
-// See docs/provider-contract.md §11 + the gap issue #317.
+// See docs/provider-contract.md §12 + the gap issue #317.
 
 // depsBody is the wire shape Forgejo accepts on
 // POST/DELETE .../dependencies. For same-repo edges only `index` is
