@@ -10,6 +10,15 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+### Security
+
+- **Toolchain bumped `go1.26.3` → `go1.26.4`** to pull in the Go
+  standard-library fixes for **GO-2026-5039** (`net/textproto` error
+  escaping) and **GO-2026-5037** (`crypto/x509` hostname parsing), both
+  reachable from `core/forgejo/client.go`. `govulncheck ./...` was
+  failing CI on every PR (and `main`) once the advisories published;
+  with `go1.26.4` it reports no affected vulnerabilities. Closes #337.
+
 ### Added
 
 - **`exitcode.NotImplemented` (code `12`)** — new exit code for the
