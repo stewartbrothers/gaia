@@ -241,7 +241,45 @@ contract — return value, error mode, idempotency — must be the same
 shape across both, with the unsupported forge returning
 `NotImplemented` rather than a wrong-shape stub.
 
-## 13. What is NOT in the contract
+## 13. Adding a new forge (the registry)
+
+Forges self-register; nothing dispatches by a hard-coded name. Adding a
+forge is purely additive (#309):
+
+1. Write `core/<forge>` implementing every `Provider` method (same as
+   `core/forgejo` / `core/github`).
+2. Add a `register.go` whose `init()` calls `provider.Register` with a
+   `provider.Registration`:
+
+   ```go
+   func init() {
+       provider.Register(provider.Registration{
+           Name:          "gitlab",
+           DefaultAPIURL: "https://gitlab.com/api/v4", // "" if self-hosted-only
+           TokenEnvNames: []string{"GITLAB_TOKEN", "CI_JOB_TOKEN"},
+           Factory: func(cfg provider.BuildConfig) (provider.Provider, error) {
+               if cfg.APIURL == "" { /* usage error if no default */ }
+               return NewProvider(Options{BaseURL: cfg.APIURL, Token: cfg.Token, Cache: cfg.Cache}), nil
+           },
+       })
+   }
+   ```
+
+   The `Factory` must return a usage error for a missing required field
+   rather than a half-built provider (see the docstring on
+   `provider.Factory`).
+3. Add one blank-import line to `core/forges` so the `init()` runs.
+
+That's the whole change. `internal/forgebuilder` resolves the provider
+name from settings and hands off to `provider.Build` — it never names a
+forge, so it isn't touched. `provider.Registered()` and the
+`unknown provider` error pick up the new name automatically.
+
+The operator-facing surface is unchanged: `--provider <name>` /
+`GAIA_PROVIDER` / auth still use the same string keys, so
+`docs/agent-guide.md` needs no edit for a new forge.
+
+## 14. What is NOT in the contract
 
 The following are implementation details, not contract:
 
