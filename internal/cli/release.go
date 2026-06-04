@@ -34,7 +34,7 @@ func newReleaseListCmd(flags *globalFlags) *cobra.Command {
 		Use:   "list",
 		Short: "List releases (newest first)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildReleaseOps(flags)
 			if err != nil {
 				return err
 			}
@@ -72,7 +72,7 @@ func newReleaseViewCmd(flags *globalFlags) *cobra.Command {
 		Short: "View one release by tag",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildReleaseOps(flags)
 			if err != nil {
 				return err
 			}
@@ -123,7 +123,7 @@ default branch when empty.`,
 				Draft:           draft,
 				Prerelease:      prerelease,
 			}
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildReleaseOps(flags)
 			if err != nil {
 				return err
 			}
@@ -183,7 +183,7 @@ func newReleaseEditCmd(flags *globalFlags) *cobra.Command {
 				opts.Prerelease = v
 			}
 
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildReleaseOps(flags)
 			if err != nil {
 				return err
 			}
@@ -222,7 +222,7 @@ func newReleaseDeleteCmd(flags *globalFlags) *cobra.Command {
 					"Would delete release %q. Re-run with --confirm to actually remove.\n", args[0])
 				return nil
 			}
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildReleaseOps(flags)
 			if err != nil {
 				return err
 			}
@@ -304,7 +304,7 @@ found).`,
 
 			notes := readReleaseNotes(notesFrom, tag)
 
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildReleaseOps(flags)
 			if err != nil {
 				return err
 			}

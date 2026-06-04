@@ -96,3 +96,24 @@ func buildForgejoProvider(flags *globalFlags) (provider.Provider, *providerInfo,
 	}
 	return forgebuilder.Build(s, forgebuilder.BuildOverride{})
 }
+
+// buildLabelOps / buildReleaseOps / buildWebhookOps build the provider
+// and hand the handler only the narrow resource port it needs (#312).
+// The returned value is the full provider under the hood, but typing it
+// to the port means a label handler physically cannot reach, say,
+// CreateIssue — the compiler enforces the slice. The providerInfo is
+// dropped because these handlers don't render host metadata.
+func buildLabelOps(flags *globalFlags) (provider.LabelOps, error) {
+	p, _, err := buildForgejoProvider(flags)
+	return p, err
+}
+
+func buildReleaseOps(flags *globalFlags) (provider.ReleaseOps, error) {
+	p, _, err := buildForgejoProvider(flags)
+	return p, err
+}
+
+func buildWebhookOps(flags *globalFlags) (provider.WebhookOps, error) {
+	p, _, err := buildForgejoProvider(flags)
+	return p, err
+}

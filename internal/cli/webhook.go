@@ -40,7 +40,7 @@ func newWebhookListCmd(flags *globalFlags) *cobra.Command {
 		Use:   "list",
 		Short: "List webhooks configured on the repo",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildWebhookOps(flags)
 			if err != nil {
 				return err
 			}
@@ -82,7 +82,7 @@ func newWebhookViewCmd(flags *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildWebhookOps(flags)
 			if err != nil {
 				return err
 			}
@@ -141,7 +141,7 @@ so downstream rendering can't leak it.`,
 				Events:      events,
 				Active:      active,
 			}
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildWebhookOps(flags)
 			if err != nil {
 				return err
 			}
@@ -223,7 +223,7 @@ func newWebhookEditCmd(flags *globalFlags) *cobra.Command {
 				opts.Active = &v
 			}
 
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildWebhookOps(flags)
 			if err != nil {
 				return err
 			}
@@ -287,7 +287,7 @@ func newWebhookDeleteCmd(flags *globalFlags) *cobra.Command {
 					"Would delete webhook %d. Re-run with --confirm to actually remove.\n", id)
 				return nil
 			}
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildWebhookOps(flags)
 			if err != nil {
 				return err
 			}
@@ -323,7 +323,7 @@ request/response payload via:
 			if err != nil {
 				return err
 			}
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildWebhookOps(flags)
 			if err != nil {
 				return err
 			}
@@ -379,7 +379,7 @@ func newWebhookRedeliverCmd(flags *globalFlags) *cobra.Command {
 			if err != nil {
 				return exitcode.Errorf(exitcode.Usage, "delivery-id must be a number; got %q", args[1])
 			}
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildWebhookOps(flags)
 			if err != nil {
 				return err
 			}
@@ -406,7 +406,7 @@ func newWebhookTestCmd(flags *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildWebhookOps(flags)
 			if err != nil {
 				return err
 			}

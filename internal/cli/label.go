@@ -30,7 +30,7 @@ func newLabelListCmd(flags *globalFlags) *cobra.Command {
 		Use:   "list",
 		Short: "List repo labels (optionally filtered by --name substring)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildLabelOps(flags)
 			if err != nil {
 				return err
 			}
@@ -76,7 +76,7 @@ func newLabelCreateCmd(flags *globalFlags) *cobra.Command {
 				return exitcode.Errorf(exitcode.Usage, "--color is required (hex string without #)")
 			}
 			opts := provider.CreateLabelOptions{Name: name, Color: color, Description: desc}
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildLabelOps(flags)
 			if err != nil {
 				return err
 			}
@@ -112,7 +112,7 @@ func newLabelEditCmd(flags *globalFlags) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts := provider.EditLabelOptions{NewName: newName, Color: color, Description: desc}
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildLabelOps(flags)
 			if err != nil {
 				return err
 			}
@@ -149,7 +149,7 @@ func newLabelDeleteCmd(flags *globalFlags) *cobra.Command {
 					"Would delete label %q. Re-run with --confirm to actually remove.\n", args[0])
 				return nil
 			}
-			p, _, err := buildForgejoProvider(flags)
+			p, err := buildLabelOps(flags)
 			if err != nil {
 				return err
 			}
