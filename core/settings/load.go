@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"context"
 	"os"
 	"strings"
 	"time"
@@ -160,7 +161,7 @@ func Load(ov Override) (Settings, error) {
 	case ov.Repo != "":
 		s.repo = parseOwnerName(ov.Repo)
 	default:
-		if detected, derr := autodetect.FromGitRemote(cwd, ""); derr == nil {
+		if detected, derr := autodetect.FromGitRemoteCached(context.Background(), ov.Cache, cwd, ""); derr == nil {
 			s.repo = ownerName{owner: detected.Owner, name: detected.Name, ok: true}
 			s.gitRemoteRepo = detected.Owner + "/" + detected.Name
 		}
