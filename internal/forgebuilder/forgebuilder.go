@@ -1,23 +1,26 @@
 // Package forgebuilder builds a configured provider.Provider from a
-// resolved [settings.Settings] handle. Dispatches to either
-// core/forgejo or core/github based on s.Provider().
+// resolved [settings.Settings] handle. Dispatch is registry-driven
+// (#309): forgebuilder names no forge — it resolves the provider name
+// from settings and hands off to provider.Build, which looks up the
+// forge that self-registered under that name. Adding a forge touches
+// core/<forge> + core/forges, never this file.
 //
 // Resolution of the layered config + credentials + env happens in
 // core/settings. forgebuilder is the small adapter that turns a
 // Settings handle into a Provider — owning only the per-call bearer
 // override path (gaia-mcp's HTTP transport plumbs a per-request PAT
-// here) and the SQLite cache open. (#311)
+// here), the SQLite cache open, and the display Info. (#311)
 package forgebuilder
 
 import (
 	"net/url"
+	"strings"
 
 	"github.com/stewartbrothers/gaia/core/auth"
 	"github.com/stewartbrothers/gaia/core/cache"
 	"github.com/stewartbrothers/gaia/core/cache/sqlite"
 	"github.com/stewartbrothers/gaia/core/exitcode"
-	"github.com/stewartbrothers/gaia/core/forgejo"
-	"github.com/stewartbrothers/gaia/core/github"
+	_ "github.com/stewartbrothers/gaia/core/forges" // populate the provider registry via init()
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/core/settings"
 )
@@ -43,27 +46,41 @@ type Info struct {
 
 // Build returns a ready-to-use provider.Provider plus its Info
 // metadata, or an error if Settings + overrides don't yield enough to
-// construct one. Dispatches by s.Provider():
+// construct one. The provider name from s.Provider() is dispatched
+// through the registry (provider.Build); the forge that registered
+// under that name supplies the construction and any forge-specific
+// validation (e.g. Forgejo rejecting an empty API URL).
 //
-//	"forgejo" → core/forgejo.Provider
-//	"github"  → core/github.Provider  (BaseURL defaults to api.github.com)
-//
-// Any other provider name is rejected with a usage error.
+// An unconfigured or unregistered provider name is rejected with a
+// usage error listing the registered forges.
 func Build(s settings.Settings, ov BuildOverride) (provider.Provider, *Info, error) {
 	provName := s.Provider()
+	if provName == "" {
+		return nil, nil, exitcode.Errorf(exitcode.Usage,
+			"no provider configured — run `gaia auth forgejo <url>` or `gaia auth gh`, or set --provider/GAIA_PROVIDER")
+	}
+
+	reg, ok := provider.Lookup(provName)
+	if !ok {
+		return nil, nil, exitcode.Errorf(exitcode.Usage,
+			"unknown provider %q (supported: %s)", provName, strings.Join(provider.Registered(), ", "))
+	}
+
 	apiURL := s.APIURL()
 	token := s.Token()
 	if ov.Token != "" {
 		token = ov.Token
 	}
 
-	if provName == "" {
-		return nil, nil, exitcode.Errorf(exitcode.Usage,
-			"no provider configured — run `gaia auth forgejo <url>` or `gaia auth gh`, or set --provider/GAIA_PROVIDER")
+	// Display host: the configured API URL, or the forge's well-known
+	// default endpoint when none is set (so `whoami` against github.com
+	// reads cleanly even with no api_url configured).
+	effectiveURL := apiURL
+	if effectiveURL == "" {
+		effectiveURL = reg.DefaultAPIURL
 	}
-
 	host := ""
-	if u, perr := url.Parse(apiURL); perr == nil {
+	if u, perr := url.Parse(effectiveURL); perr == nil {
 		host = u.Host
 	}
 	info := &Info{Provider: provName, Host: host, APIURL: apiURL}
@@ -75,7 +92,9 @@ func Build(s settings.Settings, ov BuildOverride) (provider.Provider, *Info, err
 	//
 	// The config knob (`cache.enabled: false`) and the env-var bypass
 	// (`GAIA_CACHE_ENABLED=false`) were absorbed into settings.Cache()
-	// at Load time; we only consult NoCache here.
+	// at Load time; we only consult NoCache here. Keyed by the
+	// configured apiURL, so an empty one yields no host → no cache,
+	// matching prior behavior.
 	cacheSettings := s.Cache()
 	var ch cache.Cache
 	if !cacheSettings.NoCache {
@@ -86,33 +105,15 @@ func Build(s settings.Settings, ov BuildOverride) (provider.Provider, *Info, err
 		}
 	}
 
-	switch provName {
-	case "forgejo":
-		if apiURL == "" {
-			return nil, nil, exitcode.Errorf(exitcode.Usage,
-				"no API URL configured — run `gaia auth forgejo <url>` or set --api-url/FORGEJO_API_URL")
-		}
-		return forgejo.NewProvider(forgejo.Options{
-			BaseURL: apiURL,
-			Token:   token,
-			Cache:   ch,
-		}), info, nil
-	case "github":
-		// Empty BaseURL means "use api.github.com"; github.New
-		// substitutes the production default. Host defaults to
-		// api.github.com when APIURL is empty so Info reads cleanly.
-		if info.Host == "" {
-			info.Host = "api.github.com"
-		}
-		return github.NewProvider(github.Options{
-			BaseURL: apiURL,
-			Token:   token,
-			Cache:   ch,
-		}), info, nil
-	default:
-		return nil, nil, exitcode.Errorf(exitcode.Usage,
-			"unknown provider %q (supported: forgejo, github)", provName)
+	p, err := provider.Build(provName, provider.BuildConfig{
+		APIURL: apiURL,
+		Token:  token,
+		Cache:  ch,
+	})
+	if err != nil {
+		return nil, nil, err
 	}
+	return p, info, nil
 }
 
 // LoadLayeredCredentials reads the global + project credential
