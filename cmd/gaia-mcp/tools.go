@@ -141,18 +141,64 @@ func optBool(args map[string]any, key string) bool {
 // registerAllTools wires every gaia operation as an MCP tool.
 // Grouped per resource so it's easy to scan: read tools first, write
 // tools second within each section.
+//
+// Resource groups gated by a [provider.Capability] are omitted from the
+// listing when the configured provider declares that capability
+// unsupported (#342), so an agent's tool manifest only shows what the
+// active backend can actually serve. Real forges (Forgejo, GitHub)
+// declare nothing unsupported, so every group registers — this only
+// trims the manifest for a future asymmetric provider. An unresolvable
+// provider name is permissive (everything registers).
 func registerAllTools(s *server.MCPServer) {
+	registerToolsForProvider(s, configuredProviderName())
+}
+
+// registerToolsForProvider is the capability-aware core of
+// [registerAllTools], split out so tests can pin the gating against a
+// chosen provider name without reaching through settings.
+func registerToolsForProvider(s *server.MCPServer, name string) {
+	supports := func(c provider.Capability) bool { return provider.Supports(name, c) }
+
+	// Ungated: every backend gaia targets has issues, labels, and search.
 	registerIssueTools(s)
-	registerPRTools(s)
 	registerLabelTools(s)
 	registerSearchTool(s)
-	registerReleaseTools(s)
-	registerPackagesTools(s)
-	registerWikiTools(s)
-	registerWebhookTools(s)
-	registerActionsTools(s)
-	registerMilestoneTools(s)
 	registerIssueDepTools(s)
+
+	// Capability-gated resource groups.
+	if supports(provider.CapPullRequests) {
+		registerPRTools(s)
+	}
+	if supports(provider.CapReleases) {
+		registerReleaseTools(s)
+	}
+	if supports(provider.CapPackages) {
+		registerPackagesTools(s)
+	}
+	if supports(provider.CapWikis) {
+		registerWikiTools(s)
+	}
+	if supports(provider.CapWebhooks) {
+		registerWebhookTools(s)
+	}
+	if supports(provider.CapActions) {
+		registerActionsTools(s)
+	}
+	if supports(provider.CapMilestones) {
+		registerMilestoneTools(s)
+	}
+}
+
+// configuredProviderName resolves the active provider name for
+// capability gating, best-effort. An unconfigured or unreadable settings
+// layer yields "" — which [provider.Supports] treats permissively, so
+// the manifest is never silently trimmed on a resolution failure.
+func configuredProviderName() string {
+	s, err := settings.Load(settings.Override{})
+	if err != nil {
+		return ""
+	}
+	return s.Provider()
 }
 
 // ctxBoundHandler is a tiny helper that runs an MCP tool handler
