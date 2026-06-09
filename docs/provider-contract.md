@@ -170,11 +170,46 @@ the responsibility of each implementation; the cache layer offers
   is exposed via a dedicated flag where needed, not via the
   zero value of the option struct.
 
-## 10. Server-version and capability degradation
+## 10. Capability degradation
 
-Some methods are not supported on every forge (e.g., GitHub.com has
-no `ServerVersion` endpoint; Forgejo v15.0.1 has no
-`GetWorkflowRunLogs`). The contract:
+A provider may not support some operations. There are two granularities,
+and they use different mechanisms.
+
+### Coarse: whole resource categories (static)
+
+Whether a provider has wikis / PRs / releases *as a product* is static,
+compile-time knowledge — a future issues-only backend never has wikis;
+Forgejo always does. A provider declares the categories it lacks in its
+registry `Registration.Unsupported` (see `core/provider/capabilities.go`,
+#342):
+
+```go
+provider.Register(provider.Registration{
+    Name:        "issues-only",
+    Unsupported: []provider.Capability{provider.CapPullRequests, provider.CapWikis, provider.CapReleases},
+    ...
+})
+```
+
+Consumers read it by provider name via `provider.Supports(name, cap)` —
+no provider is built and no network call is made:
+
+- the CLI blocks a gated command with a clean usage error (and a future
+  change may hide it from the listing);
+- `gaia-mcp` omits the unsupported tool groups from `tools/list`.
+
+Empty `Unsupported` (the case for Forgejo and GitHub) means "supports
+everything", so nothing is hidden — the mechanism only trims the surface
+for an asymmetric provider. There is **no runtime capability probe**: the
+binary already knows what each compiled adapter offers (the runtime-probe
+design was considered and rejected in #310).
+
+### Fine: a single method on a specific forge/version (per-call)
+
+Within a supported category, one method may still be missing on a given
+forge or server version (GitHub.com has no `ServerVersion` endpoint;
+Forgejo v15.0.1 has no `GetWorkflowRunLogs`). This stays a per-call
+concern:
 
 - Unsupported methods return an `exitcode.Error` with code
   `NotImplemented` and a human-readable message naming the forge
