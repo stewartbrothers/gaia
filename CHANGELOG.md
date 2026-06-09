@@ -10,6 +10,18 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+### Changed
+
+- **`gaia pr view --with-ci` now lists each check's context string** in
+  pretty output (e.g. `CI / Build: success`) under the rollup, not just
+  the aggregate counts. The providers already populated
+  `CISummary.Checks` on the view path, so the JSON envelope
+  (`ci_summary.checks[].name`) was already carrying the contexts — only
+  the pretty renderer dropped them, and the type docstring wrongly
+  claimed the view path left `Checks` empty. Lets an operator read the
+  exact check name to require in branch protection without resorting to
+  `pr ci-wait`. Closes #344.
+
 ### Security
 
 - **Toolchain bumped `go1.26.3` → `go1.26.4`** to pull in the Go

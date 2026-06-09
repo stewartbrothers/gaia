@@ -156,6 +156,14 @@ func prettyPRView(w io.Writer, data any) error {
 	if pr.CISummary != nil {
 		_, _ = fmt.Fprintf(w, "CI: %s (%d successful / %d failed / %d pending out of %d)\n",
 			pr.CISummary.State, pr.CISummary.Successful, pr.CISummary.Failed, pr.CISummary.Pending, pr.CISummary.Total)
+		// List the individual checks by their context string so an
+		// operator can read the exact name (e.g. to require it in branch
+		// protection). Empty when the provider didn't report per-check
+		// contexts; the JSON envelope carries the same data under
+		// ci_summary.checks. (#344)
+		for _, c := range pr.CISummary.Checks {
+			_, _ = fmt.Fprintf(w, "  %s: %s\n", c.Name, c.State)
+		}
 	}
 	if pr.Body != "" {
 		_, _ = fmt.Fprintln(w)
