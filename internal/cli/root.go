@@ -17,6 +17,7 @@ package cli
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/internal/version"
 )
 
@@ -73,6 +74,10 @@ auth setup.`,
 		// help text. Errors are rendered by main() via exitcode.Of.
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// Block a resource command when the active provider declares its
+		// capability unsupported (#342). No-op for real forges and for
+		// unannotated/meta commands — see capabilityGuard.
+		PersistentPreRunE: capabilityGuard(flags),
 	}
 
 	pf := root.PersistentFlags()
@@ -94,18 +99,18 @@ auth setup.`,
 	root.AddCommand(newServerCmd(flags))
 	root.AddCommand(newAuthCmd(flags))
 	root.AddCommand(newIssueCmd(flags))
-	root.AddCommand(newPRCmd(flags))
+	root.AddCommand(annotateCapability(newPRCmd(flags), provider.CapPullRequests))
 	root.AddCommand(newSearchCmd(flags))
 	root.AddCommand(newLabelCmd(flags))
-	root.AddCommand(newReleaseCmd(flags))
+	root.AddCommand(annotateCapability(newReleaseCmd(flags), provider.CapReleases))
 	root.AddCommand(newChainCmd(flags))
-	root.AddCommand(newPackagesCmd(flags))
-	root.AddCommand(newWikiCmd(flags))
-	root.AddCommand(newWebhookCmd(flags))
-	root.AddCommand(newActionsCmd(flags))
+	root.AddCommand(annotateCapability(newPackagesCmd(flags), provider.CapPackages))
+	root.AddCommand(annotateCapability(newWikiCmd(flags), provider.CapWikis))
+	root.AddCommand(annotateCapability(newWebhookCmd(flags), provider.CapWebhooks))
+	root.AddCommand(annotateCapability(newActionsCmd(flags), provider.CapActions))
 	root.AddCommand(newCacheCmd(flags))
 	root.AddCommand(newConfigCmd(flags))
-	root.AddCommand(newMilestoneCmd(flags))
+	root.AddCommand(annotateCapability(newMilestoneCmd(flags), provider.CapMilestones))
 
 	return root
 }

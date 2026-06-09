@@ -61,6 +61,14 @@ type Registration struct {
 	// make core/config's token fallback registry-driven (#340); the
 	// registry is already the source of truth for "what forges exist."
 	TokenEnvNames []string
+	// Unsupported lists the resource categories this provider does not
+	// offer as a product (a hypothetical issues-only forge might list
+	// CapPullRequests, CapWikis, CapReleases). Empty — the case for
+	// Forgejo and GitHub — means "supports everything"; consumers then
+	// hide nothing. See capabilities.go and [Supports]. This is static
+	// compile-time knowledge, declared here rather than probed at
+	// runtime (#342).
+	Unsupported []Capability
 }
 
 // ErrUnknownProvider is returned (wrapped) by [Build] when no forge is
