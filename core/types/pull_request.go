@@ -42,11 +42,14 @@ type BranchRef struct {
 // head commit. State takes one of "success", "pending", "failure",
 // "error", "neutral".
 //
-// Checks, when populated, lists the individual check name + state
-// pairs that compose the rollup. Populated by `gaia pr ci-wait` so
-// chains can apply name-based flakiness heuristics; unpopulated by
-// the default `gaia pr view --with-ci` path because most consumers
-// only need the rollup. Always omitempty.
+// Checks lists the individual check name + state pairs that compose
+// the rollup. Populated by both `gaia pr ci-wait` (so chains can apply
+// name-based flakiness heuristics) and `gaia pr view --with-ci` (so an
+// operator can read the exact check context strings, e.g. to require
+// them in branch protection — #344). The per-check data is free: it
+// comes from the same commit-status response that produces the rollup.
+// Always omitempty, so a provider that reports no per-check contexts
+// emits nothing.
 type CISummary struct {
 	State      string      `json:"state"`
 	Total      int         `json:"total"`
