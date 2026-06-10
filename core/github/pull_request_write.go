@@ -80,8 +80,28 @@ func (p *Provider) MergePullRequest(ctx context.Context, owner, repo string, n i
 	err := p.client.Post(ctx, fmt.Sprintf("/repos/%s/%s/pulls/%d/merge", owner, repo, n), body, nil)
 	if err == nil {
 		cache.NewInvalidator(p.client.cache).AfterObjectMutation(ctx, kindPR, owner, repo, itoa(n))
+		return nil
+	}
+	// Idempotency (#348): an auto-merge or concurrent merge may already
+	// have merged the PR, in which case the endpoint returns a policy
+	// 405/409 though the desired state holds. Re-check uncached before
+	// reporting failure.
+	if p.prMerged(ctx, owner, repo, n) {
+		cache.NewInvalidator(p.client.cache).AfterObjectMutation(ctx, kindPR, owner, repo, itoa(n))
+		return nil
 	}
 	return classifyMergeError(err)
+}
+
+// prMerged reports whether PR n is already merged. Uncached so a
+// just-completed auto-merge isn't masked by a stale cached row; any
+// fetch error is treated as "not merged".
+func (p *Provider) prMerged(ctx context.Context, owner, repo string, n int) bool {
+	var raw apiPullRequest
+	if err := p.client.Get(ctx, fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, n), &raw); err != nil {
+		return false
+	}
+	return raw.Merged
 }
 
 // classifyMergeError upgrades a generic HTTP error from GitHub's
@@ -110,7 +130,8 @@ func classifyMergeError(err error) error {
 		if mentionsReview(msg) {
 			return exitcode.Wrap(err, exitcode.ReviewRequired, "review required")
 		}
-		return exitcode.Wrap(err, exitcode.PolicyViolation, "merge blocked by policy")
+		return exitcode.Wrap(err, exitcode.PolicyViolation,
+			"merge blocked by branch protection (failing required checks, unmet reviews, or a disallowed merge method)")
 	}
 	return err
 }

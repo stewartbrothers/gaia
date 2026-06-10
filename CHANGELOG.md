@@ -10,6 +10,19 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`gaia pr merge` is now idempotent and reports a clear reason when
+  blocked.** Against a branch-protection-enabled branch, an auto-merge
+  (or a concurrent merge) can merge a PR the instant CI goes green; a
+  manual `pr merge` then raced a no-longer-mergeable PR and surfaced an
+  opaque, empty-body `HTTP 405` ("merge blocked by policy") — a scary
+  error for a merge that had actually succeeded. `MergePullRequest` now
+  re-checks (uncached) on any merge error: if the PR is already merged
+  it returns success, and the genuine-block message names the likely
+  causes (failing required checks, unmet reviews, or a disallowed merge
+  method) instead of echoing an empty body. Both providers. Closes #348.
+
 ### Changed
 
 - **`gaia pr view --with-ci` now lists each check's context string** in

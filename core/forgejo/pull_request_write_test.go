@@ -178,3 +178,66 @@ func TestMergePullRequestPolicyViolation(t *testing.T) {
 		t.Errorf("405+policy → exit code: got %d, want PolicyViolation (%d)", got, exitcode.PolicyViolation)
 	}
 }
+
+// TestMergePullRequestIdempotentWhenAlreadyMerged: when the merge
+// endpoint returns a policy 405 with an empty body but the PR is in
+// fact already merged (branch-protection auto-merge or a concurrent
+// merge raced the call), MergePullRequest reports success — the desired
+// state holds. (#348)
+func TestMergePullRequestIdempotentWhenAlreadyMerged(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/merge"):
+			w.WriteHeader(405)
+			// The exact opaque shape Forgejo returned in #348.
+			_, _ = w.Write([]byte(`{"message":"","url":"https://example/api/swagger"}`))
+		case strings.HasSuffix(r.URL.Path, "/pulls/7"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number": 7, "state": "closed", "merged": true,
+				"user": map[string]any{"login": "x"},
+				"head": map[string]any{"ref": "f", "sha": "s"},
+				"base": map[string]any{"ref": "main", "sha": "b"},
+			})
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	if err := p.MergePullRequest(context.Background(), "o", "r", 7, provider.MergePullRequestOptions{}); err != nil {
+		t.Fatalf("already-merged PR: want nil (idempotent success), got %v", err)
+	}
+}
+
+// TestMergePullRequestNotMergedStaysError: a policy 405 where the PR is
+// genuinely NOT merged still surfaces the policy error (the idempotency
+// re-check must not mask real blocks).
+func TestMergePullRequestNotMergedStaysError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/merge"):
+			w.WriteHeader(405)
+			_, _ = w.Write([]byte(`{"message":""}`))
+		case strings.HasSuffix(r.URL.Path, "/pulls/7"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number": 7, "state": "open", "merged": false,
+				"user": map[string]any{"login": "x"},
+				"head": map[string]any{"ref": "f", "sha": "s"},
+				"base": map[string]any{"ref": "main", "sha": "b"},
+			})
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	err := p.MergePullRequest(context.Background(), "o", "r", 7, provider.MergePullRequestOptions{})
+	if err == nil {
+		t.Fatal("not-merged PR with policy 405: want error, got nil")
+	}
+	if got := exitcode.Of(err); got != exitcode.PolicyViolation {
+		t.Errorf("exit code: got %d, want PolicyViolation (%d)", got, exitcode.PolicyViolation)
+	}
+}

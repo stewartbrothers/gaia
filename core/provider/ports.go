@@ -112,6 +112,12 @@ type PullRequestOps interface {
 	// MergePullRequest performs the merge with the requested method.
 	// Returns nil on 200/204; the caller can re-fetch via
 	// GetPullRequest if it needs the updated state.
+	//
+	// Idempotent: if the merge call is rejected (e.g. a policy 405) but
+	// the PR is in fact already merged — a branch-protection auto-merge
+	// or a concurrent merge raced the call — implementations return nil,
+	// since the desired state holds. A genuine block (failing checks,
+	// unmet reviews) returns the structured error (#348).
 	MergePullRequest(ctx context.Context, owner, repo string, n int, opts MergePullRequestOptions) error
 
 	// SubmitReview submits a PR review with state (APPROVED /
