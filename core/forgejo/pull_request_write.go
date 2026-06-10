@@ -68,8 +68,30 @@ func (p *Provider) MergePullRequest(ctx context.Context, owner, repo string, n i
 	if err == nil {
 		// Merge changes state from open→merged; flush PR row + lists (#42).
 		cache.NewInvalidator(p.client.cache).AfterObjectMutation(ctx, kindPR, owner, repo, itoa(n))
+		return nil
+	}
+	// Idempotency (#348): branch-protection auto-merge or a concurrent
+	// merge may already have merged the PR, in which case the endpoint
+	// returns a policy 405/409 even though the desired state holds. Before
+	// reporting a (often opaque, empty-body) failure, re-check uncached;
+	// if it's already merged, that's success, not an error.
+	if p.prMerged(ctx, owner, repo, n) {
+		cache.NewInvalidator(p.client.cache).AfterObjectMutation(ctx, kindPR, owner, repo, itoa(n))
+		return nil
 	}
 	return classifyMergeError(err)
+}
+
+// prMerged reports whether PR n is already in the merged state. Uncached
+// (p.client.Get) so a just-completed auto-merge isn't masked by a stale
+// cached PR row. Any fetch error is treated as "not merged" — the caller
+// then surfaces the original merge error.
+func (p *Provider) prMerged(ctx context.Context, owner, repo string, n int) bool {
+	var raw apiPullRequest
+	if err := p.client.Get(ctx, fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, n), &raw); err != nil {
+		return false
+	}
+	return raw.Merged
 }
 
 // classifyMergeError upgrades a generic HTTP error from Forgejo's
@@ -96,7 +118,10 @@ func classifyMergeError(err error) error {
 		if mentionsReview(msg) {
 			return exitcode.Wrap(err, exitcode.ReviewRequired, "review required")
 		}
-		return exitcode.Wrap(err, exitcode.PolicyViolation, "merge blocked by policy")
+		// Forgejo often returns an empty body here, so the wrapped cause
+		// is uninformative — name the likely reasons in the message.
+		return exitcode.Wrap(err, exitcode.PolicyViolation,
+			"merge blocked by branch protection (failing required checks, unmet reviews, or a disallowed merge method)")
 	}
 	return err
 }

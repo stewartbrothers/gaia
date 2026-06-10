@@ -159,6 +159,54 @@ func TestMergePullRequestGHPolicyViolation(t *testing.T) {
 	}
 }
 
+// TestMergePullRequestGHIdempotentWhenAlreadyMerged: a policy 405 when
+// the PR is already merged is idempotent success (#348).
+func TestMergePullRequestGHIdempotentWhenAlreadyMerged(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/merge"):
+			w.WriteHeader(405)
+			_, _ = w.Write([]byte(`{"message":""}`))
+		case strings.HasSuffix(r.URL.Path, "/pulls/7"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"number": 7, "state": "closed", "merged": true})
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	if err := p.MergePullRequest(context.Background(), "o", "r", 7, provider.MergePullRequestOptions{}); err != nil {
+		t.Fatalf("already-merged PR: want nil (idempotent), got %v", err)
+	}
+}
+
+// TestMergePullRequestGHNotMergedStaysError: a policy 405 where the PR
+// is genuinely not merged still surfaces the policy error.
+func TestMergePullRequestGHNotMergedStaysError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/merge"):
+			w.WriteHeader(405)
+			_, _ = w.Write([]byte(`{"message":""}`))
+		case strings.HasSuffix(r.URL.Path, "/pulls/7"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"number": 7, "state": "open", "merged": false})
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	err := p.MergePullRequest(context.Background(), "o", "r", 7, provider.MergePullRequestOptions{})
+	if err == nil {
+		t.Fatal("not-merged PR with policy 405: want error, got nil")
+	}
+	if got := exitcode.Of(err); got != exitcode.PolicyViolation {
+		t.Errorf("exit code: got %d, want PolicyViolation (%d)", got, exitcode.PolicyViolation)
+	}
+}
+
 func TestSubmitReviewGH(t *testing.T) {
 	var captured []byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
