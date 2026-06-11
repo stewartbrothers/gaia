@@ -445,3 +445,19 @@ type ListMilestoneIssuesOptions struct {
 	Limit  int
 	Cursor string
 }
+
+// SetBranchProtectionOptions is the desired protection state for
+// SetBranchProtection. It is declarative, not incremental: the fields
+// fully specify the rule, so an omitted/zero field sets that aspect to
+// its zero value (no required checks / not strict / no required
+// approvals), matching a "replace the rule" model. (#345)
+type SetBranchProtectionOptions struct {
+	// RequiredStatusChecks are the check context strings that must pass
+	// to merge. Empty clears the status-check requirement.
+	RequiredStatusChecks []string
+	// StrictStatusChecks requires the branch be up to date before the
+	// checks count as satisfied.
+	StrictStatusChecks bool
+	// RequiredApprovals is the number of approving reviews to require.
+	RequiredApprovals int
+}

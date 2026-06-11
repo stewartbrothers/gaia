@@ -28,6 +28,8 @@ const (
 	CapPackages     Capability = "packages"
 	CapActions      Capability = "actions"
 	CapMilestones   Capability = "milestones"
+
+	CapBranchProtection Capability = "branch_protection"
 )
 
 // Supports reports whether the provider registered under name offers

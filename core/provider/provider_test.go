@@ -249,6 +249,15 @@ func (*noopProvider) AddIssueDependency(_ context.Context, _, _ string, _ int, _
 func (*noopProvider) RemoveIssueDependency(_ context.Context, _, _ string, _ int, _ provider.IssueDepRef) error {
 	return errNotImplemented
 }
+func (*noopProvider) GetBranchProtection(_ context.Context, _, _, _ string) (*types.BranchProtection, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) SetBranchProtection(_ context.Context, _, _, _ string, _ provider.SetBranchProtectionOptions) (*types.BranchProtection, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) DeleteBranchProtection(_ context.Context, _, _, _ string) error {
+	return errNotImplemented
+}
 
 // Reference time.Time so an unused-import check never fires while tests
 // scaffold up. Removed once a real test uses it.
