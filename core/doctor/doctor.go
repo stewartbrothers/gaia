@@ -74,6 +74,9 @@ const (
 	// Repo + cwd context
 	CodeRepoResolution = "repo-resolution"
 	CodeConfigLayers   = "config-layers"
+
+	// Repo CI health
+	CodeWorkflowsShadowed = "workflows-shadowed"
 )
 
 // Finding is one rendered observation from a doctor run. JSON tags
@@ -171,6 +174,7 @@ func Run(in Inputs) []Finding {
 	out = append(out, checkMultiProjectSafety(in)...)
 	out = append(out, checkCredentialHygiene(in)...)
 	out = append(out, checkProfileCoherence(in)...)
+	out = append(out, checkWorkflowsShadowed(in)...)
 	out = append(out, checkRepoResolution(in))
 	out = append(out, checkCwdContext(in))
 	return out
@@ -585,6 +589,99 @@ func checkCwdContext(in Inputs) Finding {
 		Code:    CodeConfigLayers,
 		Message: msg,
 	}
+}
+
+// --- Repo CI health: workflows precedence footgun ---------------
+
+// checkWorkflowsShadowed flags the silent-CI-disable footgun:
+// Forgejo gives `.forgejo/workflows/` precedence over
+// `.github/workflows/`. When both directories exist, Forgejo runs
+// ONLY the `.forgejo/` set and ignores `.github/` entirely — so a
+// repo whose CI gate lives in `.github/` has it silently switched
+// off the moment any `.forgejo/workflows/*.yml` lands (even an
+// unrelated one). `main` keeps looking green because *a* workflow
+// still runs, just not the gate.
+//
+// v1 signal (filesystem-only, no forge API): both dirs exist AND the
+// `.github/` set contains workflow files whose names are not all
+// present in the `.forgejo/` set. Name matching ignores case and
+// treats `.yml`/`.yaml` as equivalent, mirroring how Forgejo
+// discovers workflows. WARN (promotable to ERR via --strict).
+//
+// Skipped entirely when RepoRoot is "" (not inside a checkout): the
+// check is purely a filesystem inspection of the repo root.
+func checkWorkflowsShadowed(in Inputs) []Finding {
+	if in.RepoRoot == "" {
+		return nil
+	}
+	forgejoNames := workflowFileSet(filepath.Join(in.RepoRoot, ".forgejo", "workflows"))
+	githubNames := workflowFileSet(filepath.Join(in.RepoRoot, ".github", "workflows"))
+
+	// Footgun only bites when both sets actually hold workflows: a
+	// missing/empty .forgejo set means Forgejo still honours .github.
+	if len(forgejoNames) == 0 || len(githubNames) == 0 {
+		return nil
+	}
+
+	// Shadowed = .github workflows whose normalized name the .forgejo
+	// set does not also define.
+	covered := map[string]bool{}
+	for n := range forgejoNames {
+		covered[normalizeWorkflowName(n)] = true
+	}
+	var shadowed []string
+	for orig := range githubNames {
+		if !covered[normalizeWorkflowName(orig)] {
+			shadowed = append(shadowed, orig)
+		}
+	}
+	if len(shadowed) == 0 {
+		return nil
+	}
+	sort.Strings(shadowed)
+
+	return []Finding{{
+		Level: LevelWarn,
+		Code:  CodeWorkflowsShadowed,
+		Message: fmt.Sprintf(
+			"both .forgejo/workflows and .github/workflows exist; Forgejo ignores .github/workflows entirely, silently disabling %d workflow(s): %s",
+			len(shadowed), strings.Join(shadowed, ", ")),
+		Remediation: "Forgejo ignores .github/workflows when .forgejo/workflows exists; mirror or remove the shadowed workflows",
+		SourceFile:  filepath.Join(in.RepoRoot, ".github", "workflows"),
+	}}
+}
+
+// workflowFileSet returns the set of workflow file base names in dir
+// (files ending in .yml or .yaml, top-level only — Forgejo does not
+// recurse). A missing or unreadable dir yields an empty set; doctor
+// fails closed by simply not flagging rather than aborting.
+func workflowFileSet(dir string) map[string]struct{} {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	out := map[string]struct{}{}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		lower := strings.ToLower(name)
+		if strings.HasSuffix(lower, ".yml") || strings.HasSuffix(lower, ".yaml") {
+			out[name] = struct{}{}
+		}
+	}
+	return out
+}
+
+// normalizeWorkflowName lowercases and collapses the .yaml/.yml
+// extension to a single form so "CI.yaml" and "ci.yml" compare
+// equal — Forgejo treats both extensions identically.
+func normalizeWorkflowName(name string) string {
+	lower := strings.ToLower(name)
+	lower = strings.TrimSuffix(lower, ".yaml")
+	lower = strings.TrimSuffix(lower, ".yml")
+	return lower
 }
 
 // --- helpers ----------------------------------------------------

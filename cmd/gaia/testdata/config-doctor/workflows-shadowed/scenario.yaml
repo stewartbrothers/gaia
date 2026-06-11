@@ -1,0 +1,33 @@
+description: |
+  A repo checkout carries BOTH `.forgejo/workflows/` and
+  `.github/workflows/`. Forgejo gives `.forgejo/` precedence and
+  ignores `.github/` entirely, so the `.github/`-defined CI gate
+  (ci.yml + deploy.yml) is silently disabled the moment the single
+  unrelated `.forgejo/workflows/lint.yml` lands. Doctor WARNs at
+  `workflows-shadowed` and names the shadowed files so the operator
+  can mirror or remove them.
+
+  Uses `cwd: "."` so the harness runs from the scenario tempdir; the
+  `.git` placeholder makes `auth.ProjectRoot(cwd)` resolve here and
+  the doctor inspects this root's workflow directories. Exit 0
+  because the finding is a WARN (no --strict).
+
+cwd: "."
+
+files:
+  .git: ""
+  .forgejo/workflows/lint.yml: |
+    on: [push]
+    jobs: {}
+  .github/workflows/ci.yml: |
+    on: [push]
+    jobs: {}
+  .github/workflows/deploy.yml: |
+    on: [push]
+    jobs: {}
+
+stages:
+  - args:
+      - config
+      - doctor
+    exit_code: 0

@@ -74,6 +74,12 @@ Checks performed:
     canonical fallback; warn if default_profile names a missing
     profile.
 
+  - Workflows precedence: warn if the checkout has both
+    .forgejo/workflows and .github/workflows AND the .forgejo set
+    does not cover every .github workflow (Forgejo ignores
+    .github/workflows when .forgejo/workflows exists — silently
+    disabling the shadowed .github CI gate).
+
   - Repo resolution: info showing how owner/name would resolve
     in the cwd.
 
