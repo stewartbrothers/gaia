@@ -10,6 +10,20 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+### Added
+
+- **`gaia branch protection get|set|delete <branch>`** — manage a
+  branch's protection rule, the enforcement layer that makes a CI gate
+  binding instead of advisory. `set main --required-check 'CI / Build'
+  --strict --required-approvals 1` requires the named status-check
+  context (a red OR absent required check blocks merge — a never-reported
+  check is not "satisfied"). `set` is declarative (upsert). New
+  `BranchProtectionOps` provider port + `CapBranchProtection` capability
+  (CLI command and MCP tools `gaia_branch_protection_*` gated by it).
+  **Forgejo only in this v1**; GitHub returns `NotImplemented` pending
+  the parity follow-up. Pairs with `gaia pr view --with-ci` (#344) for
+  reading the exact context strings to require. Closes #345.
+
 ### Fixed
 
 - **`gaia pr merge` is now idempotent and reports a clear reason when

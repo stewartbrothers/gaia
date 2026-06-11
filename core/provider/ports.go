@@ -350,6 +350,26 @@ type MilestoneOps interface {
 	ListMilestoneIssues(ctx context.Context, owner, repo string, id int64, opts ListMilestoneIssuesOptions) ([]types.Issue, *Page, error)
 }
 
+// BranchProtectionOps covers reading and setting a branch's protection
+// rule (required status checks, the strict up-to-date toggle, required
+// approvals). Forgejo implements it; GitHub returns NotImplemented until
+// parity lands (#345 v1). Gated by [CapBranchProtection] so a provider
+// with no notion of branch protection omits it cleanly.
+type BranchProtectionOps interface {
+	// GetBranchProtection returns the protection rule for branch, or a
+	// NotFound error when the branch has no rule.
+	GetBranchProtection(ctx context.Context, owner, repo, branch string) (*types.BranchProtection, error)
+
+	// SetBranchProtection upserts the protection rule for branch to the
+	// declarative state in opts (creates the rule if absent, replaces it
+	// if present) and returns the resulting rule.
+	SetBranchProtection(ctx context.Context, owner, repo, branch string, opts SetBranchProtectionOptions) (*types.BranchProtection, error)
+
+	// DeleteBranchProtection removes the protection rule for branch. A
+	// missing rule is reported as NotFound by the underlying forge.
+	DeleteBranchProtection(ctx context.Context, owner, repo, branch string) error
+}
+
 // IssueDependencyOps covers the issue blocker/blocks graph (Forgejo
 // REST; GitHub returns NotImplemented). Separated from [IssueOps]
 // because the dependency endpoints are a distinct, optionally-supported

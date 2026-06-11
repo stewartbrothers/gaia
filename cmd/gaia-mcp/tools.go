@@ -187,6 +187,9 @@ func registerToolsForProvider(s *server.MCPServer, name string) {
 	if supports(provider.CapMilestones) {
 		registerMilestoneTools(s)
 	}
+	if supports(provider.CapBranchProtection) {
+		registerBranchTools(s)
+	}
 }
 
 // configuredProviderName resolves the active provider name for
