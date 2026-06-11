@@ -49,6 +49,14 @@ reserved for breaking changes only.
 
 ### Changed
 
+- **`core/config`'s token env-var fallback is now registry-driven** rather
+  than a per-forge `switch`. `envNamesFor` consults
+  `provider.TokenEnvNames(name)`, so the forge registry (each forge declares
+  its fallbacks in `init()`) is the single source of truth for "what forges
+  exist + their token env fallbacks." Adding GitLab/Bitbucket now needs no
+  `core/config` edit. No behaviour change: forgejo still resolves
+  `FORGEJO_TOKEN` then `GITEA_TOKEN`, github `GITHUB_TOKEN` then `GH_TOKEN`,
+  and an unregistered provider yields no env fallback (as before). Closes #340.
 - **`gaia pr view --with-ci` now lists each check's context string** in
   pretty output (e.g. `CI / Build: success`) under the rollup, not just
   the aggregate counts. The providers already populated

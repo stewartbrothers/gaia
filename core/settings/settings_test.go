@@ -7,6 +7,15 @@ import (
 	"testing"
 
 	"github.com/stewartbrothers/gaia/core/settings"
+
+	// Blank-imported for the side effect of registering the forges in the
+	// provider registry. settings.Load -> config.Resolve resolves the token
+	// env fallback through the registry (#340); in production every
+	// settings.Load caller transitively imports core/forges via
+	// internal/forgebuilder, but this black-box test binary has no such
+	// importer, so the forges are registered here to keep the FORGEJO_TOKEN
+	// fallback assertions green.
+	_ "github.com/stewartbrothers/gaia/core/forges"
 )
 
 // writeFile is a tiny helper for the table-driven cases below.
