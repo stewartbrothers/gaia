@@ -415,6 +415,140 @@ func TestCwdContextLists(t *testing.T) {
 	}
 }
 
+// --- Workflows precedence footgun -------------------------------
+
+// writeWorkflows is a test helper that creates the named workflow
+// files under <root>/<dir>/. dir is e.g. ".forgejo/workflows" or
+// ".github/workflows".
+func writeWorkflows(t *testing.T, root, dir string, names ...string) {
+	t.Helper()
+	full := filepath.Join(root, filepath.FromSlash(dir))
+	if err := os.MkdirAll(full, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range names {
+		if err := os.WriteFile(filepath.Join(full, n), []byte("on: push\njobs: {}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestWorkflowsShadowedWarn(t *testing.T) {
+	dir := t.TempDir()
+	// .github defines the real gate; .forgejo has one unrelated file
+	// that silently disables it.
+	writeWorkflows(t, dir, ".github/workflows", "ci.yml", "deploy.yml")
+	writeWorkflows(t, dir, ".forgejo/workflows", "lint.yml")
+	in := doctor.Inputs{RepoRoot: dir}
+	got := doctor.Run(in)
+	f := findByCode(t, got, doctor.CodeWorkflowsShadowed)
+	if f == nil {
+		t.Fatalf("missing finding %s; got: %v", doctor.CodeWorkflowsShadowed, codes(got))
+	}
+	if f.Level != doctor.LevelWarn {
+		t.Errorf("level: got %s want %s", f.Level, doctor.LevelWarn)
+	}
+	if f.Remediation == "" {
+		t.Error("remediation empty; doctor's contract is to include one")
+	}
+	// Message should name the shadowed workflows so the operator can
+	// act without re-investigating.
+	if !strings.Contains(f.Message, "ci.yml") || !strings.Contains(f.Message, "deploy.yml") {
+		t.Errorf("message lacks shadowed names: %s", f.Message)
+	}
+}
+
+func TestWorkflowsShadowedStrictPromotesToErr(t *testing.T) {
+	dir := t.TempDir()
+	writeWorkflows(t, dir, ".github/workflows", "ci.yml")
+	writeWorkflows(t, dir, ".forgejo/workflows", "other.yml")
+	got := doctor.PromoteWarnings(doctor.Run(doctor.Inputs{RepoRoot: dir}))
+	f := findByCode(t, got, doctor.CodeWorkflowsShadowed)
+	if f == nil {
+		t.Fatalf("missing finding %s; got: %v", doctor.CodeWorkflowsShadowed, codes(got))
+	}
+	if f.Level != doctor.LevelErr {
+		t.Errorf("--strict should promote to ERR; got %s", f.Level)
+	}
+}
+
+func TestWorkflowsOnlyForgejoNoFinding(t *testing.T) {
+	dir := t.TempDir()
+	writeWorkflows(t, dir, ".forgejo/workflows", "ci.yml")
+	got := doctor.Run(doctor.Inputs{RepoRoot: dir})
+	if hasCode(got, doctor.CodeWorkflowsShadowed) {
+		t.Errorf(".forgejo-only flagged: %v", codes(got))
+	}
+}
+
+func TestWorkflowsOnlyGithubNoFinding(t *testing.T) {
+	dir := t.TempDir()
+	writeWorkflows(t, dir, ".github/workflows", "ci.yml")
+	got := doctor.Run(doctor.Inputs{RepoRoot: dir})
+	if hasCode(got, doctor.CodeWorkflowsShadowed) {
+		t.Errorf(".github-only flagged: %v", codes(got))
+	}
+}
+
+func TestWorkflowsForgejoCoversAllGithubNoFinding(t *testing.T) {
+	dir := t.TempDir()
+	// .forgejo mirrors (and exceeds) the .github set — nothing is
+	// shadowed, so no finding.
+	writeWorkflows(t, dir, ".github/workflows", "ci.yml", "deploy.yml")
+	writeWorkflows(t, dir, ".forgejo/workflows", "ci.yml", "deploy.yml", "extra.yml")
+	got := doctor.Run(doctor.Inputs{RepoRoot: dir})
+	if hasCode(got, doctor.CodeWorkflowsShadowed) {
+		t.Errorf(".forgejo covers all .github names but still flagged: %v", codes(got))
+	}
+}
+
+func TestWorkflowsBothDirsEmptyNoFinding(t *testing.T) {
+	dir := t.TempDir()
+	// Both directories exist but neither holds a workflow file.
+	if err := os.MkdirAll(filepath.Join(dir, ".github", "workflows"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".forgejo", "workflows"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got := doctor.Run(doctor.Inputs{RepoRoot: dir})
+	if hasCode(got, doctor.CodeWorkflowsShadowed) {
+		t.Errorf("empty dirs flagged: %v", codes(got))
+	}
+}
+
+func TestWorkflowsNoRepoRootNoFinding(t *testing.T) {
+	// Not inside a checkout — doctor can't inspect the filesystem.
+	got := doctor.Run(doctor.Inputs{})
+	if hasCode(got, doctor.CodeWorkflowsShadowed) {
+		t.Errorf("empty RepoRoot flagged: %v", codes(got))
+	}
+}
+
+func TestWorkflowsCaseInsensitiveAndYamlExt(t *testing.T) {
+	dir := t.TempDir()
+	// Forgejo treats .yml and .yaml alike, and the name match should
+	// be case-insensitive. .forgejo/CI.yaml covers .github/ci.yml.
+	writeWorkflows(t, dir, ".github/workflows", "ci.yml")
+	writeWorkflows(t, dir, ".forgejo/workflows", "CI.yaml")
+	got := doctor.Run(doctor.Inputs{RepoRoot: dir})
+	if hasCode(got, doctor.CodeWorkflowsShadowed) {
+		t.Errorf("case/ext-equivalent coverage still flagged: %v", codes(got))
+	}
+}
+
+func TestWorkflowsNonYamlFilesIgnored(t *testing.T) {
+	dir := t.TempDir()
+	// Only non-workflow files in .github/workflows → nothing real is
+	// shadowed.
+	writeWorkflows(t, dir, ".github/workflows", "README.md")
+	writeWorkflows(t, dir, ".forgejo/workflows", "ci.yml")
+	got := doctor.Run(doctor.Inputs{RepoRoot: dir})
+	if hasCode(got, doctor.CodeWorkflowsShadowed) {
+		t.Errorf("non-yaml .github files flagged: %v", codes(got))
+	}
+}
+
 // --- Exit-code helpers + strict promotion -----------------------
 
 func TestHasErrors(t *testing.T) {
