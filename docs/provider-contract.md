@@ -229,6 +229,7 @@ type Provider interface {
     IdentityOps          // Whoami, ServerVersion
     IssueOps             // List/Get/Create/EditIssue
     IssueDependencyOps   // blocker/blocks graph (NotImplemented on GitHub)
+    BranchProtectionOps  // branch protection rules (NotImplemented on GitHub)
     CommentOps           // ListComments + issue/PR comment writes
     PullRequestOps       // PR reads/writes + GetCommitStatus
     SearchOps            // Search
