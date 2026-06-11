@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"os"
+
+	"github.com/stewartbrothers/gaia/core/provider"
 )
 
 // Override carries the CLI-flag layer of overrides. Empty fields mean
@@ -118,16 +120,21 @@ func resolveToken(profile Profile, provider string) string {
 	return ""
 }
 
-// envNamesFor returns the env var names checked, in order, for a
-// given provider. Exported via export_test.go for table-driven tests.
-func envNamesFor(provider string) []string {
-	switch provider {
-	case "forgejo":
-		return []string{"FORGEJO_TOKEN", "GITEA_TOKEN"}
-	case "github":
-		return []string{"GITHUB_TOKEN", "GH_TOKEN"}
-	}
-	return nil
+// envNamesFor returns the env var names checked, in order, for a given
+// provider. The list is registry-driven (#340): the forge packages each
+// declare their TokenEnvNames in init() via provider.Register, so the
+// registry is the single source of truth for "what forges exist + their
+// token env fallbacks." Adding a forge (GitLab, Bitbucket) needs no edit
+// here. An unregistered provider — or one declaring none — yields nil,
+// exactly as the prior hard-coded switch did for unknown names.
+//
+// Population caveat: the registry is filled by forge init(), so any
+// caller must have imported core/forges (in production, every settings.Load
+// caller transitively does, via internal/forgebuilder). core/config's own
+// black-box tests blank-import the forges to populate it — see
+// registry_blackbox_test.go.
+func envNamesFor(p string) []string {
+	return provider.TokenEnvNames(p)
 }
 
 func firstNonEmpty(values ...string) string {

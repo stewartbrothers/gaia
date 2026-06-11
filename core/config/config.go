@@ -12,8 +12,10 @@
 // Tokens are sourced ONLY from environment variables (or the
 // credentials store loaded separately) — never from flags, never from
 // the config YAML. The Profile.TokenEnv field names which env var to
-// read; falling back to FORGEJO_TOKEN/GITEA_TOKEN for forgejo and
-// GITHUB_TOKEN/GH_TOKEN for github when TokenEnv is unset.
+// read; when TokenEnv is unset, the fallback env names come from the
+// forge registry (provider.TokenEnvNames) — FORGEJO_TOKEN/GITEA_TOKEN for
+// forgejo, GITHUB_TOKEN/GH_TOKEN for github — so adding a forge needs no
+// edit here (#340).
 //
 // Project config carries non-secret host metadata (provider, api_url,
 // default_profile, default_repo) so an operator who runs `gaia issue
