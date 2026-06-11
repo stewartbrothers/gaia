@@ -1,0 +1,60 @@
+name: gate
+description: |
+  Run gaia's core local pre-commit gate in one envelope, in the order
+  CI runs them: gofmt → vet → lint → cover (race + coverage) → build.
+  The chain stops at the first stage that fails and names it, instead of
+  an agent firing gofmt / vet / lint / test / build as separate calls and
+  reading each result. (CI additionally runs govulncheck; it's omitted
+  here to keep the chain fast and free of a PATH/install dependency —
+  the pinned go1.26.4 toolchain already carries the known stdlib fixes.)
+
+  This is gaia's own dev-loop chain (it shells out to this repo's
+  Makefile targets); it is not a generic forge chain.
+
+  Usage:
+    gaia chain run gate
+
+  Run it from the repo root before every commit. On success the
+  envelope is status: success with every stage ok; on failure it is
+  status: failure with failed_step set to the stage that broke and its
+  stderr captured.
+
+steps:
+  - id: gofmt
+    # `gofmt -l` lists unformatted files and still exits 0, so assert
+    # the list is empty: test -z fails (non-zero) when anything is listed.
+    run: test -z "$(gofmt -l .)"
+    on_failure:
+      return:
+        reason: gofmt
+        hint: "run `make fmt` — some files are not gofmt-clean"
+
+  - id: vet
+    run: make vet
+    on_failure:
+      return:
+        reason: vet
+        error: "${error.message}"
+
+  - id: lint
+    run: make lint
+    on_failure:
+      return:
+        reason: lint
+        error: "${error.message}"
+
+  - id: cover
+    # `make cover` is the race + coverage suite CI runs
+    # (go test ./... -race -covermode=atomic) plus the per-function summary.
+    run: make cover
+    on_failure:
+      return:
+        reason: test
+        error: "${error.message}"
+
+  - id: build
+    run: make build
+    on_failure:
+      return:
+        reason: build
+        error: "${error.message}"

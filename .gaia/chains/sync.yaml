@@ -1,0 +1,70 @@
+name: sync
+description: |
+  After a PR merges — however it merged: the web UI, watch-and-merge,
+  or a teammate — bring the local checkout back to a clean state in one
+  envelope: confirm the PR is actually merged, fetch, switch to the base
+  branch, fast-forward it, and delete the merged feature branch. Replaces
+  the four git calls an agent otherwise runs (and reads) by hand after
+  every merge.
+
+  A merged-state guard runs first, so the force-delete can never nuke a
+  branch whose PR has not landed.
+
+  Usage:
+    gaia chain run sync --var pr=352 --var branch=feature/issue-340-envnames-registry
+    gaia chain run sync --var pr=352 --var branch=feature/x --var base=main
+
+vars:
+  pr:
+    required: true
+  branch:
+    required: true
+  base:
+    default: main
+
+steps:
+  - id: verify-merged
+    # Abort before touching git unless the PR is actually merged — the
+    # branch delete below is a force delete (squash merges leave the
+    # local branch "unmerged" in git's eyes), so this guard is what makes
+    # that safe.
+    run: test "$(gaia pr view ${pr} --format value --fields state)" = merged
+    on_failure:
+      return:
+        reason: pr-not-merged
+        pr: "${pr}"
+        hint: "sync only runs after the PR has merged; its state is not 'merged' yet"
+
+  - id: fetch
+    run: git fetch origin
+    on_failure:
+      return:
+        reason: fetch-failed
+        error: "${error.message}"
+
+  - id: switch-base
+    run: git switch ${base}
+    on_failure:
+      return:
+        reason: switch-failed
+        hint: "couldn't switch to ${base} — commit or stash local changes first"
+        error: "${error.message}"
+
+  - id: fast-forward
+    run: git pull --ff-only origin ${base}
+    on_failure:
+      return:
+        reason: ff-failed
+        hint: "local ${base} diverged from origin — investigate before syncing"
+        error: "${error.message}"
+
+  - id: delete-branch
+    # Force delete: the PR is confirmed merged (verify-merged above), and
+    # a squash/rebase merge leaves the local feature branch with commits
+    # git doesn't see as merged, so -d would refuse. -D is correct here.
+    run: git branch -D ${branch}
+    on_failure:
+      return:
+        reason: branch-delete-failed
+        branch: "${branch}"
+        error: "${error.message}"

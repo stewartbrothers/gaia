@@ -12,6 +12,16 @@ reserved for breaking changes only.
 
 ### Added
 
+- **Dev-loop saved chains `gate` and `sync`** (`.gaia/chains/`) — collapse
+  gaia's own per-PR multi-call sequences into one chain envelope each.
+  `gaia chain run gate` runs the full CI-equivalent local gate
+  (gofmt → vet → lint → cover → build), stopping at and naming the first
+  failing stage. `gaia chain run sync --var pr=N --var branch=…` does the
+  post-merge cleanup (confirm merged → fetch → switch base → fast-forward
+  → delete the merged feature branch), with a merged-state guard so the
+  force-delete can't nuke an unmerged branch. Parse-validated like the
+  other canned chains. Closes #355.
+
 - **`gaia branch protection get|set|delete <branch>`** — manage a
   branch's protection rule, the enforcement layer that makes a CI gate
   binding instead of advisory. `set main --required-check 'CI / Build'
