@@ -12,6 +12,19 @@ reserved for breaking changes only.
 
 ### Added
 
+- **`gaia config doctor` now catches the `.forgejo/`-over-`.github/`
+  workflows precedence footgun** (`workflows-shadowed`). Forgejo gives
+  `.forgejo/workflows/` precedence over `.github/workflows/`: when both
+  directories exist, Forgejo runs only the `.forgejo/` set and ignores
+  `.github/` entirely — so a repo whose CI gate lives in `.github/` has
+  it silently switched off the moment any `.forgejo/workflows/*.yml`
+  lands (even an unrelated one), while `main` keeps looking green
+  because *a* workflow still runs. Doctor now WARNs (promotable to ERR
+  via `--strict`) when the checkout has both directories AND the
+  `.forgejo/` set does not cover every `.github/` workflow, naming the
+  shadowed files. Filesystem-only (no forge API); name matching ignores
+  case and treats `.yml`/`.yaml` as equivalent. Closes #346.
+
 - **Dev-loop saved chains `gate` and `sync`** (`.gaia/chains/`) — collapse
   gaia's own per-PR multi-call sequences into one chain envelope each.
   `gaia chain run gate` runs the full CI-equivalent local gate

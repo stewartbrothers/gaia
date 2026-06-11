@@ -1,0 +1,8 @@
+WARN workflows-shadowed: both .forgejo/workflows and .github/workflows exist; Forgejo ignores .github/workflows entirely, silently disabling 2 workflow(s): ci.yml, deploy.yml
+    fix: Forgejo ignores .github/workflows when .forgejo/workflows exists; mirror or remove the shadowed workflows
+    source: <TEMPDIR>/.github/workflows
+INFO repo-resolution: repo not resolvable in cwd (no --repo, no git remote, no project default_repo)
+    fix: run inside a configured checkout, or pass --repo owner/name
+INFO config-layers: resolved from: global=<absent>, env=<none>
+
+summary: 0 ERR, 1 WARN, 3 total finding(s)

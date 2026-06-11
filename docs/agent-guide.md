@@ -414,7 +414,13 @@ credential surface and prints one line per finding (`OK` / `INFO` /
 catches: a `default_profile` accidentally pinned in the global
 config (which contaminates every other project on the system), a
 project `.gaia/credentials.yaml` that isn't gitignored, and a
-profile whose `token_env` names an unset variable.
+profile whose `token_env` names an unset variable. It also catches
+the `.forgejo/`-over-`.github/` workflows precedence footgun
+(`workflows-shadowed`): when a checkout has both
+`.forgejo/workflows/` and `.github/workflows/`, Forgejo runs only
+the `.forgejo/` set and ignores `.github/` entirely, so a single
+new `.forgejo/workflows/*.yml` can silently disable a CI gate that
+lives in `.github/`.
 
 Exit code `4` (Auth) means the token is missing or rejected — re-run
 `gaia auth ...` against the right host. Full reference:
