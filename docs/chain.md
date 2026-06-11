@@ -686,6 +686,38 @@ Token-budget evidence — see
 Short version: the chain envelope is ~1/3 the bytes of the equivalent
 `gaia pr create` → poll → `gaia pr merge` agent flow.
 
+### Dev-loop chains: `gate` and `sync`
+
+Two chains ship for working *on gaia itself* — they shell out to this
+repo's Makefile + git flow, so they're repo-specific rather than generic
+forge chains. They exist to collapse the multi-call sequences an agent
+otherwise runs (and reads) by hand on every PR.
+
+**`gate`** — the full local pre-commit gate in one envelope, same checks
+CI runs, in order: `gofmt` (clean) → `make vet` → `make lint` →
+`make cover` (race + coverage suite) → `make build`. Stops at the first
+failing stage and names it (`reason: vet|lint|test|build|gofmt`). Run it
+from the repo root before every commit:
+
+```bash
+gaia chain run gate
+```
+
+**`sync`** — post-merge local cleanup, however the PR merged (web UI,
+`watch-and-merge`, or a teammate): confirm the PR is merged, `git fetch`,
+switch to the base branch, fast-forward it, and delete the merged feature
+branch. A merged-state guard runs first so the force-delete (needed
+because squash merges leave the local branch "unmerged" to git) can never
+nuke a branch whose PR hasn't landed.
+
+```bash
+gaia chain run sync --var pr=352 --var branch=feature/issue-340-envnames-registry
+```
+
+For the forge side of the loop, prefer the existing chains:
+`watch-and-merge --var pr=N` (ci-wait → merge) and `pr-create-and-land`
+(open → ci-wait → merge) rather than firing those steps individually.
+
 ## `gaia pr ci-wait` (Phase B-3)
 
 ```bash
