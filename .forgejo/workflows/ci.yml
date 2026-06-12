@@ -32,7 +32,16 @@ jobs:
           # v0.24.1 requires go1.26; bumped floor to match. Bump go.mod
           # and this file together.
           go-version: '1.26'
-          cache: true
+          # cache DISABLED (#357). On this self-hosted Forgejo act_runner
+          # the post-job cache SAVE of GOCACHE+GOMODCACHE took ~36 min
+          # (the "Complete job" phase), dwarfing the ~7 min of actual work
+          # — go test -race is only ~2 min. The race-instrumented build
+          # cache is large and changes every commit, so it has a poor hit
+          # rate yet is expensive to tar+upload to the runner's slow cache
+          # backend. Disabling it trades ~2-3 min of cold rebuild for
+          # ~43 min of restore+save. `timeout-minutes` doesn't help: the
+          # cache-save runs in post-job teardown, outside the step timeout.
+          cache: false
 
       - name: gofmt check
         run: |

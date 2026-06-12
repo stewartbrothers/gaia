@@ -35,7 +35,12 @@ jobs:
           # v0.24.1 requires go1.26; bumped floor to match. Bump go.mod
           # and this file together.
           go-version: '1.26'
-          cache: true
+          # cache DISABLED (#357) — kept in lock-step with the Forgejo
+          # workflow. The self-hosted Forgejo runner's post-job cache SAVE
+          # took ~36 min; GitHub-hosted runners tolerate cache: false fine
+          # (this mirror is a dormant publishing target, #47), so we keep
+          # the two files identical rather than diverge on cache policy.
+          cache: false
 
       - name: gofmt check
         run: |
