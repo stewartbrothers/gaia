@@ -283,9 +283,9 @@ tight when scripting):
 - Branch protection: `branch protection get|set|delete <branch>`.
   Declarative `set` upserts the rule (required status-check contexts,
   `--strict`, `--required-approvals`); the required checks are the
-  binding part (a red OR absent required check blocks merge). Forgejo
-  only in v1; GitHub returns `NotImplemented` (#345). Capability-gated
-  via `CapBranchProtection`.
+  binding part (a red OR absent required check blocks merge). Works on
+  both Forgejo and GitHub (#345, #350). Capability-gated via
+  `CapBranchProtection`.
 
 For read paths, gaia is consistently smaller (often 5–25×, sometimes
 ~400× with `--fields`) than the raw API response. Headline summary:

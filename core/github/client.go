@@ -164,6 +164,15 @@ func (c *Client) Patch(ctx context.Context, path string, body, out any) error {
 	return c.writeRequest(ctx, http.MethodPatch, path, body, out)
 }
 
+// Put issues a PUT with a JSON-encoded body. GitHub uses PUT for
+// declarative-replace endpoints — notably branch protection
+// (`/repos/{o}/{r}/branches/{branch}/protection`), where the request
+// supplies the full desired state. Shares the same do() retry/error
+// machinery as Post/Patch; PUT is treated as unsafe (no auto-retry).
+func (c *Client) Put(ctx context.Context, path string, body, out any) error {
+	return c.writeRequest(ctx, http.MethodPut, path, body, out)
+}
+
 // Delete issues a DELETE.
 func (c *Client) Delete(ctx context.Context, path string) error {
 	return c.writeRequest(ctx, http.MethodDelete, path, nil, nil)

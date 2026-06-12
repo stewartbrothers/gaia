@@ -43,9 +43,12 @@ reserved for breaking changes only.
   check is not "satisfied"). `set` is declarative (upsert). New
   `BranchProtectionOps` provider port + `CapBranchProtection` capability
   (CLI command and MCP tools `gaia_branch_protection_*` gated by it).
-  **Forgejo only in this v1**; GitHub returns `NotImplemented` pending
-  the parity follow-up. Pairs with `gaia pr view --with-ci` (#344) for
-  reading the exact context strings to require. Closes #345.
+  Works on **both Forgejo and GitHub** — GitHub maps to a single
+  declarative `PUT .../branches/{branch}/protection`, reading the
+  binding fields back from `required_status_checks` (legacy `contexts[]`
+  and newer `checks[]`) and `required_pull_request_reviews`. Pairs with
+  `gaia pr view --with-ci` (#344) for reading the exact context strings
+  to require. Closes #345, #350.
 
 ### Fixed
 
