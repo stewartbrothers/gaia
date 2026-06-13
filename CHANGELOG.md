@@ -10,6 +10,8 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-06-13
+
 ### Added
 
 - **`gaia config doctor` now catches the `.forgejo/`-over-`.github/`
@@ -50,50 +52,6 @@ reserved for breaking changes only.
   `gaia pr view --with-ci` (#344) for reading the exact context strings
   to require. Closes #345, #350.
 
-### Fixed
-
-- **`gaia pr merge` is now idempotent and reports a clear reason when
-  blocked.** Against a branch-protection-enabled branch, an auto-merge
-  (or a concurrent merge) can merge a PR the instant CI goes green; a
-  manual `pr merge` then raced a no-longer-mergeable PR and surfaced an
-  opaque, empty-body `HTTP 405` ("merge blocked by policy") — a scary
-  error for a merge that had actually succeeded. `MergePullRequest` now
-  re-checks (uncached) on any merge error: if the PR is already merged
-  it returns success, and the genuine-block message names the likely
-  causes (failing required checks, unmet reviews, or a disallowed merge
-  method) instead of echoing an empty body. Both providers. Closes #348.
-
-### Changed
-
-- **`core/config`'s token env-var fallback is now registry-driven** rather
-  than a per-forge `switch`. `envNamesFor` consults
-  `provider.TokenEnvNames(name)`, so the forge registry (each forge declares
-  its fallbacks in `init()`) is the single source of truth for "what forges
-  exist + their token env fallbacks." Adding GitLab/Bitbucket now needs no
-  `core/config` edit. No behaviour change: forgejo still resolves
-  `FORGEJO_TOKEN` then `GITEA_TOKEN`, github `GITHUB_TOKEN` then `GH_TOKEN`,
-  and an unregistered provider yields no env fallback (as before). Closes #340.
-- **`gaia pr view --with-ci` now lists each check's context string** in
-  pretty output (e.g. `CI / Build: success`) under the rollup, not just
-  the aggregate counts. The providers already populated
-  `CISummary.Checks` on the view path, so the JSON envelope
-  (`ci_summary.checks[].name`) was already carrying the contexts — only
-  the pretty renderer dropped them, and the type docstring wrongly
-  claimed the view path left `Checks` empty. Lets an operator read the
-  exact check name to require in branch protection without resorting to
-  `pr ci-wait`. Closes #344.
-
-### Security
-
-- **Toolchain bumped `go1.26.3` → `go1.26.4`** to pull in the Go
-  standard-library fixes for **GO-2026-5039** (`net/textproto` error
-  escaping) and **GO-2026-5037** (`crypto/x509` hostname parsing), both
-  reachable from `core/forgejo/client.go`. `govulncheck ./...` was
-  failing CI on every PR (and `main`) once the advisories published;
-  with `go1.26.4` it reports no affected vulnerabilities. Closes #337.
-
-### Added
-
 - **`cache.Typed[T]` — type-safe cache-aside view** over `cache.Cache`,
   broadening cache adoption beyond the HTTP clients (ADR 0001 / #314).
   `GetOr(ctx, owner, repo, id, fetch)` collapses the
@@ -123,7 +81,38 @@ reserved for breaking changes only.
   exit code did. SemVer-wise this is a backwards-compatible
   addition — no existing code value changed.
 
+### Changed
+
+- **`core/config`'s token env-var fallback is now registry-driven** rather
+  than a per-forge `switch`. `envNamesFor` consults
+  `provider.TokenEnvNames(name)`, so the forge registry (each forge declares
+  its fallbacks in `init()`) is the single source of truth for "what forges
+  exist + their token env fallbacks." Adding GitLab/Bitbucket now needs no
+  `core/config` edit. No behaviour change: forgejo still resolves
+  `FORGEJO_TOKEN` then `GITEA_TOKEN`, github `GITHUB_TOKEN` then `GH_TOKEN`,
+  and an unregistered provider yields no env fallback (as before). Closes #340.
+- **`gaia pr view --with-ci` now lists each check's context string** in
+  pretty output (e.g. `CI / Build: success`) under the rollup, not just
+  the aggregate counts. The providers already populated
+  `CISummary.Checks` on the view path, so the JSON envelope
+  (`ci_summary.checks[].name`) was already carrying the contexts — only
+  the pretty renderer dropped them, and the type docstring wrongly
+  claimed the view path left `Checks` empty. Lets an operator read the
+  exact check name to require in branch protection without resorting to
+  `pr ci-wait`. Closes #344.
+
 ### Fixed
+
+- **`gaia pr merge` is now idempotent and reports a clear reason when
+  blocked.** Against a branch-protection-enabled branch, an auto-merge
+  (or a concurrent merge) can merge a PR the instant CI goes green; a
+  manual `pr merge` then raced a no-longer-mergeable PR and surfaced an
+  opaque, empty-body `HTTP 405` ("merge blocked by policy") — a scary
+  error for a merge that had actually succeeded. `MergePullRequest` now
+  re-checks (uncached) on any merge error: if the PR is already merged
+  it returns success, and the genuine-block message names the likely
+  causes (failing required checks, unmet reviews, or a disallowed merge
+  method) instead of echoing an empty body. Both providers. Closes #348.
 
 - **CI: golden scenarios stop opening sqlite cache per-run.** The
   `clearGaiaEnv` fix from #303 set `GAIA_CACHE_ENABLED=false` in
@@ -138,6 +127,15 @@ reserved for breaking changes only.
   harnesses, mirroring the rationale of #303. Scenarios that
   explicitly test cache behaviour can re-enable it via
   `stage.env`. Closes #319.
+
+### Security
+
+- **Toolchain bumped `go1.26.3` → `go1.26.4`** to pull in the Go
+  standard-library fixes for **GO-2026-5039** (`net/textproto` error
+  escaping) and **GO-2026-5037** (`crypto/x509` hostname parsing), both
+  reachable from `core/forgejo/client.go`. `govulncheck ./...` was
+  failing CI on every PR (and `main`) once the advisories published;
+  with `go1.26.4` it reports no affected vulnerabilities. Closes #337.
 
 ## [0.5.0] — 2026-05-21
 
@@ -967,7 +965,8 @@ Pre-v1.0, expect minor-bump churn at the public surface.
 - OS keychain backing for `credentials.yaml` (vs current 0600
   plaintext): `gh` does this, gaia doesn't yet.
 
-[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/stewartbrothers/gaia/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/stewartbrothers/gaia/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/stewartbrothers/gaia/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/stewartbrothers/gaia/compare/v0.3.0...v0.4.0
