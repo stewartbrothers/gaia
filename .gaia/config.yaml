@@ -1,17 +1,31 @@
 # Project-local gaia config for this checkout.
 #
-# Committed (no secrets — the credential lives in either the env
-# var or ~/.config/gaia/credentials.yaml). Lets `gaia issue list`
-# work bare in this checkout: no --provider, no --api-url, no
-# --repo on every call.
+# Committed (NO secrets). Tokens are never stored in this file — they
+# come from the environment or a credentials store:
+#   - forgejo: FORGEJO_TOKEN / GITEA_TOKEN env, or `gaia auth forgejo`
+#   - github:  GITHUB_TOKEN / GH_TOKEN env, or `gaia auth gh`
 #
-# Token still comes from FORGEJO_TOKEN / GITEA_TOKEN env, or from
-# `gaia auth forgejo` writing ~/.config/gaia/credentials.yaml.
+# For a repo-local token (e.g. the GitHub PAT used to publish release
+# assets to the GitHub mirror), run `gaia auth gh --project`: it writes
+# the credential to the gitignored .gaia/credentials.yaml, never here.
+#
+# Effect of this file: gaia commands run bare in this checkout — no
+# --provider, --api-url, or --repo on every call. Layering order:
+# project (this file) > global (~/.config/gaia/config.yaml) > env > flags.
 
 default_profile: stewartbrothers
 default_repo: Gerwood/gaia
 
 profiles:
+  # Self-hosted Forgejo — the default for issues/PRs/releases here.
   stewartbrothers:
     provider: forgejo
     api_url: https://git.stewartbrothers.com.au/api/v1
+
+  # GitHub mirror — used for release-asset publishing to the public
+  # mirror (`gaia --profile github release publish ...`). Token via
+  # `gaia auth gh` (global) or `gaia auth gh --project` (repo-local,
+  # gitignored). No token lives in this committed file.
+  github:
+    provider: github
+    api_url: https://api.github.com

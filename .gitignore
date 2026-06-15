@@ -52,3 +52,4 @@ chaining-ideas.md
 # SSH key pairs generated locally for tap/mirror setup
 brew-key-ed25519
 brew-key-ed25519.pub
+.gaia/credentials.yaml
