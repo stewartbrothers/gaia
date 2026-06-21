@@ -188,8 +188,10 @@ Either path triggers the `.forgejo/workflows/release.yml` workflow.
    don't mirror to code.forgejo.org, so we install via `go install`).
 5. Runs `goreleaser release --clean`. The `brews:` block (#49)
    writes a commit bumping `Formula/gaia.rb` to the new tag's url
-   + sha256 and pushes it to `main` (gated on
-   `GORELEASER_TAP_DEPLOY_KEY` being configured). The Forgejo
+   + sha256 and pushes it to the dedicated tap repo
+   `Gerwood/homebrew-gaia` (its `main` is unprotected; this repo's
+   `main` is not — see #360), gated on
+   `GORELEASER_TAP_DEPLOY_KEY` being configured. The Forgejo
    release record itself is opted out via `release: disable: true`
    in `.goreleaser.yml` — `gaia release publish` (step 7) creates
    it. `--skip=publish` is **not** passed because that flag would
@@ -246,9 +248,11 @@ Run through the checklist:
       (linux/darwin/windows × amd64/arm64) plus the checksums file.
       Download one and run `./gaia version` — should report the new
       tag.
-- [ ] **`Formula/gaia.rb` on `main`** has been bumped to the new
-      tag's url + sha256 (the `release: bump Homebrew formula to
-      vX.Y.Z` commit, signed by `gaia-release-bot`). If
+- [ ] **`Formula/gaia.rb` in the `homebrew-gaia` tap repo** has
+      been bumped to the new tag's url + sha256 (the `release: bump
+      Homebrew formula to vX.Y.Z` commit, signed by
+      `gaia-release-bot`) at
+      `git.stewartbrothers.com.au/Gerwood/homebrew-gaia`. If
       `GORELEASER_TAP_DEPLOY_KEY` was unset, this step silently
       skips — re-run after configuring the secret.
 - [ ] **GitHub release** has the new tag and all artifacts at
@@ -308,7 +312,7 @@ and PR #283.
 
    | Failure | Fix |
    |---|---|
-   | "Deploy Key: N: ... is not authorized to write" during goreleaser brew push | Forgejo UI → Settings → Deploy Keys → delete the key → re-add the same public half with **Allow write access** ticked. Deploy keys' permission flag is set-at-creation; it can't be toggled in place. The new pre-flight probe step ("Verify deploy key has write access") catches this in < 5 seconds; if it fires, the goreleaser step never runs and no partial state is created. |
+   | "Deploy Key: N: ... is not authorized to write" during goreleaser brew push | On the **`homebrew-gaia`** tap repo: Forgejo UI → Settings → Deploy Keys → delete the key → re-add the same public half with **Allow write access** ticked. Deploy keys' permission flag is set-at-creation; it can't be toggled in place. The new pre-flight probe step ("Verify deploy key has write access") catches this in < 5 seconds; if it fires, the goreleaser step never runs and no partial state is created. |
    | `! [rejected] HEAD -> main (fetch first)` during README bump | The fix landed in this file's commit history: the step now `git fetch origin main && git checkout -B main origin/main` before sed+commit+push, so any concurrent push (brew tap, etc.) is automatically rebased over. The step is also `continue-on-error: true` — a README bump failure no longer tanks the GitHub release / GHCR / mirror steps that come after. |
    | "Only signed in user is allowed to call APIs" / 403 from `gaia release publish` | The `FORGEJO_RELEASE_TOKEN` secret is missing, expired, or lacks `write:repository` scope. Rotate it (Forgejo UI → Settings → Secrets), then re-run. |
    | GHCR push: `401 Unauthorized` or `403 Forbidden` | The `GH_RELEASE_TOKEN` secret needs the `write:packages` scope (not just `public_repo`). Fine-grained PATs can't push to GHCR — must be a classic PAT. |
@@ -398,9 +402,10 @@ Repository Settings → Secrets → Add Secret:
   Without it the upload step 401s and the release ends up empty.
 
 - **`GORELEASER_TAP_DEPLOY_KEY`** — SSH private key matching a
-  deploy key with **write** access on this repo. Used by the
-  `brews:` block (#49) to push the `Formula/gaia.rb` bump to
-  `main` after each tagged release. **Optional**; if absent, the
+  deploy key with **write** access on the `Gerwood/homebrew-gaia`
+  tap repo (#360). Used by the `brews:` block (#49) to push the
+  `Formula/gaia.rb` bump to the tap repo's `main` after each tagged
+  release. **Optional**; if absent, the
   Homebrew formula doesn't get auto-updated and tap users stay
   on the previous tag until the next manual update.
 

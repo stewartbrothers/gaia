@@ -199,19 +199,22 @@ jobs:
           printf '%s\n' "$TAP_KEY" > "$KEYFILE"
           chmod 0600 "$KEYFILE"
 
+          # Probe the TAP repo (Gerwood/homebrew-gaia), NOT this repo:
+          # that's where goreleaser pushes the formula bump (#360). The
+          # deploy key's public half must have write access there.
           GIT_SSH_COMMAND="ssh -i $KEYFILE -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
             git push \
-              "git@repo.stewartbrothers.com.au:${{ github.repository }}.git" \
+              "git@repo.stewartbrothers.com.au:Gerwood/homebrew-gaia.git" \
               ":refs/heads/__deploy_key_write_probe__" \
               2> "$RUNNER_TEMP/probe.stderr" || true
 
           if grep -q "is not authorized to write" "$RUNNER_TEMP/probe.stderr"; then
-            echo "::error::GORELEASER_TAP_DEPLOY_KEY's registered public half lacks WRITE access on this repo."
+            echo "::error::GORELEASER_TAP_DEPLOY_KEY's registered public half lacks WRITE access on the homebrew-gaia tap repo."
             echo "::error::Forgejo response:"
             sed 's/^/::error::  /' "$RUNNER_TEMP/probe.stderr"
             echo "::error::"
             echo "::error::Fix: Forgejo deploy keys cannot have their permission flipped after creation."
-            echo "::error::  1. Go to: ${{ github.server_url }}/${{ github.repository }}/settings/keys"
+            echo "::error::  1. Go to: ${{ github.server_url }}/Gerwood/homebrew-gaia/settings/keys"
             echo "::error::  2. Delete the existing 'Gaia Deploy Key' entry"
             echo "::error::  3. Re-add the same public half with 'Allow write access' ticked"
             echo "::error::"

@@ -43,7 +43,7 @@ curl -fsSL https://raw.githubusercontent.com/stewartbrothers/gaia/main/scripts/i
 **Homebrew** (macOS + Linux):
 
 ```bash
-brew tap stewartbrothers/gaia https://github.com/stewartbrothers/gaia
+brew tap stewartbrothers/gaia https://git.stewartbrothers.com.au/Gerwood/homebrew-gaia
 brew install gaia
 ```
 
@@ -190,7 +190,7 @@ The project is hosted on GitHub at
 [`github.com/stewartbrothers/gaia`](https://github.com/stewartbrothers/gaia).
 
 - **Issues, PRs, releases** — [github.com/stewartbrothers/gaia](https://github.com/stewartbrothers/gaia)
-- **Homebrew tap** — `brew tap stewartbrothers/gaia https://github.com/stewartbrothers/gaia`
+- **Homebrew tap** — `brew tap stewartbrothers/gaia https://git.stewartbrothers.com.au/Gerwood/homebrew-gaia`
 
 ## License
 

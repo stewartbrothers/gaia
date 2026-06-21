@@ -53,11 +53,11 @@ The trailing `# gaia` marker on the rc edit is the anchor.
 
 ## Homebrew
 
-`gaia` ships a Homebrew formula served as a tap from the GitHub
-repo:
+`gaia` ships a Homebrew formula served from a dedicated tap repo,
+[`Gerwood/homebrew-gaia`](https://git.stewartbrothers.com.au/Gerwood/homebrew-gaia):
 
 ```bash
-brew tap stewartbrothers/gaia https://github.com/stewartbrothers/gaia
+brew tap stewartbrothers/gaia https://git.stewartbrothers.com.au/Gerwood/homebrew-gaia
 brew install gaia
 ```
 
@@ -65,6 +65,16 @@ The `https://...` URL form is required because Homebrew defaults
 to `github.com/<owner>/homebrew-<name>` — the explicit URL points
 the tap at the correct repo. Both `gaia` and `gaia-mcp` land on
 `$PATH` after the install.
+
+> **Already tapped the old location?** Earlier releases served the
+> formula from the main repo (`…/stewartbrothers/gaia`). Re-point
+> the tap once:
+>
+> ```bash
+> brew untap stewartbrothers/gaia
+> brew tap stewartbrothers/gaia https://git.stewartbrothers.com.au/Gerwood/homebrew-gaia
+> brew upgrade gaia
+> ```
 
 To upgrade:
 
@@ -76,8 +86,9 @@ brew upgrade gaia
 The formula is **auto-updated on every release tag** by the
 release workflow (see [`../RELEASING.md`](../RELEASING.md)) — when
 a `v*` tag is pushed, goreleaser rewrites `Formula/gaia.rb` with
-the new archive URL and `sha256`, then commits to `main`. So
-`brew upgrade gaia` always pulls the latest tagged release.
+the new archive URL and `sha256`, then commits it to the
+`homebrew-gaia` tap repo's `main`. So `brew upgrade gaia` always
+pulls the latest tagged release.
 
 ### Verifying the install
 

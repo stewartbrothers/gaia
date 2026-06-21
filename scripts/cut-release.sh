@@ -165,9 +165,9 @@ running. Watch it at:
 Expected on success:
 
   - Forgejo release $TAG with all archives + checksums attached.
-  - A 'release: bump Homebrew formula to $TAG' commit on main
-    updating Formula/gaia.rb (requires GORELEASER_TAP_DEPLOY_KEY
-    secret — see RELEASING.md).
+  - A 'release: bump Homebrew formula to $TAG' commit on the
+    Gerwood/homebrew-gaia tap repo updating Formula/gaia.rb
+    (requires GORELEASER_TAP_DEPLOY_KEY secret — see RELEASING.md).
   - $TAG mirrored to github.com/stewartbrothers/gaia (requires
     GITHUB_MIRROR_SSH_KEY secret — see docs/mirroring.md).
 

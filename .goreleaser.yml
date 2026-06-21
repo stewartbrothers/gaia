@@ -122,18 +122,22 @@ changelog:
 release:
   disable: true
 
-# brews: maintain a Homebrew formula in this same repo at
-# Formula/gaia.rb so users can:
+# brews: maintain a Homebrew formula in the DEDICATED tap repo
+# Gerwood/homebrew-gaia at Formula/gaia.rb so users can:
 #
-#   brew tap stewartbrothers/gaia https://github.com/stewartbrothers/gaia
+#   brew tap stewartbrothers/gaia https://git.stewartbrothers.com.au/Gerwood/homebrew-gaia
 #   brew install gaia
 #
-# On every tagged release, goreleaser opens a commit against `main`
-# updating Formula/gaia.rb's `url` and `sha256` fields to point at the
-# new release archives. The token used for the push is the same
-# FORGEJO_RELEASE_TOKEN the release workflow already needs (a
-# repo-scoped token with `write:repository` is sufficient because the
-# tap *is* this repo — no separate `homebrew-tap` repo to maintain).
+# On every tagged release, goreleaser pushes a commit to the tap repo's
+# `main` updating Formula/gaia.rb's `url` and `sha256` fields to point
+# at the new release archives. The push uses GORELEASER_TAP_DEPLOY_KEY
+# (SSH deploy key with write access on homebrew-gaia).
+#
+# Why a separate repo (#360): this repo's `main` is a protected branch.
+# goreleaser's brew pipe pushes the formula bump directly to the tap's
+# default branch; a protected `main` rejects that push and breaks the
+# release. homebrew-gaia's `main` is unprotected, so the generated
+# formula lands freely while this repo's `main` stays fully gated.
 #
 # `skip_upload: auto` keeps goreleaser from updating the formula on
 # pre-release tags (-rc.N, -beta.N) so tap users don't accidentally
@@ -153,16 +157,16 @@ brews:
     # from the release record. Formula URLs point to the GitHub mirror
     # (the public download endpoint used by install.sh and brew).
     url_template: "https://github.com/stewartbrothers/gaia/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
-    # The tap lives in this repo (the canonical Forgejo repo). The
-    # brews block needs `git.api_url` set so goreleaser hits the
-    # Forgejo API instead of github.com. `gitea` is the supported
-    # value (Forgejo is API-compatible).
+    # The tap lives in the dedicated Gerwood/homebrew-gaia Forgejo repo
+    # (#360), keeping formula-bump pushes off this repo's protected
+    # `main`. The git.url points goreleaser's brew pipe at that repo
+    # over SSH; the deploy key has write access there.
     repository:
       owner: Gerwood
-      name: gaia
+      name: homebrew-gaia
       branch: main
       git:
-        url: 'git@repo.stewartbrothers.com.au:Gerwood/gaia.git'
+        url: 'git@repo.stewartbrothers.com.au:Gerwood/homebrew-gaia.git'
         ssh_command: 'ssh -i {{ .KeyPath }} -o StrictHostKeyChecking=accept-new'
         private_key: '{{ .Env.GORELEASER_TAP_DEPLOY_KEY }}'
     # Where in the repo the formula file lives. Homebrew will look
