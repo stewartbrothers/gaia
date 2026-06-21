@@ -249,6 +249,9 @@ func (*noopProvider) AddIssueDependency(_ context.Context, _, _ string, _ int, _
 func (*noopProvider) RemoveIssueDependency(_ context.Context, _, _ string, _ int, _ provider.IssueDepRef) error {
 	return errNotImplemented
 }
+func (*noopProvider) ListSecrets(_ context.Context, _, _ string, _ provider.ListSecretsOptions) ([]types.Secret, *provider.Page, error) {
+	return nil, nil, errNotImplemented
+}
 func (*noopProvider) ListBranches(_ context.Context, _, _ string, _ provider.ListBranchesOptions) ([]types.Branch, *provider.Page, error) {
 	return nil, nil, errNotImplemented
 }
