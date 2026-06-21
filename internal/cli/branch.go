@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
@@ -13,10 +14,100 @@ import (
 func newBranchCmd(flags *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "branch",
-		Short: "Manage branch settings (protection rules)",
+		Short: "Manage branches and branch settings",
 	}
+	cmd.AddCommand(newBranchListCmd(flags))
+	cmd.AddCommand(newBranchCreateCmd(flags))
 	cmd.AddCommand(newBranchProtectionCmd(flags))
 	return cmd
+}
+
+func newBranchListCmd(flags *globalFlags) *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List the repository's branches",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ops, err := buildBranchOps(flags)
+			if err != nil {
+				return err
+			}
+			owner, repo, err := resolveRepo(flags)
+			if err != nil {
+				return err
+			}
+			branches, page, err := ops.ListBranches(cmd.Context(), owner, repo, provider.ListBranchesOptions{
+				Limit:  flags.Limit,
+				Cursor: flags.Cursor,
+			})
+			if err != nil {
+				return err
+			}
+			return renderEnvelope(cmd, flags, branches, page, prettyBranchList)
+		},
+	}
+}
+
+func newBranchCreateCmd(flags *globalFlags) *cobra.Command {
+	var from string
+	cmd := &cobra.Command{
+		Use:   "create <name>",
+		Short: "Create a branch from --from (or the repo's default branch)",
+		Long: `Create a branch.
+
+--from accepts a branch name, tag, or commit; when omitted the new branch
+is cut from the repository's default branch.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ops, err := buildBranchOps(flags)
+			if err != nil {
+				return err
+			}
+			owner, repo, err := resolveRepo(flags)
+			if err != nil {
+				return err
+			}
+			br, err := ops.CreateBranch(cmd.Context(), owner, repo, args[0], provider.CreateBranchOptions{From: from})
+			if err != nil {
+				return err
+			}
+			return renderEnvelope(cmd, flags, br, nil, prettyBranch)
+		},
+	}
+	cmd.Flags().StringVar(&from, "from", "", "source ref to branch from (branch, tag, or commit; default: the repo's default branch)")
+	return cmd
+}
+
+func prettyBranch(w io.Writer, data any) error {
+	b, ok := data.(*types.Branch)
+	if !ok {
+		return fmt.Errorf("prettyBranch: unexpected type %T", data)
+	}
+	_, _ = fmt.Fprintf(w, "Branch: %s\n", b.Name)
+	if b.Commit != "" {
+		_, _ = fmt.Fprintf(w, "Commit: %s\n", b.Commit)
+	}
+	if b.Protected {
+		_, _ = fmt.Fprintln(w, "Protected: true")
+	}
+	return nil
+}
+
+func prettyBranchList(w io.Writer, data any) error {
+	branches, ok := data.([]types.Branch)
+	if !ok {
+		return fmt.Errorf("prettyBranchList: unexpected type %T", data)
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(tw, "NAME\tCOMMIT\tPROTECTED")
+	for _, b := range branches {
+		sha := b.Commit
+		if len(sha) > 12 {
+			sha = sha[:12]
+		}
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%v\n", b.Name, sha, b.Protected)
+	}
+	return tw.Flush()
 }
 
 func newBranchProtectionCmd(flags *globalFlags) *cobra.Command {

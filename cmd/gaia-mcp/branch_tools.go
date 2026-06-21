@@ -11,6 +11,20 @@ import (
 )
 
 func registerBranchTools(s *server.MCPServer) {
+	s.AddTool(mcp.NewTool("gaia_branch_list",
+		mcp.WithDescription("List the repository's branches (name, tip commit, and whether protected)."),
+		mcp.WithString("repo", mcp.Required(), mcp.Description("owner/name")),
+		mcp.WithNumber("limit", mcp.Description("max branches to return")),
+		mcp.WithString("cursor", mcp.Description("opaque pagination cursor from a previous response")),
+	), ctxBoundHandler(handleBranchList))
+
+	s.AddTool(mcp.NewTool("gaia_branch_create",
+		mcp.WithDescription("Create a branch. `from` is a branch, tag, or commit to branch from; omit it to use the repo's default branch."),
+		mcp.WithString("repo", mcp.Required(), mcp.Description("owner/name")),
+		mcp.WithString("name", mcp.Required(), mcp.Description("new branch name")),
+		mcp.WithString("from", mcp.Description("source ref (branch, tag, or commit); default: the repo's default branch")),
+	), ctxBoundHandler(handleBranchCreate))
+
 	s.AddTool(mcp.NewTool("gaia_branch_protection_get",
 		mcp.WithDescription("Show a branch's protection rule: required status-check contexts, the strict up-to-date flag, and required approvals."),
 		mcp.WithString("repo", mcp.Required(), mcp.Description("owner/name")),
@@ -43,6 +57,45 @@ func branchFromArgs(args map[string]any) (owner, repo, branch string, err error)
 		return "", "", "", exitcode.Errorf(exitcode.Usage, "branch is required")
 	}
 	return owner, repo, branch, nil
+}
+
+func handleBranchList(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
+	owner, repo, err := repoFromArgs(args)
+	if err != nil {
+		return toolError(err), nil
+	}
+	p, err := build(ctx)
+	if err != nil {
+		return toolError(err), nil
+	}
+	branches, page, err := p.ListBranches(ctx, owner, repo, provider.ListBranchesOptions{
+		Limit:  optInt(args, "limit"),
+		Cursor: optString(args, "cursor"),
+	})
+	if err != nil {
+		return toolError(err), nil
+	}
+	return toolResult(branches, page), nil
+}
+
+func handleBranchCreate(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {
+	owner, repo, err := repoFromArgs(args)
+	if err != nil {
+		return toolError(err), nil
+	}
+	name := optString(args, "name")
+	if name == "" {
+		return toolError(exitcode.Errorf(exitcode.Usage, "name is required")), nil
+	}
+	p, err := build(ctx)
+	if err != nil {
+		return toolError(err), nil
+	}
+	br, err := p.CreateBranch(ctx, owner, repo, name, provider.CreateBranchOptions{From: optString(args, "from")})
+	if err != nil {
+		return toolError(err), nil
+	}
+	return toolResult(br, nil), nil
 }
 
 func handleBranchProtectionGet(ctx context.Context, args map[string]any) (*mcp.CallToolResult, error) {

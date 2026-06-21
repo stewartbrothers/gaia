@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +16,66 @@ func cliBPJSON(branch string, contexts []string, approvals int, strict bool) map
 		"status_check_contexts":    contexts,
 		"required_approvals":       approvals,
 		"block_on_outdated_branch": strict,
+	}
+}
+
+func TestBranchListCLI(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/o/r/branches" {
+			t.Errorf("path: %q", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"name": "main", "commit": map[string]any{"id": "abc123def456789"}, "protected": true},
+			{"name": "dev", "commit": map[string]any{"id": "ff00"}, "protected": false},
+		})
+	}))
+	defer srv.Close()
+
+	stdout, stderr, err := runGaia(t, srv.URL, "branch", "list")
+	if err != nil {
+		t.Fatalf("err=%v stderr=%s", err, stderr)
+	}
+	var env struct {
+		Data []struct {
+			Name      string `json:"name"`
+			Commit    string `json:"commit"`
+			Protected bool   `json:"protected"`
+		} `json:"data"`
+	}
+	if e := json.Unmarshal([]byte(stdout), &env); e != nil {
+		t.Fatalf("decode: %v\n%s", e, stdout)
+	}
+	if len(env.Data) != 2 || env.Data[0].Name != "main" || !env.Data[0].Protected {
+		t.Errorf("got %+v", env.Data)
+	}
+}
+
+func TestBranchCreateCLI(t *testing.T) {
+	var posted []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/repos/o/r/branches" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		posted, _ = io.ReadAll(r.Body)
+		w.WriteHeader(201)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"name": "feature/x", "commit": map[string]any{"id": "abc123"}, "protected": false,
+		})
+	}))
+	defer srv.Close()
+
+	stdout, stderr, err := runGaia(t, srv.URL, "branch", "create", "feature/x", "--from", "main")
+	if err != nil {
+		t.Fatalf("err=%v stderr=%s", err, stderr)
+	}
+	if !strings.Contains(string(posted), `"new_branch_name":"feature/x"`) {
+		t.Errorf("create body missing new_branch_name: %s", posted)
+	}
+	if !strings.Contains(string(posted), `"old_ref_name":"main"`) {
+		t.Errorf("create body missing old_ref_name: %s", posted)
+	}
+	if !strings.Contains(stdout, "feature/x") {
+		t.Errorf("create output missing branch name: %s", stdout)
 	}
 }
 
