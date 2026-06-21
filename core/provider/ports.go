@@ -370,6 +370,16 @@ type BranchProtectionOps interface {
 	DeleteBranchProtection(ctx context.Context, owner, repo, branch string) error
 }
 
+// SecretsOps covers reading CI/Actions secret *metadata* (names +
+// timestamps, never values — both forges' secret APIs are write-only).
+// Gated by [CapSecrets]. Answers "what secrets are configured on this
+// repo/org" without exposing any secret material.
+type SecretsOps interface {
+	// ListSecrets returns the Actions secrets configured on the repo, or
+	// on the owner's org when opts.Org is set (repo is ignored then).
+	ListSecrets(ctx context.Context, owner, repo string, opts ListSecretsOptions) ([]types.Secret, *Page, error)
+}
+
 // BranchOps covers listing and creating git branches — universal git
 // operations both forges support. CreateBranch resolves the source ref
 // (opts.From, or the repo's default branch when empty) to a commit and

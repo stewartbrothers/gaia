@@ -30,6 +30,7 @@ const (
 	CapMilestones   Capability = "milestones"
 
 	CapBranchProtection Capability = "branch_protection"
+	CapSecrets          Capability = "secrets"
 )
 
 // Supports reports whether the provider registered under name offers

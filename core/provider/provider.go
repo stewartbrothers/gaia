@@ -37,4 +37,5 @@ type Provider interface {
 	WebhookOps
 	ActionsOps
 	MilestoneOps
+	SecretsOps
 }

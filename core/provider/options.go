@@ -446,6 +446,17 @@ type ListMilestoneIssuesOptions struct {
 	Cursor string
 }
 
+// --- Secrets -----------------------------------------------------
+
+// ListSecretsOptions paginates a ListSecrets call. Org switches the
+// listing from the repo's Actions secrets to the owner's org-level
+// secrets (repo is ignored in that case).
+type ListSecretsOptions struct {
+	Org    bool
+	Limit  int
+	Cursor string
+}
+
 // --- Branches ----------------------------------------------------
 
 // ListBranchesOptions paginates a ListBranches call. Empty Limit takes

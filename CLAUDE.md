@@ -291,6 +291,12 @@ tight when scripting):
   binding part (a red OR absent required check blocks merge). Works on
   both Forgejo and GitHub (#345, #350). Capability-gated via
   `CapBranchProtection`.
+- Secrets: `secrets list [--org]`. Lists the repo's (or `--org`'s)
+  Actions secret **metadata** — names + timestamps, never values (both
+  forges' secret APIs are write-only). Answers "is `GORELEASER_TAP_DEPLOY_KEY`
+  / `GH_RELEASE_TOKEN` actually configured" without exposing material.
+  Works on both Forgejo (bare array) and GitHub (`{total_count, secrets}`).
+  Capability-gated via `CapSecrets` (#371).
 
 For read paths, gaia is consistently smaller (often 5–25×, sometimes
 ~400× with `--fields`) than the raw API response. Headline summary:
