@@ -280,6 +280,11 @@ tight when scripting):
   ID transparently. `logs` and `rerun` currently return an unsupported
   error on Forgejo v15.0.1 because the API doesn't expose those
   endpoints (gaps #266, #267) — use the run's `html_url` instead.
+- Branches: `branch list | create <name> [--from <ref>]`. `create`
+  branches from `--from` (a branch, tag, or commit) or the repo's
+  default branch when omitted; on GitHub it resolves the source ref to a
+  SHA and POSTs `git/refs`, on Forgejo it's a single POST. Universal git
+  op — not capability-gated (#368).
 - Branch protection: `branch protection get|set|delete <branch>`.
   Declarative `set` upserts the rule (required status-check contexts,
   `--strict`, `--required-approvals`); the required checks are the

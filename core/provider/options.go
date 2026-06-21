@@ -446,6 +446,22 @@ type ListMilestoneIssuesOptions struct {
 	Cursor string
 }
 
+// --- Branches ----------------------------------------------------
+
+// ListBranchesOptions paginates a ListBranches call. Empty Limit takes
+// the calling layer's default.
+type ListBranchesOptions struct {
+	Limit  int
+	Cursor string
+}
+
+// CreateBranchOptions configures CreateBranch. From is the source ref to
+// branch from (a branch name, tag, or commit-ish); empty means the
+// repo's default branch.
+type CreateBranchOptions struct {
+	From string
+}
+
 // SetBranchProtectionOptions is the desired protection state for
 // SetBranchProtection. It is declarative, not incremental: the fields
 // fully specify the rule, so an omitted/zero field sets that aspect to

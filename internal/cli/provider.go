@@ -118,6 +118,11 @@ func buildWebhookOps(flags *globalFlags) (provider.WebhookOps, error) {
 	return p, err
 }
 
+func buildBranchOps(flags *globalFlags) (provider.BranchOps, error) {
+	p, _, err := buildForgejoProvider(flags)
+	return p, err
+}
+
 func buildBranchProtectionOps(flags *globalFlags) (provider.BranchProtectionOps, error) {
 	p, _, err := buildForgejoProvider(flags)
 	return p, err

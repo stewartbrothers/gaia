@@ -370,6 +370,25 @@ type BranchProtectionOps interface {
 	DeleteBranchProtection(ctx context.Context, owner, repo, branch string) error
 }
 
+// BranchOps covers listing and creating git branches — universal git
+// operations both forges support. CreateBranch resolves the source ref
+// (opts.From, or the repo's default branch when empty) to a commit and
+// points the new ref at it; on GitHub that's the GET-default-branch →
+// resolve-SHA → POST git/refs dance, on Forgejo a single POST with
+// old_ref_name. Distinct from [BranchProtectionOps] (which manages a
+// branch's protection *rule*), and not capability-gated because every
+// git forge has branches.
+type BranchOps interface {
+	// ListBranches returns the repo's branches (paginated). The opaque
+	// page cursor follows the same contract as the other list calls.
+	ListBranches(ctx context.Context, owner, repo string, opts ListBranchesOptions) ([]types.Branch, *Page, error)
+
+	// CreateBranch creates branch `name` from opts.From (a branch, tag,
+	// or commit-ish); an empty From branches from the repo's default
+	// branch. Returns the created branch with its tip commit.
+	CreateBranch(ctx context.Context, owner, repo, name string, opts CreateBranchOptions) (*types.Branch, error)
+}
+
 // IssueDependencyOps covers the issue blocker/blocks graph (Forgejo
 // REST; GitHub returns NotImplemented). Separated from [IssueOps]
 // because the dependency endpoints are a distinct, optionally-supported
