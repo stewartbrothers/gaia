@@ -145,7 +145,17 @@ func (p *Provider) GetPullRequest(ctx context.Context, owner, repo string, n int
 	var raw apiPullRequest
 	prPath := fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, n)
 	prKey := cacheKey(kindPR, owner, repo, itoa(n))
-	if err := p.client.GetCached(ctx, prPath, &raw, prKey, CacheTTLSingle); err != nil {
+	// A WithCISummary read is CI monitoring: the head SHA must be live,
+	// because the status lookup below is keyed off it. Serving a cached
+	// PR would key the status fetch off a stale head SHA (e.g. after a
+	// force-push), reporting the previous commit's CI result as if it
+	// were current (#367). So bypass the cache for CI reads; plain reads
+	// keep the 5-min cache.
+	if opts.WithCISummary {
+		if err := p.client.Get(ctx, prPath, &raw); err != nil {
+			return nil, err
+		}
+	} else if err := p.client.GetCached(ctx, prPath, &raw, prKey, CacheTTLSingle); err != nil {
 		return nil, err
 	}
 	out := raw.toType()
