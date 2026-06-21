@@ -102,6 +102,14 @@ the raw forge response. Three reasons:
 | Single-resource read with ETag (`gaia issue view`, `pr view`) | 5 min | ETag handles correctness; TTL bounds bandwidth. |
 | List read (`gaia issue list`, `pr list`) | 30 sec | No reliable ETag on lists; tight staleness window. |
 | Cross-resource search | 60 sec | Same as lists. |
+| **CI-monitoring read** (`pr view --with-ci`, `pr ci-wait`) | **never cached** | A CI read is keyed off the PR's live head SHA; a cached PR would key the status lookup off a stale SHA after a force-push and report the previous commit's result as current (#367). |
+
+**CI status is never served from cache.** `GetPullRequest(WithCISummary)`
+bypasses the cache for the PR read (so the head SHA is live), and the
+status/check-runs lookup is always a plain `GET`. `pr ci-wait` therefore
+always polls fresh state without needing `--no-cache`, and any chain that
+shells out to `ci-wait` inherits that. Commit statuses and Actions runs
+(`gaia actions list|view`, `pr ci-wait --ref`) are likewise never cached.
 
 A TTL'd entry is **not deleted on expiry** — it's marked stale and
 re-validated. The HTTP path issues a conditional GET:
