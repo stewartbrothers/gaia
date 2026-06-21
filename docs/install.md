@@ -53,11 +53,14 @@ The trailing `# gaia` marker on the rc edit is the anchor.
 
 ## Homebrew
 
-`gaia` ships a Homebrew formula served from a dedicated tap repo,
-[`Gerwood/homebrew-gaia`](https://git.stewartbrothers.com.au/Gerwood/homebrew-gaia):
+`gaia` ships a Homebrew formula from a dedicated tap repo,
+[`stewartbrothers/homebrew-gaia`](https://github.com/stewartbrothers/homebrew-gaia)
+on GitHub (a push-mirror of the canonical Forgejo
+`Gerwood/homebrew-gaia`, which is where goreleaser auto-bumps the
+formula on each release):
 
 ```bash
-brew tap stewartbrothers/gaia https://git.stewartbrothers.com.au/Gerwood/homebrew-gaia
+brew tap stewartbrothers/gaia https://github.com/stewartbrothers/homebrew-gaia
 brew install gaia
 ```
 
@@ -72,7 +75,7 @@ the tap at the correct repo. Both `gaia` and `gaia-mcp` land on
 >
 > ```bash
 > brew untap stewartbrothers/gaia
-> brew tap stewartbrothers/gaia https://git.stewartbrothers.com.au/Gerwood/homebrew-gaia
+> brew tap stewartbrothers/gaia https://github.com/stewartbrothers/homebrew-gaia
 > brew upgrade gaia
 > ```
 
