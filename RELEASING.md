@@ -255,6 +255,16 @@ Run through the checklist:
       `git.stewartbrothers.com.au/Gerwood/homebrew-gaia`. If
       `GORELEASER_TAP_DEPLOY_KEY` was unset, this step silently
       skips — re-run after configuring the secret.
+- [ ] **Tap mirror synced to GitHub.** The Forgejo `homebrew-gaia`
+      repo push-mirrors to
+      `github.com/stewartbrothers/homebrew-gaia` (where `brew tap`
+      actually clones from — the Forgejo instance requires auth for
+      anonymous git-HTTP, GitHub doesn't). The mirror has
+      `sync_on_commit` enabled, so the formula bump propagates within
+      moments; confirm `Formula/gaia.rb` shows the new `version` on
+      GitHub. If it lags, hit **Synchronize Now** on the Forgejo repo's
+      Mirror Settings (a stale/expired GitHub PAT there is the usual
+      cause — `last_error` on the push mirror will say so).
 - [ ] **GitHub release** has the new tag and all artifacts at
       `github.com/stewartbrothers/gaia/releases/tag/vX.Y.Z`. If
       `GH_RELEASE_TOKEN` was unset, the workflow skips this step
