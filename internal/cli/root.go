@@ -115,6 +115,7 @@ auth setup.`,
 	root.AddCommand(annotateCapability(newSecretsCmd(flags), provider.CapSecrets))
 	root.AddCommand(annotateCapability(newVariablesCmd(flags), provider.CapVariables))
 	root.AddCommand(annotateCapability(newRunnersCmd(flags), provider.CapRunners))
+	root.AddCommand(annotateCapability(newCollaboratorsCmd(flags), provider.CapCollaborators))
 
 	return root
 }

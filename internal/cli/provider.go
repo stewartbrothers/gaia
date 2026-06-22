@@ -133,6 +133,11 @@ func buildRunnersOps(flags *globalFlags) (provider.RunnersOps, error) {
 	return p, err
 }
 
+func buildCollaboratorsOps(flags *globalFlags) (provider.CollaboratorsOps, error) {
+	p, _, err := buildForgejoProvider(flags)
+	return p, err
+}
+
 func buildBranchOps(flags *globalFlags) (provider.BranchOps, error) {
 	p, _, err := buildForgejoProvider(flags)
 	return p, err

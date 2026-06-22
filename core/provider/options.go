@@ -479,6 +479,16 @@ type ListRunnersOptions struct {
 	Cursor string
 }
 
+// --- Collaborators -----------------------------------------------
+
+// ListCollaboratorsOptions paginates a ListCollaborators call. There is
+// no Org switch — collaborators are inherently repo-scoped (the access
+// list for one repo). Empty Limit takes the calling layer's default.
+type ListCollaboratorsOptions struct {
+	Limit  int
+	Cursor string
+}
+
 // --- Branches ----------------------------------------------------
 
 // ListBranchesOptions paginates a ListBranches call. Empty Limit takes

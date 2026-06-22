@@ -402,6 +402,17 @@ type RunnersOps interface {
 	ListRunners(ctx context.Context, owner, repo string, opts ListRunnersOptions) ([]types.Runner, *Page, error)
 }
 
+// CollaboratorsOps covers reading a repo's collaborator access list — who
+// has read-or-better access and at what permission level. Gated by
+// [CapCollaborators]. A repo access audit.
+type CollaboratorsOps interface {
+	// ListCollaborators returns the collaborators on the repo, each with
+	// their effective permission level. GitHub supplies the permission
+	// inline; Forgejo's list omits it and the implementation resolves it
+	// per-user with one extra call apiece.
+	ListCollaborators(ctx context.Context, owner, repo string, opts ListCollaboratorsOptions) ([]types.Collaborator, *Page, error)
+}
+
 // BranchOps covers listing and creating git branches — universal git
 // operations both forges support. CreateBranch resolves the source ref
 // (opts.From, or the repo's default branch when empty) to a commit and

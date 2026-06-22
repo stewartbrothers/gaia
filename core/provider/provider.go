@@ -40,4 +40,5 @@ type Provider interface {
 	SecretsOps
 	VariablesOps
 	RunnersOps
+	CollaboratorsOps
 }
