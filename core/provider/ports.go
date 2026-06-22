@@ -380,6 +380,16 @@ type SecretsOps interface {
 	ListSecrets(ctx context.Context, owner, repo string, opts ListSecretsOptions) ([]types.Secret, *Page, error)
 }
 
+// VariablesOps covers reading CI/Actions variables — non-secret
+// configuration whose values the API *does* return (unlike secrets).
+// Gated by [CapVariables]. Answers "what variables are configured on
+// this repo/org, and what are they set to".
+type VariablesOps interface {
+	// ListVariables returns the Actions variables configured on the repo,
+	// or on the owner's org when opts.Org is set (repo is ignored then).
+	ListVariables(ctx context.Context, owner, repo string, opts ListVariablesOptions) ([]types.Variable, *Page, error)
+}
+
 // BranchOps covers listing and creating git branches — universal git
 // operations both forges support. CreateBranch resolves the source ref
 // (opts.From, or the repo's default branch when empty) to a commit and

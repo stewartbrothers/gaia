@@ -297,6 +297,12 @@ tight when scripting):
   / `GH_RELEASE_TOKEN` actually configured" without exposing material.
   Works on both Forgejo (bare array) and GitHub (`{total_count, secrets}`).
   Capability-gated via `CapSecrets` (#371).
+- Variables: `variables list [--org]`. Lists the repo's (or `--org`'s)
+  Actions variables. Unlike secrets, variable **values ARE returned** —
+  non-secret config (e.g. `TURBO_TEAM`, `TURBO_API`) — so the pretty
+  printer shows `NAME  VALUE  UPDATED`. Works on both Forgejo (bare array,
+  value lives in the `data` field) and GitHub (`{total_count, variables}`).
+  Capability-gated via `CapVariables` (#375).
 
 For read paths, gaia is consistently smaller (often 5–25×, sometimes
 ~400× with `--fields`) than the raw API response. Headline summary:

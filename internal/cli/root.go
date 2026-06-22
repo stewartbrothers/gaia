@@ -113,6 +113,7 @@ auth setup.`,
 	root.AddCommand(annotateCapability(newMilestoneCmd(flags), provider.CapMilestones))
 	root.AddCommand(annotateCapability(newBranchCmd(flags), provider.CapBranchProtection))
 	root.AddCommand(annotateCapability(newSecretsCmd(flags), provider.CapSecrets))
+	root.AddCommand(annotateCapability(newVariablesCmd(flags), provider.CapVariables))
 
 	return root
 }

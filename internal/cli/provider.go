@@ -123,6 +123,11 @@ func buildSecretsOps(flags *globalFlags) (provider.SecretsOps, error) {
 	return p, err
 }
 
+func buildVariablesOps(flags *globalFlags) (provider.VariablesOps, error) {
+	p, _, err := buildForgejoProvider(flags)
+	return p, err
+}
+
 func buildBranchOps(flags *globalFlags) (provider.BranchOps, error) {
 	p, _, err := buildForgejoProvider(flags)
 	return p, err
