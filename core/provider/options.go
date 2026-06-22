@@ -457,6 +457,17 @@ type ListSecretsOptions struct {
 	Cursor string
 }
 
+// --- Variables ---------------------------------------------------
+
+// ListVariablesOptions paginates a ListVariables call. Org switches the
+// listing from the repo's Actions variables to the owner's org-level
+// variables (repo is ignored in that case).
+type ListVariablesOptions struct {
+	Org    bool
+	Limit  int
+	Cursor string
+}
+
 // --- Branches ----------------------------------------------------
 
 // ListBranchesOptions paginates a ListBranches call. Empty Limit takes
