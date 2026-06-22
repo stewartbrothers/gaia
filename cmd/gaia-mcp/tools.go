@@ -199,6 +199,9 @@ func registerToolsForProvider(s *server.MCPServer, name string) {
 	if supports(provider.CapRunners) {
 		registerRunnersTools(s)
 	}
+	if supports(provider.CapCollaborators) {
+		registerCollaboratorsTools(s)
+	}
 }
 
 // configuredProviderName resolves the active provider name for

@@ -33,6 +33,7 @@ const (
 	CapSecrets          Capability = "secrets"
 	CapVariables        Capability = "variables"
 	CapRunners          Capability = "runners"
+	CapCollaborators    Capability = "collaborators"
 )
 
 // Supports reports whether the provider registered under name offers

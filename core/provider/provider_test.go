@@ -258,6 +258,9 @@ func (*noopProvider) ListVariables(_ context.Context, _, _ string, _ provider.Li
 func (*noopProvider) ListRunners(_ context.Context, _, _ string, _ provider.ListRunnersOptions) ([]types.Runner, *provider.Page, error) {
 	return nil, nil, errNotImplemented
 }
+func (*noopProvider) ListCollaborators(_ context.Context, _, _ string, _ provider.ListCollaboratorsOptions) ([]types.Collaborator, *provider.Page, error) {
+	return nil, nil, errNotImplemented
+}
 func (*noopProvider) ListBranches(_ context.Context, _, _ string, _ provider.ListBranchesOptions) ([]types.Branch, *provider.Page, error) {
 	return nil, nil, errNotImplemented
 }
