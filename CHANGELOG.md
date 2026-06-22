@@ -10,6 +10,69 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-06-22
+
+### Added
+
+- **`gaia branch list` and `gaia branch create <name> [--from <ref>]`** —
+  list a repo's branches and create new ones. `--from` accepts a branch,
+  tag, or commit; omitted, the new branch is cut from the repo's default
+  branch. New `BranchOps` provider port. Branches are a universal git op,
+  so (unlike branch protection) the command is **not** capability-gated.
+  On Forgejo a single `POST /branches`; on GitHub `CreateBranch` resolves
+  the source ref to a SHA and POSTs `git/refs` (no native create-branch
+  endpoint). Closes #368.
+
+- **`gaia tag list | create <name> [--from <ref>] | delete <name>`** —
+  manage bare git tags independent of releases (gaia previously touched
+  tags only *through* releases, so it couldn't list a release-less tag or
+  create/delete one). New `TagOps` port; ungated like branches. Forgejo
+  uses the first-class `/tags` endpoints; GitHub reuses branch-create's
+  ref→SHA resolution then POSTs `refs/tags/<name>` and deletes via
+  `git/refs/tags/{tag}`. `delete` is `--confirm`-gated. Closes #378.
+
+- **`gaia secrets list [--org]`** — enumerate the repo's (or org's)
+  Actions secret **metadata** — names + timestamps, **never values**
+  (both forges' secret APIs are write-only). Answers "is
+  `GORELEASER_TAP_DEPLOY_KEY` / `GH_RELEASE_TOKEN` actually configured"
+  without exposing material. New `SecretsOps` port + `CapSecrets`. Works
+  on Forgejo (bare array) and GitHub (`{total_count, secrets}`).
+  Closes #371.
+
+- **`gaia variables list [--org]`** — enumerate the repo's (or org's)
+  Actions variables. Unlike secrets, variable **values ARE returned**
+  (non-secret config such as `TURBO_TEAM` / `TURBO_API`). New
+  `VariablesOps` port + `CapVariables`. Forgejo returns a bare array with
+  the value under `data`; GitHub wraps in `{total_count, variables}`.
+  Closes #375.
+
+- **`gaia runners list [--org]`** — list the repo's (or org's)
+  self-hosted Actions runners with name, status (online/offline), busy
+  flag, and labels — confirm a CI/deploy runner is live before a release.
+  The repo-level list may be empty when runners are registered at the org
+  or instance level (use `--org`). New `RunnersOps` port + `CapRunners`.
+  Forgejo's labels tolerate both the `[]string` and `[{name}]` wire
+  shapes; GitHub's `labels:[{name}]` are flattened. Closes #376.
+
+- **`gaia collaborators list`** — a repo access audit: who has
+  read-or-better access and at what **permission** level. New
+  `CollaboratorsOps` port + `CapCollaborators`. GitHub returns the
+  permission inline (`role_name`); Forgejo's list omits it, so gaia
+  resolves each collaborator's level with one extra per-user
+  `/collaborators/{login}/permission` call. Closes #377.
+
+### Fixed
+
+- **CI-monitoring reads no longer serve a cached PR.** `gaia pr ci-wait`
+  and `gaia pr view --with-ci` both fetch the PR with its CI summary, and
+  the status lookup is keyed off the PR's head SHA. Serving the PR from
+  the 5-minute cache meant that after a force-push the cached head SHA
+  drove a stale status lookup, reporting the *previous* commit's CI result
+  as current (a false "success"). A `WithCISummary` read now bypasses the
+  cache for the PR fetch on both providers, so the head SHA — and the
+  status keyed off it — is always live. Plain `pr view` keeps the cache;
+  chains that shell out to `ci-wait` inherit the fix. Closes #367.
+
 ## [0.6.0] — 2026-06-13
 
 ### Added
