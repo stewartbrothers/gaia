@@ -159,11 +159,13 @@ func registerAllTools(s *server.MCPServer) {
 func registerToolsForProvider(s *server.MCPServer, name string) {
 	supports := func(c provider.Capability) bool { return provider.Supports(name, c) }
 
-	// Ungated: every backend gaia targets has issues, labels, and search.
+	// Ungated: every backend gaia targets has issues, labels, search,
+	// and git tags (a universal git op — no CapTags, #378).
 	registerIssueTools(s)
 	registerLabelTools(s)
 	registerSearchTool(s)
 	registerIssueDepTools(s)
+	registerTagTools(s)
 
 	// Capability-gated resource groups.
 	if supports(provider.CapPullRequests) {

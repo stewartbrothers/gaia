@@ -505,6 +505,22 @@ type CreateBranchOptions struct {
 	From string
 }
 
+// --- Tags --------------------------------------------------------
+
+// ListTagsOptions paginates a ListTags call. Empty Limit takes the
+// calling layer's default.
+type ListTagsOptions struct {
+	Limit  int
+	Cursor string
+}
+
+// CreateTagOptions configures CreateTag. From is the source ref to tag
+// (a branch name, tag, or commit-ish); empty means the repo's default
+// branch.
+type CreateTagOptions struct {
+	From string
+}
+
 // SetBranchProtectionOptions is the desired protection state for
 // SetBranchProtection. It is declarative, not incremental: the fields
 // fully specify the rule, so an omitted/zero field sets that aspect to

@@ -143,6 +143,11 @@ func buildBranchOps(flags *globalFlags) (provider.BranchOps, error) {
 	return p, err
 }
 
+func buildTagOps(flags *globalFlags) (provider.TagOps, error) {
+	p, _, err := buildForgejoProvider(flags)
+	return p, err
+}
+
 func buildBranchProtectionOps(flags *globalFlags) (provider.BranchProtectionOps, error) {
 	p, _, err := buildForgejoProvider(flags)
 	return p, err

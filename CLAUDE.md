@@ -285,6 +285,14 @@ tight when scripting):
   default branch when omitted; on GitHub it resolves the source ref to a
   SHA and POSTs `git/refs`, on Forgejo it's a single POST. Universal git
   op — not capability-gated (#368).
+- Tags: `tag list | create <name> [--from <ref>] | delete <name> [--confirm]`.
+  Manages bare git tags independent of releases (lists a tag with no
+  release; creates/deletes a tag without touching the release surface).
+  `create` tags `--from` (a branch, tag, or commit) or the repo's default
+  branch when omitted; on GitHub it reuses branch-create's ref→SHA
+  resolution and POSTs `git/refs` (`refs/tags/<name>`), on Forgejo it's a
+  single POST. `delete` is `--confirm`-gated (prints a preview otherwise).
+  Universal git op — not capability-gated, no `CapTags` (#378).
 - Branch protection: `branch protection get|set|delete <branch>`.
   Declarative `set` upserts the rule (required status-check contexts,
   `--strict`, `--required-approvals`); the required checks are the
