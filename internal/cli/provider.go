@@ -128,6 +128,11 @@ func buildVariablesOps(flags *globalFlags) (provider.VariablesOps, error) {
 	return p, err
 }
 
+func buildRunnersOps(flags *globalFlags) (provider.RunnersOps, error) {
+	p, _, err := buildForgejoProvider(flags)
+	return p, err
+}
+
 func buildBranchOps(flags *globalFlags) (provider.BranchOps, error) {
 	p, _, err := buildForgejoProvider(flags)
 	return p, err

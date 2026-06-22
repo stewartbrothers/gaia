@@ -39,4 +39,5 @@ type Provider interface {
 	MilestoneOps
 	SecretsOps
 	VariablesOps
+	RunnersOps
 }

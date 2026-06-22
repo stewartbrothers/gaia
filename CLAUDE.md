@@ -297,12 +297,23 @@ tight when scripting):
   / `GH_RELEASE_TOKEN` actually configured" without exposing material.
   Works on both Forgejo (bare array) and GitHub (`{total_count, secrets}`).
   Capability-gated via `CapSecrets` (#371).
+<<<<<<< HEAD
 - Variables: `variables list [--org]`. Lists the repo's (or `--org`'s)
   Actions variables. Unlike secrets, variable **values ARE returned** —
   non-secret config (e.g. `TURBO_TEAM`, `TURBO_API`) — so the pretty
   printer shows `NAME  VALUE  UPDATED`. Works on both Forgejo (bare array,
   value lives in the `data` field) and GitHub (`{total_count, variables}`).
   Capability-gated via `CapVariables` (#375).
+=======
+- Runners: `runners list [--org]`. Lists the repo's (or `--org`'s)
+  self-hosted Actions runners — name, status (online/offline), busy flag,
+  and labels. Answers "is the deploy runner live and what can it run"
+  before triggering a release; the repo-level list may be empty when
+  runners are org/instance-scoped (use `--org`). Works on both Forgejo
+  (bare array, labels tolerate string-or-`{name}` shapes) and GitHub
+  (`{total_count, runners}`, `labels:[{name}]` flattened).
+  Capability-gated via `CapRunners` (#376).
+>>>>>>> a4bd40f (feat(runners): add `gaia runners list [--org]` for self-hosted Actions runners)
 
 For read paths, gaia is consistently smaller (often 5–25×, sometimes
 ~400× with `--fields`) than the raw API response. Headline summary:
