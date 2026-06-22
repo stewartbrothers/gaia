@@ -468,6 +468,17 @@ type ListVariablesOptions struct {
 	Cursor string
 }
 
+// --- Runners -----------------------------------------------------
+
+// ListRunnersOptions paginates a ListRunners call. Org switches the
+// listing from the repo's self-hosted Actions runners to the owner's
+// org-level runners (repo is ignored in that case).
+type ListRunnersOptions struct {
+	Org    bool
+	Limit  int
+	Cursor string
+}
+
 // --- Branches ----------------------------------------------------
 
 // ListBranchesOptions paginates a ListBranches call. Empty Limit takes

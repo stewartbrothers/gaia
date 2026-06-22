@@ -390,6 +390,18 @@ type VariablesOps interface {
 	ListVariables(ctx context.Context, owner, repo string, opts ListVariablesOptions) ([]types.Variable, *Page, error)
 }
 
+// RunnersOps covers reading self-hosted Actions runner status — name,
+// online/offline state, busy flag, and capability labels. Gated by
+// [CapRunners]. Answers "is this CI runner online and what can it run"
+// for ops confirming a registered runner is live before a deploy.
+type RunnersOps interface {
+	// ListRunners returns the self-hosted Actions runners registered on
+	// the repo, or on the owner's org when opts.Org is set (repo is
+	// ignored then). The repo-level list may be empty when runners are
+	// registered at the org or instance level.
+	ListRunners(ctx context.Context, owner, repo string, opts ListRunnersOptions) ([]types.Runner, *Page, error)
+}
+
 // BranchOps covers listing and creating git branches — universal git
 // operations both forges support. CreateBranch resolves the source ref
 // (opts.From, or the repo's default branch when empty) to a commit and
