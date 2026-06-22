@@ -432,6 +432,32 @@ type BranchOps interface {
 	CreateBranch(ctx context.Context, owner, repo, name string, opts CreateBranchOptions) (*types.Branch, error)
 }
 
+// TagOps covers listing, creating, and deleting git tags — universal git
+// operations both forges support. Like [BranchOps] (and unlike
+// [BranchProtectionOps]), tags are NOT capability-gated: every git forge
+// has tags, so there is no CapTags and the CLI/MCP surfaces register
+// unconditionally. CreateTag resolves the source ref (opts.From, or the
+// repo's default branch when empty) to a commit and points the new ref
+// at it; on GitHub that's the GET-default-branch → resolve-SHA →
+// POST git/refs dance (the same resolution CreateBranch uses), on Forgejo
+// a single POST. Distinct from [ReleaseOps], which manages a *release*
+// (notes + assets) that happens to carry a tag — TagOps manages the bare
+// git ref with no release attached.
+type TagOps interface {
+	// ListTags returns the repo's tags (paginated). The opaque page
+	// cursor follows the same contract as the other list calls.
+	ListTags(ctx context.Context, owner, repo string, opts ListTagsOptions) ([]types.Tag, *Page, error)
+
+	// CreateTag creates tag `name` from opts.From (a branch, tag, or
+	// commit-ish); an empty From tags the repo's default branch. Returns
+	// the created tag with its target commit.
+	CreateTag(ctx context.Context, owner, repo, name string, opts CreateTagOptions) (*types.Tag, error)
+
+	// DeleteTag removes tag `name`. 204 is success; a missing tag is
+	// reported as NotFound by the underlying forge.
+	DeleteTag(ctx context.Context, owner, repo, name string) error
+}
+
 // IssueDependencyOps covers the issue blocker/blocks graph (Forgejo
 // REST; GitHub returns NotImplemented). Separated from [IssueOps]
 // because the dependency endpoints are a distinct, optionally-supported

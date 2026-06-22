@@ -26,6 +26,7 @@ type Provider interface {
 	IssueOps
 	IssueDependencyOps
 	BranchOps
+	TagOps
 	BranchProtectionOps
 	CommentOps
 	PullRequestOps

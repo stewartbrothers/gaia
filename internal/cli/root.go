@@ -112,6 +112,11 @@ auth setup.`,
 	root.AddCommand(newConfigCmd(flags))
 	root.AddCommand(annotateCapability(newMilestoneCmd(flags), provider.CapMilestones))
 	root.AddCommand(annotateCapability(newBranchCmd(flags), provider.CapBranchProtection))
+	// Tags are a universal git op (like issues, not like branch
+	// protection): every forge gaia targets has them, so `tag` registers
+	// unconditionally rather than via annotateCapability — there is no
+	// CapTags (#378).
+	root.AddCommand(newTagCmd(flags))
 	root.AddCommand(annotateCapability(newSecretsCmd(flags), provider.CapSecrets))
 	root.AddCommand(annotateCapability(newVariablesCmd(flags), provider.CapVariables))
 	root.AddCommand(annotateCapability(newRunnersCmd(flags), provider.CapRunners))

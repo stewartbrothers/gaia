@@ -267,6 +267,15 @@ func (*noopProvider) ListBranches(_ context.Context, _, _ string, _ provider.Lis
 func (*noopProvider) CreateBranch(_ context.Context, _, _, _ string, _ provider.CreateBranchOptions) (*types.Branch, error) {
 	return nil, errNotImplemented
 }
+func (*noopProvider) ListTags(_ context.Context, _, _ string, _ provider.ListTagsOptions) ([]types.Tag, *provider.Page, error) {
+	return nil, nil, errNotImplemented
+}
+func (*noopProvider) CreateTag(_ context.Context, _, _, _ string, _ provider.CreateTagOptions) (*types.Tag, error) {
+	return nil, errNotImplemented
+}
+func (*noopProvider) DeleteTag(_ context.Context, _, _, _ string) error {
+	return errNotImplemented
+}
 func (*noopProvider) GetBranchProtection(_ context.Context, _, _, _ string) (*types.BranchProtection, error) {
 	return nil, errNotImplemented
 }
