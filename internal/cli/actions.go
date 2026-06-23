@@ -18,23 +18,25 @@ func newActionsCmd(flags *globalFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "actions",
 		Short: "List, view, and manage Actions workflow runs",
-		Long: `Inspect Forgejo Actions workflow runs: list recent runs and
-view a run's jobs.
+		Long: `Inspect Actions workflow runs: list recent runs, view a
+run's jobs, fetch logs, and re-trigger.
 
-The <run-id> arguments accept the user-facing run number from the
-UI URL (the integer in /actions/runs/362), not the internal database
-ID — gaia resolves it transparently.
+The <run-id> argument is the run number from the UI URL (the integer
+in /actions/runs/362). On Forgejo this is the user-facing number and
+gaia resolves it to the internal database ID transparently; on GitHub
+it is the API's run ID directly.
 
   gaia actions list                     # recent runs (all statuses)
   gaia actions list --status failure    # only failed runs
   gaia actions view <run-id>            # status + summary
   gaia actions view <run-id> --with-jobs # include job list
-  gaia actions logs <run-id>            # currently unsupported on Forgejo v15 (#266)
-  gaia actions rerun <run-id>           # currently unsupported on Forgejo v15 (#267)
+  gaia actions logs <run-id>            # per-job logs (--failed-only to narrow)
+  gaia actions rerun <run-id>           # re-trigger a run
 
-Forgejo v15.0.1 does not expose a logs or rerun API endpoint;
-both commands return a clear unsupported error with the run's UI
-URL so you can grab logs or re-trigger from the browser.`,
+Provider note: GitHub exposes the full Actions surface, so logs and
+rerun work there. Forgejo v15.0.1 does not expose a logs (#266) or
+rerun (#267) API endpoint, so on Forgejo those two commands return a
+clear unsupported error with the run's UI URL instead.`,
 	}
 	cmd.AddCommand(newActionsListCmd(flags))
 	cmd.AddCommand(newActionsViewCmd(flags))
