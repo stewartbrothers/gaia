@@ -58,6 +58,7 @@ cover something is to file a gap issue (see
 | Track sprint progress | `gaia milestone issues 7 --state all` (issues attached to milestone ID 7) |
 | Close a sprint | `gaia milestone edit 7 --state closed` |
 | Inspect Actions runs | `gaia actions list --status failure` |
+| Triage a failed CI run | `gaia actions logs 362 --failed-only` (GitHub; on Forgejo v15 open the run's `html_url`) |
 | Watch CI to completion | `gaia pr ci-wait 42 --timeout 15m` |
 | Run a saved chain | `gaia chain run pr-create-and-land --var head=feature/x` |
 | Recommend `.gitignore` entries | `gaia gitignore` (or `gaia gitignore --check` to audit) |

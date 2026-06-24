@@ -274,11 +274,14 @@ tight when scripting):
   are positional integers (forge-assigned); `list` defaults to `--state=open`,
   `delete` is `--confirm`-gated, and `issues <id>` reuses the issue list
   shape so per-milestone progress reads cheaply.
-- Actions: `list | view [--with-jobs] | logs | rerun`. Run IDs accept the
-  user-facing run number from the UI URL (e.g. `/actions/runs/362` →
-  `gaia actions view 362`); the provider resolves to Forgejo's internal
-  ID transparently. `logs` and `rerun` currently return an unsupported
-  error on Forgejo v15.0.1 because the API doesn't expose those
+- Actions: `list | view [--with-jobs] | logs [--failed-only] | rerun`. Run
+  IDs accept the run number from the UI URL (e.g. `/actions/runs/362` →
+  `gaia actions view 362`); on Forgejo the provider resolves it to the
+  internal DB ID transparently, on GitHub the run number *is* the API id.
+  **GitHub** implements the full surface — `logs` fetches per-job
+  plain-text logs (`--failed-only` narrows to failed jobs) and `rerun`
+  re-triggers (#386). **Forgejo** `logs` and `rerun` return an
+  unsupported error on v15.0.1 because the API doesn't expose those
   endpoints (gaps #266, #267) — use the run's `html_url` instead.
 - Branches: `branch list | create <name> [--from <ref>]`. `create`
   branches from `--from` (a branch, tag, or commit) or the repo's
