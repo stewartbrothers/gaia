@@ -10,6 +10,38 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-07-05
+
+### Added
+
+- **GitHub Actions provider parity** — `gaia actions list | view
+  [--with-jobs] | logs [--failed-only] | rerun` is now fully implemented
+  against the GitHub REST API. Previously all four `core.Provider` Actions
+  methods returned `NotImplemented` stubs on GitHub, so CI-triage commands
+  only worked on Forgejo. `ListWorkflowRuns` / `GetWorkflowRun` reconcile
+  GitHub's `status`+`conclusion` pair into the same unified `Status` string
+  Forgejo uses; `GetWorkflowRunLogs` fetches each job's plain-text log
+  (`--failed-only` narrows to failed jobs — the CI-triage path);
+  `RerunWorkflowRun` posts to the rerun endpoint. Forgejo v15 still has no
+  `logs`/`rerun` endpoints (gaps #266, #267) — use the run's `html_url`
+  there. Closes #386.
+
+- **`gaia issue create --milestone ID` / `gaia issue edit --milestone
+  ID|none`** — attach or detach a milestone on an issue. Previously
+  `types.Issue` didn't even expose a read-only `Milestone` field, and
+  neither `issue create`/`issue edit` nor any `milestone` subcommand could
+  attach one. `types.Issue.Milestone` is now populated on every issue read
+  for free — both forges already inline the milestone object on the issue
+  payload. `--milestone` on edit takes a positive ID (attach), `none`/`0`
+  (detach), or is omitted (no change) — Forgejo accepts a literal `0` to
+  detach, GitHub requires an explicit JSON `null`, handled transparently.
+  New **`gaia milestone assign <milestone-id> <issue-number>...`**
+  batch-attaches many issues to one milestone in a single call — neither
+  forge exposes a bulk-attach endpoint, so it patches each issue
+  independently and reports a per-issue `ok`/`error` result, exiting
+  non-zero if any failed. The `gaia_issue_create` / `gaia_issue_edit` MCP
+  tools gained the matching `milestone` parameter. Closes #388.
+
 ## [0.7.0] — 2026-06-22
 
 ### Added
@@ -1028,7 +1060,9 @@ Pre-v1.0, expect minor-bump churn at the public surface.
 - OS keychain backing for `credentials.yaml` (vs current 0600
   plaintext): `gh` does this, gaia doesn't yet.
 
-[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/stewartbrothers/gaia/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/stewartbrothers/gaia/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/stewartbrothers/gaia/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/stewartbrothers/gaia/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/stewartbrothers/gaia/compare/v0.4.0...v0.4.1
