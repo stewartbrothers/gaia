@@ -138,6 +138,29 @@ func optBool(args map[string]any, key string) bool {
 	return b
 }
 
+// optInt64Ptr returns a pointer to args[key] as int64, or nil if the
+// key is absent. Used for tri-state edit fields where nil means "no
+// change" but the caller must still be able to send an explicit 0
+// (e.g. detaching a milestone) — a plain optInt64 can't distinguish
+// "absent" from "present and zero".
+func optInt64Ptr(args map[string]any, key string) *int64 {
+	v, ok := args[key]
+	if !ok {
+		return nil
+	}
+	switch n := v.(type) {
+	case float64:
+		i := int64(n)
+		return &i
+	case int64:
+		return &n
+	case int:
+		i := int64(n)
+		return &i
+	}
+	return nil
+}
+
 // registerAllTools wires every gaia operation as an MCP tool.
 // Grouped per resource so it's easy to scan: read tools first, write
 // tools second within each section.

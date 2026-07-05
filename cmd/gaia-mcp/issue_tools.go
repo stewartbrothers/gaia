@@ -36,16 +36,18 @@ func registerIssueTools(s *server.MCPServer) {
 		mcp.WithString("body", mcp.Description("issue body (markdown)")),
 		mcp.WithArray("labels", mcp.Description("label names"), mcp.Items(map[string]any{"type": "string"})),
 		mcp.WithArray("assignees", mcp.Description("assignee logins"), mcp.Items(map[string]any{"type": "string"})),
+		mcp.WithNumber("milestone", mcp.Description("milestone ID to attach (omit for none)")),
 	), ctxBoundHandler(handleIssueCreate))
 
 	s.AddTool(mcp.NewTool("gaia_issue_edit",
-		mcp.WithDescription("Edit an issue (title/body/state/assignees). Empty fields are unchanged."),
+		mcp.WithDescription("Edit an issue (title/body/state/assignees/milestone). Omitted fields are unchanged."),
 		mcp.WithString("repo", mcp.Required(), mcp.Description("owner/name")),
 		mcp.WithNumber("number", mcp.Required()),
 		mcp.WithString("title"),
 		mcp.WithString("body"),
 		mcp.WithString("state", mcp.Description("open | closed")),
 		mcp.WithArray("assignees", mcp.Description("replace assignees with these logins"), mcp.Items(map[string]any{"type": "string"})),
+		mcp.WithNumber("milestone", mcp.Description("milestone ID to attach; 0 to detach the current milestone; omit for no change")),
 	), ctxBoundHandler(handleIssueEdit))
 
 	s.AddTool(mcp.NewTool("gaia_issue_comment",
@@ -118,6 +120,7 @@ func handleIssueCreate(ctx context.Context, args map[string]any) (*mcp.CallToolR
 		Body:      optString(args, "body"),
 		Labels:    optStringSlice(args, "labels"),
 		Assignees: optStringSlice(args, "assignees"),
+		Milestone: optInt64(args, "milestone"),
 	})
 	if err != nil {
 		return toolError(err), nil
@@ -143,6 +146,7 @@ func handleIssueEdit(ctx context.Context, args map[string]any) (*mcp.CallToolRes
 		Body:      optString(args, "body"),
 		State:     optString(args, "state"),
 		Assignees: optStringSlice(args, "assignees"),
+		Milestone: optInt64Ptr(args, "milestone"),
 	})
 	if err != nil {
 		return toolError(err), nil

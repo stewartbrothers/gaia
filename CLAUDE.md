@@ -264,16 +264,19 @@ tight when scripting):
 - Self-documentation: `gaia learn` (prints the embedded agent guide; `--format json` for envelope shape)
 - Project setup: `gaia gitignore` (prints the recommended `.gitignore` block; `--check` audits an existing file, exits non-zero on missing entries; `--quiet` for CI gating)
 - Config diagnostics: `gaia config doctor` (lints resolved config + credentials; flags multi-project safety, credential hygiene, profile coherence, and the `.forgejo/`-over-`.github/` workflows precedence footgun (`workflows-shadowed`, #346); `--strict` promotes WARN to ERR; `--quiet` exits non-zero on ERR only; `--format json` for envelope shape)
-- Issues: `list [--assignee @me|--author @me] | view [--with-blockers N|--with-blocking N] | create | edit [--add-label/--remove-label] | close | reopen | comment | comment-edit | comment-delete | dep list|add|remove [--blocker|--blocks][=owner/repo#N for cross-repo]`. `@me` on `--assignee`/`--author` resolves to the configured user via one extra `Whoami` call (#299). `dep` subcommand manages issue dependencies on both Forgejo and GitHub (REST landed in API version 2026-03-10; #317 / #326). `--blocker` / `--blocks` accept either a bare integer (same-repo) or `owner/repo#N` (cross-repo, #325).
+- Issues: `list [--assignee @me|--author @me] | view [--with-blockers N|--with-blocking N] | create [--milestone ID] | edit [--add-label/--remove-label] [--milestone ID|none] | close | reopen | comment | comment-edit | comment-delete | dep list|add|remove [--blocker|--blocks][=owner/repo#N for cross-repo]`. `@me` on `--assignee`/`--author` resolves to the configured user via one extra `Whoami` call (#299). `dep` subcommand manages issue dependencies on both Forgejo and GitHub (REST landed in API version 2026-03-10; #317 / #326). `--blocker` / `--blocks` accept either a bare integer (same-repo) or `owner/repo#N` (cross-repo, #325). `--milestone` attaches an issue to a milestone at create time, or on edit takes an ID (attach), `none`/`0` (detach), or is omitted (no change) — both forges inline the milestone object on every issue read for free (#388).
 - PRs: `list | view | diff | comments | create | edit | close | reopen | comment-create | merge | review | checkout`
 - Labels: `list [--name SUBSTR] | create | edit | delete`. `--name` does case-insensitive substring matching client-side on both forges (#328).
 - Releases: `list | view | create | edit | delete | publish`
 - Search: `gaia search <query>`
 - Webhooks: `list | view | create | edit | delete | deliveries | redeliver | test`
-- Milestones: `list | view | create | edit | delete | issues`. Milestone IDs
-  are positional integers (forge-assigned); `list` defaults to `--state=open`,
-  `delete` is `--confirm`-gated, and `issues <id>` reuses the issue list
-  shape so per-milestone progress reads cheaply.
+- Milestones: `list | view | create | edit | delete | issues | assign <milestone-id> <issue-number>...`.
+  Milestone IDs are positional integers (forge-assigned); `list` defaults to
+  `--state=open`, `delete` is `--confirm`-gated, and `issues <id>` reuses the
+  issue list shape so per-milestone progress reads cheaply. `assign` attaches
+  every listed issue to a milestone in one invocation — forges expose no
+  bulk-attach endpoint, so it patches each issue independently and reports a
+  per-issue `ok`/`error` result, exiting non-zero if any failed (#388).
 - Actions: `list | view [--with-jobs] | logs [--failed-only] | rerun`. Run
   IDs accept the run number from the UI URL (e.g. `/actions/runs/362` →
   `gaia actions view 362`); on Forgejo the provider resolves it to the

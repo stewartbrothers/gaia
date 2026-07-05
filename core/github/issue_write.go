@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"time"
@@ -13,21 +14,41 @@ import (
 
 // apiCreateIssueRequest mirrors the POST /repos/{o}/{r}/issues body.
 // GitHub accepts label names (not IDs) on the create endpoint.
+// Milestone is the milestone number (surfaced to callers as ID).
 type apiCreateIssueRequest struct {
 	Title     string   `json:"title"`
 	Body      string   `json:"body,omitempty"`
 	Labels    []string `json:"labels,omitempty"`
 	Assignees []string `json:"assignees,omitempty"`
+	Milestone int64    `json:"milestone,omitempty"`
 }
 
 // apiEditIssueRequest mirrors the PATCH endpoint body. omitempty on
 // every field matches GitHub's "fields not present stay unchanged"
-// PATCH semantics.
+// PATCH semantics. Milestone is raw JSON rather than *int64 because
+// GitHub — unlike Forgejo — requires a literal `null` (not `0`) to
+// detach the current milestone; buildMilestonePatch produces that
+// shape from the unified *int64 option (nil=omit, &0=null, &N=N).
 type apiEditIssueRequest struct {
-	Title     string   `json:"title,omitempty"`
-	Body      string   `json:"body,omitempty"`
-	State     string   `json:"state,omitempty"`
-	Assignees []string `json:"assignees,omitempty"`
+	Title     string          `json:"title,omitempty"`
+	Body      string          `json:"body,omitempty"`
+	State     string          `json:"state,omitempty"`
+	Assignees []string        `json:"assignees,omitempty"`
+	Milestone json.RawMessage `json:"milestone,omitempty"`
+}
+
+// buildMilestonePatch translates the unified EditIssueOptions.Milestone
+// tri-state into GitHub's wire shape: nil stays nil (field omitted,
+// "no change"); a pointer to 0 becomes literal `null` (detach); any
+// other pointer becomes the plain integer (attach that milestone).
+func buildMilestonePatch(milestone *int64) json.RawMessage {
+	if milestone == nil {
+		return nil
+	}
+	if *milestone == 0 {
+		return json.RawMessage("null")
+	}
+	return json.RawMessage(fmt.Sprintf("%d", *milestone))
 }
 
 // apiCreatedComment is the response shape for create + edit comment.
@@ -57,6 +78,7 @@ func (p *Provider) CreateIssue(ctx context.Context, owner, repo string, opts pro
 		Body:      opts.Body,
 		Labels:    opts.Labels,
 		Assignees: opts.Assignees,
+		Milestone: opts.Milestone,
 	}
 	var raw apiIssue
 	if err := p.client.Post(ctx, fmt.Sprintf("/repos/%s/%s/issues", owner, repo), body, &raw); err != nil {
@@ -76,6 +98,7 @@ func (p *Provider) EditIssue(ctx context.Context, owner, repo string, n int, opt
 		Body:      opts.Body,
 		State:     opts.State,
 		Assignees: opts.Assignees,
+		Milestone: buildMilestonePatch(opts.Milestone),
 	}
 	var raw apiIssue
 	if err := p.client.Patch(ctx, fmt.Sprintf("/repos/%s/%s/issues/%d", owner, repo, n), body, &raw); err != nil {

@@ -25,6 +25,7 @@ func newMilestoneCmd(flags *globalFlags) *cobra.Command {
 	cmd.AddCommand(newMilestoneEditCmd(flags))
 	cmd.AddCommand(newMilestoneDeleteCmd(flags))
 	cmd.AddCommand(newMilestoneIssuesCmd(flags))
+	cmd.AddCommand(newMilestoneAssignCmd(flags))
 	return cmd
 }
 
@@ -295,6 +296,88 @@ func newMilestoneIssuesCmd(flags *globalFlags) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&state, "state", "", "filter by issue state: open (default), closed, all")
 	return cmd
+}
+
+// milestoneAssignResult is the per-issue outcome of `gaia milestone
+// assign`. Each issue is patched independently — forges expose no
+// bulk-attach endpoint — so one failure doesn't stop the rest; Error
+// carries the per-issue failure reason when OK is false.
+type milestoneAssignResult struct {
+	Issue int    `json:"issue"`
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+}
+
+func newMilestoneAssignCmd(flags *globalFlags) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "assign <milestone-id> <issue-number>...",
+		Short: "Attach one or more issues to a milestone in one call",
+		Long: `Attaches every listed issue to the given milestone.
+
+Forges expose no bulk-attach endpoint, so this patches each issue
+independently: one failure doesn't stop the rest. Check each entry's
+"ok" field (and non-zero exit code) to see whether any failed.
+
+  $ gaia milestone assign 12 101 102 103`,
+		Args: cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := parseMilestoneID(args[0])
+			if err != nil {
+				return err
+			}
+			numbers := make([]int, 0, len(args)-1)
+			for _, raw := range args[1:] {
+				n, err := parseIssueNumber(raw)
+				if err != nil {
+					return err
+				}
+				numbers = append(numbers, n)
+			}
+			p, _, err := buildForgejoProvider(flags)
+			if err != nil {
+				return err
+			}
+			owner, repo, err := resolveRepo(flags)
+			if err != nil {
+				return err
+			}
+			results := make([]milestoneAssignResult, 0, len(numbers))
+			failed := 0
+			for _, n := range numbers {
+				_, editErr := p.EditIssue(cmd.Context(), owner, repo, n, provider.EditIssueOptions{Milestone: &id})
+				r := milestoneAssignResult{Issue: n, OK: editErr == nil}
+				if editErr != nil {
+					r.Error = editErr.Error()
+					failed++
+				}
+				results = append(results, r)
+			}
+			if err := renderEnvelope(cmd, flags, results, nil, prettyMilestoneAssign); err != nil {
+				return err
+			}
+			if failed > 0 {
+				return exitcode.Errorf(exitcode.Generic,
+					"%d of %d issue(s) failed to attach to milestone %d", failed, len(results), id)
+			}
+			return nil
+		},
+	}
+	return cmd
+}
+
+func prettyMilestoneAssign(w io.Writer, data any) error {
+	results, ok := data.([]milestoneAssignResult)
+	if !ok {
+		return fmt.Errorf("prettyMilestoneAssign: unexpected type %T", data)
+	}
+	for _, r := range results {
+		if r.OK {
+			_, _ = fmt.Fprintf(w, "✓ #%d attached\n", r.Issue)
+		} else {
+			_, _ = fmt.Fprintf(w, "✗ #%d failed: %s\n", r.Issue, r.Error)
+		}
+	}
+	return nil
 }
 
 // parseMilestoneID validates a positional <id> argument as a positive

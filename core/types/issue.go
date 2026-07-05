@@ -38,4 +38,9 @@ type Issue struct {
 	// GetIssueOptions.WithBlocks > 0. Same trim contract as
 	// Blockers.
 	Blocks []Issue `json:"blocks,omitempty"`
+	// Milestone is the milestone this issue is attached to, or nil if
+	// unassigned. Populated for free on every read — both forges
+	// inline the milestone object on the issue payload, no extra
+	// round-trip. See #388.
+	Milestone *Milestone `json:"milestone,omitempty"`
 }

@@ -93,6 +93,142 @@ func TestIssueCreatePostsAndReturnsIssue(t *testing.T) {
 	}
 }
 
+func TestIssueCreateWithMilestoneFlag(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &captured)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"number":     44,
+			"title":      "with milestone",
+			"state":      "open",
+			"user":       map[string]any{"login": "alice"},
+			"created_at": "2026-05-01T00:00:00Z",
+			"updated_at": "2026-05-01T00:00:00Z",
+		})
+	}))
+	defer srv.Close()
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"--repo", "o/r",
+		"issue", "create",
+		"--title", "with milestone",
+		"--milestone", "9",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	if got, _ := captured["milestone"].(float64); int64(got) != 9 {
+		t.Errorf("milestone not sent: %+v", captured)
+	}
+}
+
+func TestIssueEditSetMilestoneFlag(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &captured)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"number":     45,
+			"title":      "x",
+			"state":      "open",
+			"user":       map[string]any{"login": "alice"},
+			"created_at": "2026-05-01T00:00:00Z",
+			"updated_at": "2026-05-01T00:00:00Z",
+		})
+	}))
+	defer srv.Close()
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"--repo", "o/r",
+		"issue", "edit", "45",
+		"--milestone", "7",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	if got, _ := captured["milestone"].(float64); int64(got) != 7 {
+		t.Errorf("milestone not sent: %+v", captured)
+	}
+}
+
+func TestIssueEditClearMilestoneFlag(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &captured)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"number":     46,
+			"title":      "x",
+			"state":      "open",
+			"user":       map[string]any{"login": "alice"},
+			"created_at": "2026-05-01T00:00:00Z",
+			"updated_at": "2026-05-01T00:00:00Z",
+		})
+	}))
+	defer srv.Close()
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", srv.URL,
+		"--repo", "o/r",
+		"issue", "edit", "46",
+		"--milestone", "none",
+	})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr: %s", err, stderr.String())
+	}
+	got, has := captured["milestone"]
+	if !has {
+		t.Fatalf("milestone field omitted; want explicit 0 (clear)")
+	}
+	if f, _ := got.(float64); f != 0 {
+		t.Errorf("milestone: got %+v, want 0", got)
+	}
+}
+
+func TestIssueEditInvalidMilestoneFlag(t *testing.T) {
+	clearGaiaEnv(t)
+	t.Setenv("FORGEJO_TOKEN", "X")
+
+	var stdout, stderr bytes.Buffer
+	root := cli.NewRootCmd()
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"--provider", "forgejo",
+		"--api-url", "http://x",
+		"--repo", "o/r",
+		"issue", "edit", "1",
+		"--milestone", "not-a-number",
+	})
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected error for invalid --milestone value")
+	}
+}
+
 func TestIssueCreateRequiresTitle(t *testing.T) {
 	clearGaiaEnv(t)
 	t.Setenv("FORGEJO_TOKEN", "X")

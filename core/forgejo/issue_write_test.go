@@ -265,6 +265,100 @@ func TestEditIssueAddLabels(t *testing.T) {
 	}
 }
 
+func TestCreateIssueWithMilestone(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &captured)
+		_ = json.NewEncoder(w).Encode(makeIssue(50, "with milestone", "open"))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	_, err := p.CreateIssue(context.Background(), "o", "r", provider.CreateIssueOptions{
+		Title:     "with milestone",
+		Milestone: 9,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	if got, _ := captured["milestone"].(float64); int64(got) != 9 {
+		t.Errorf("milestone: got %+v", captured["milestone"])
+	}
+}
+
+func TestEditIssueSetMilestone(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &captured)
+		_ = json.NewEncoder(w).Encode(makeIssue(51, "x", "open"))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	milestone := int64(12)
+	_, err := p.EditIssue(context.Background(), "o", "r", 51, provider.EditIssueOptions{
+		Milestone: &milestone,
+	})
+	if err != nil {
+		t.Fatalf("EditIssue: %v", err)
+	}
+	if got, _ := captured["milestone"].(float64); int64(got) != 12 {
+		t.Errorf("milestone: got %+v", captured["milestone"])
+	}
+}
+
+// TestEditIssueClearMilestone pins the "detach" contract: a non-nil
+// pointer to 0 must still serialize (not be dropped by omitempty) so
+// Forgejo sees an explicit 0 and detaches the current milestone.
+func TestEditIssueClearMilestone(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &captured)
+		_ = json.NewEncoder(w).Encode(makeIssue(52, "x", "open"))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	clear := int64(0)
+	_, err := p.EditIssue(context.Background(), "o", "r", 52, provider.EditIssueOptions{
+		Milestone: &clear,
+	})
+	if err != nil {
+		t.Fatalf("EditIssue: %v", err)
+	}
+	got, has := captured["milestone"]
+	if !has {
+		t.Fatalf("milestone field omitted; want explicit 0")
+	}
+	if f, _ := got.(float64); f != 0 {
+		t.Errorf("milestone: got %+v, want 0", got)
+	}
+}
+
+func TestEditIssueNoMilestoneChangeOmitsField(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &captured)
+		_ = json.NewEncoder(w).Encode(makeIssue(53, "x", "open"))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	_, err := p.EditIssue(context.Background(), "o", "r", 53, provider.EditIssueOptions{
+		Title: "unrelated change",
+	})
+	if err != nil {
+		t.Fatalf("EditIssue: %v", err)
+	}
+	if _, has := captured["milestone"]; has {
+		t.Errorf("milestone should be omitted when Milestone is nil; got %+v", captured)
+	}
+}
+
 func TestEditIssueRemoveLabels(t *testing.T) {
 	var deletedPaths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

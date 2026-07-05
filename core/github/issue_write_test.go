@@ -63,6 +63,96 @@ func TestEditIssueGHState(t *testing.T) {
 	}
 }
 
+func TestCreateIssueGHWithMilestone(t *testing.T) {
+	var captured string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		captured = string(b)
+		_ = json.NewEncoder(w).Encode(makeIssue(60, "with milestone", "open"))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	_, err := p.CreateIssue(context.Background(), "o", "r", provider.CreateIssueOptions{
+		Title:     "with milestone",
+		Milestone: 9,
+	})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	if !strings.Contains(captured, `"milestone":9`) {
+		t.Errorf("body: %s", captured)
+	}
+}
+
+func TestEditIssueGHSetMilestone(t *testing.T) {
+	var captured string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		captured = string(b)
+		_ = json.NewEncoder(w).Encode(makeIssue(61, "x", "open"))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	milestone := int64(12)
+	_, err := p.EditIssue(context.Background(), "o", "r", 61, provider.EditIssueOptions{
+		Milestone: &milestone,
+	})
+	if err != nil {
+		t.Fatalf("EditIssue: %v", err)
+	}
+	if !strings.Contains(captured, `"milestone":12`) {
+		t.Errorf("body: %s", captured)
+	}
+}
+
+// TestEditIssueGHClearMilestone pins GitHub's detach contract: unlike
+// Forgejo, GitHub requires a literal `null` (not `0`) to remove the
+// current milestone.
+func TestEditIssueGHClearMilestone(t *testing.T) {
+	var captured string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		captured = string(b)
+		_ = json.NewEncoder(w).Encode(makeIssue(62, "x", "open"))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	clear := int64(0)
+	_, err := p.EditIssue(context.Background(), "o", "r", 62, provider.EditIssueOptions{
+		Milestone: &clear,
+	})
+	if err != nil {
+		t.Fatalf("EditIssue: %v", err)
+	}
+	if !strings.Contains(captured, `"milestone":null`) {
+		t.Errorf("body: %s, want literal null", captured)
+	}
+}
+
+func TestEditIssueGHNoMilestoneChangeOmitsField(t *testing.T) {
+	var captured string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		captured = string(b)
+		_ = json.NewEncoder(w).Encode(makeIssue(63, "x", "open"))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	_, err := p.EditIssue(context.Background(), "o", "r", 63, provider.EditIssueOptions{
+		Title: "unrelated change",
+	})
+	if err != nil {
+		t.Fatalf("EditIssue: %v", err)
+	}
+	if strings.Contains(captured, `"milestone"`) {
+		t.Errorf("milestone should be omitted when Milestone is nil; got %s", captured)
+	}
+}
+
 func TestCreateIssueCommentGH(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/repos/o/r/issues/42/comments" {

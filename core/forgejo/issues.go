@@ -17,17 +17,18 @@ import (
 // Fields not listed here are dropped at decode time, which is exactly
 // the trim-at-the-boundary contract.
 type apiIssue struct {
-	Number    int        `json:"number"`
-	Title     string     `json:"title"`
-	Body      string     `json:"body"`
-	State     string     `json:"state"`
-	User      apiUser    `json:"user"`
-	Labels    []apiLabel `json:"labels"`
-	Assignees []apiUser  `json:"assignees"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
-	ClosedAt  *time.Time `json:"closed_at"`
-	HTMLURL   string     `json:"html_url"`
+	Number    int           `json:"number"`
+	Title     string        `json:"title"`
+	Body      string        `json:"body"`
+	State     string        `json:"state"`
+	User      apiUser       `json:"user"`
+	Labels    []apiLabel    `json:"labels"`
+	Assignees []apiUser     `json:"assignees"`
+	CreatedAt time.Time     `json:"created_at"`
+	UpdatedAt time.Time     `json:"updated_at"`
+	ClosedAt  *time.Time    `json:"closed_at"`
+	HTMLURL   string        `json:"html_url"`
+	Milestone *apiMilestone `json:"milestone,omitempty"`
 }
 
 type apiUser struct {
@@ -63,6 +64,10 @@ func (a *apiIssue) toType() types.Issue {
 	}
 	for _, u := range a.Assignees {
 		out.Assignees = append(out.Assignees, types.User{Login: u.Login})
+	}
+	if a.Milestone != nil {
+		m := a.Milestone.toType()
+		out.Milestone = &m
 	}
 	return out
 }

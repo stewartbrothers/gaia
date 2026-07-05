@@ -141,6 +141,118 @@ func TestIssueEditTool(t *testing.T) {
 	}
 }
 
+func TestIssueCreateToolWithMilestone(t *testing.T) {
+	var captured []byte
+	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		captured, _ = io.ReadAll(r.Body)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"number": 100, "title": "hi", "state": "open",
+			"user":       map[string]any{"login": "a"},
+			"created_at": "2026-04-01T00:00:00Z",
+			"updated_at": "2026-04-01T00:00:00Z",
+		})
+	})
+	pinBuilder(t, p)
+
+	res, err := callTool(context.Background(), handleIssueCreate, map[string]any{
+		"repo": "o/r", "title": "hi", "milestone": float64(9),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError {
+		t.Fatalf("unexpected IsError: %s", resultText(t, res))
+	}
+	if !strings.Contains(string(captured), `"milestone":9`) {
+		t.Errorf("captured body: %s", captured)
+	}
+}
+
+func TestIssueEditToolSetsMilestone(t *testing.T) {
+	var captured []byte
+	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		captured, _ = io.ReadAll(r.Body)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"number": 87, "title": "t", "state": "open",
+			"user":       map[string]any{"login": "a"},
+			"created_at": "2026-04-01T00:00:00Z",
+			"updated_at": "2026-04-01T00:00:00Z",
+		})
+	})
+	pinBuilder(t, p)
+
+	res, err := callTool(context.Background(), handleIssueEdit, map[string]any{
+		"repo": "o/r", "number": float64(87), "milestone": float64(4),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError {
+		t.Fatal(resultText(t, res))
+	}
+	if !strings.Contains(string(captured), `"milestone":4`) {
+		t.Errorf("captured body: %s", captured)
+	}
+}
+
+// TestIssueEditToolClearsMilestone pins the tri-state contract on the
+// MCP surface: an explicit milestone:0 must serialize (not be
+// indistinguishable from an absent field) so Forgejo detaches the
+// current milestone.
+func TestIssueEditToolClearsMilestone(t *testing.T) {
+	var captured []byte
+	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		captured, _ = io.ReadAll(r.Body)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"number": 88, "title": "t", "state": "open",
+			"user":       map[string]any{"login": "a"},
+			"created_at": "2026-04-01T00:00:00Z",
+			"updated_at": "2026-04-01T00:00:00Z",
+		})
+	})
+	pinBuilder(t, p)
+
+	res, err := callTool(context.Background(), handleIssueEdit, map[string]any{
+		"repo": "o/r", "number": float64(88), "milestone": float64(0),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError {
+		t.Fatal(resultText(t, res))
+	}
+	if !strings.Contains(string(captured), `"milestone":0`) {
+		t.Errorf("captured body: %s, want explicit milestone:0", captured)
+	}
+}
+
+func TestIssueEditToolOmitsMilestoneWhenAbsent(t *testing.T) {
+	var captured []byte
+	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		captured, _ = io.ReadAll(r.Body)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"number": 89, "title": "t", "state": "closed",
+			"user":       map[string]any{"login": "a"},
+			"created_at": "2026-04-01T00:00:00Z",
+			"updated_at": "2026-04-01T00:00:00Z",
+		})
+	})
+	pinBuilder(t, p)
+
+	res, err := callTool(context.Background(), handleIssueEdit, map[string]any{
+		"repo": "o/r", "number": float64(89), "state": "closed",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError {
+		t.Fatal(resultText(t, res))
+	}
+	if strings.Contains(string(captured), `"milestone"`) {
+		t.Errorf("milestone should be omitted when absent; got %s", captured)
+	}
+}
+
 func TestIssueCommentTool(t *testing.T) {
 	var captured []byte
 	p, _ := fakeForgeProvider(t, func(w http.ResponseWriter, r *http.Request) {

@@ -166,6 +166,10 @@ func prettyIssueView(w io.Writer, data any) error {
 	if len(issue.Labels) > 0 {
 		_, _ = fmt.Fprintf(w, "Labels: %s\n", joinLabelNames(issue.Labels))
 	}
+	if issue.Milestone != nil {
+		_, _ = fmt.Fprintf(w, "Milestone: #%d\n", issue.Milestone.ID)
+		writeExternal(w, issue.Milestone.Title)
+	}
 	if issue.Body != "" {
 		_, _ = fmt.Fprintln(w)
 		writeExternal(w, issue.Body)

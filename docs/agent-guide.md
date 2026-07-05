@@ -55,6 +55,8 @@ cover something is to file a gap issue (see
 | Submit a review | `gaia pr review 42 --state approve --body "..."` |
 | Merge a PR | `gaia pr merge 42 --method squash` |
 | Plan a sprint | `gaia milestone create --title v0.5.0 --due 2026-06-01T00:00:00Z` |
+| Attach an issue to a milestone | `gaia issue edit 42 --milestone 7` (or at creation: `gaia issue create --title "..." --milestone 7`); `--milestone none` detaches |
+| Attach many issues to a milestone at once | `gaia milestone assign 7 101 102 103` (patches each independently, reports per-issue ok/error; #388) |
 | Track sprint progress | `gaia milestone issues 7 --state all` (issues attached to milestone ID 7) |
 | Close a sprint | `gaia milestone edit 7 --state closed` |
 | Inspect Actions runs | `gaia actions list --status failure` |
