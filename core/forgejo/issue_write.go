@@ -17,16 +17,21 @@ type apiCreateIssueRequest struct {
 	Body      string   `json:"body,omitempty"`
 	Labels    []int64  `json:"labels,omitempty"`
 	Assignees []string `json:"assignees,omitempty"`
+	Milestone int64    `json:"milestone,omitempty"`
 }
 
 // apiEditIssueRequest is the PATCH /repos/{o}/{r}/issues/{n} body.
 // Empty fields are dropped by omitempty so they're treated as
-// "no change" by the upstream.
+// "no change" by the upstream. Milestone is *int64: nil is omitted
+// (no change); Forgejo treats an explicit 0 as "detach the current
+// milestone" (milestone IDs are never 0), so a non-nil pointer
+// always serialises even when it points at 0.
 type apiEditIssueRequest struct {
 	Title     string   `json:"title,omitempty"`
 	Body      string   `json:"body,omitempty"`
 	State     string   `json:"state,omitempty"`
 	Assignees []string `json:"assignees,omitempty"`
+	Milestone *int64   `json:"milestone,omitempty"`
 }
 
 // CreateIssue opens a new issue. Label names in opts.Labels are
@@ -48,6 +53,7 @@ func (p *Provider) CreateIssue(ctx context.Context, owner, repo string, opts pro
 		Body:      opts.Body,
 		Labels:    labelIDs,
 		Assignees: opts.Assignees,
+		Milestone: opts.Milestone,
 	}
 	var raw apiIssue
 	path := fmt.Sprintf("/repos/%s/%s/issues", owner, repo)
@@ -69,6 +75,7 @@ func (p *Provider) EditIssue(ctx context.Context, owner, repo string, n int, opt
 		Body:      opts.Body,
 		State:     opts.State,
 		Assignees: opts.Assignees,
+		Milestone: opts.Milestone,
 	}
 	var raw apiIssue
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d", owner, repo, n)

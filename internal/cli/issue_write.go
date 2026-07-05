@@ -44,11 +44,12 @@ func printDryRun(cmd *cobra.Command, label string, body any) error {
 
 func newIssueCreateCmd(flags *globalFlags) *cobra.Command {
 	var (
-		title   string
-		body    string
-		labels  []string
-		assigns []string
-		dryRun  bool
+		title     string
+		body      string
+		labels    []string
+		assigns   []string
+		milestone int64
+		dryRun    bool
 	)
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -77,6 +78,7 @@ request body without making the call.`,
 				Body:      b,
 				Labels:    labels,
 				Assignees: assigns,
+				Milestone: milestone,
 			}
 			if dryRun {
 				return printDryRun(cmd, fmt.Sprintf("POST /repos/%s/%s/issues", owner, repo), opts)
@@ -92,6 +94,7 @@ request body without making the call.`,
 	cmd.Flags().StringVar(&body, "body", "", "issue body, or \"-\" for stdin")
 	cmd.Flags().StringSliceVar(&labels, "label", nil, "label name (repeatable)")
 	cmd.Flags().StringSliceVar(&assigns, "assignee", nil, "assignee login (repeatable)")
+	cmd.Flags().Int64Var(&milestone, "milestone", 0, "milestone ID to attach (0 = none)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the request and exit without posting")
 	return cmd
 }
@@ -104,6 +107,7 @@ func newIssueEditCmd(flags *globalFlags) *cobra.Command {
 		assigns      []string
 		addLabels    []string
 		removeLabels []string
+		milestone    string
 		dryRun       bool
 	)
 	cmd := &cobra.Command{
@@ -116,6 +120,10 @@ func newIssueEditCmd(flags *globalFlags) *cobra.Command {
 				return err
 			}
 			b, err := readBody(cmd.InOrStdin(), body)
+			if err != nil {
+				return err
+			}
+			ms, err := parseMilestoneFlag(milestone)
 			if err != nil {
 				return err
 			}
@@ -134,6 +142,7 @@ func newIssueEditCmd(flags *globalFlags) *cobra.Command {
 				Assignees:    assigns,
 				AddLabels:    addLabels,
 				RemoveLabels: removeLabels,
+				Milestone:    ms,
 			}
 			if dryRun {
 				return printDryRun(cmd, fmt.Sprintf("PATCH /repos/%s/%s/issues/%d", owner, repo, n), opts)
@@ -151,8 +160,29 @@ func newIssueEditCmd(flags *globalFlags) *cobra.Command {
 	cmd.Flags().StringSliceVar(&assigns, "assignee", nil, "replace assignees with these logins")
 	cmd.Flags().StringSliceVar(&addLabels, "add-label", nil, "add label by name (repeatable)")
 	cmd.Flags().StringSliceVar(&removeLabels, "remove-label", nil, "remove label by name (repeatable)")
+	cmd.Flags().StringVar(&milestone, "milestone", "", "milestone ID to attach; \"none\" to detach (empty = no change)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the request and exit without patching")
 	return cmd
+}
+
+// parseMilestoneFlag parses the --milestone edit flag's tri-state
+// value: "" means no change (nil), "none"/"0" means detach the
+// current milestone (pointer to 0), anything else must be a positive
+// integer milestone ID.
+func parseMilestoneFlag(raw string) (*int64, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "":
+		return nil, nil
+	case "none", "0":
+		var zero int64
+		return &zero, nil
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return nil, exitcode.Errorf(exitcode.Usage,
+			"--milestone must be a positive integer, \"none\", or empty; got %q", raw)
+	}
+	return &id, nil
 }
 
 func newIssueCloseCmd(flags *globalFlags) *cobra.Command {

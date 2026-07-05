@@ -18,18 +18,19 @@ import (
 // is non-null for PRs. We filter to issues client-side (GitHub does
 // not have a server-side type filter analogous to Forgejo's).
 type apiIssue struct {
-	Number      int          `json:"number"`
-	Title       string       `json:"title"`
-	Body        string       `json:"body"`
-	State       string       `json:"state"`
-	User        apiUser      `json:"user"`
-	Labels      []apiLabel   `json:"labels"`
-	Assignees   []apiUser    `json:"assignees"`
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
-	ClosedAt    *time.Time   `json:"closed_at,omitempty"`
-	HTMLURL     string       `json:"html_url"`
-	PullRequest *apiPRMarker `json:"pull_request,omitempty"`
+	Number      int           `json:"number"`
+	Title       string        `json:"title"`
+	Body        string        `json:"body"`
+	State       string        `json:"state"`
+	User        apiUser       `json:"user"`
+	Labels      []apiLabel    `json:"labels"`
+	Assignees   []apiUser     `json:"assignees"`
+	CreatedAt   time.Time     `json:"created_at"`
+	UpdatedAt   time.Time     `json:"updated_at"`
+	ClosedAt    *time.Time    `json:"closed_at,omitempty"`
+	HTMLURL     string        `json:"html_url"`
+	PullRequest *apiPRMarker  `json:"pull_request,omitempty"`
+	Milestone   *apiMilestone `json:"milestone,omitempty"`
 }
 
 // apiUser is just login.
@@ -74,6 +75,10 @@ func (a *apiIssue) toType() types.Issue {
 	}
 	for _, u := range a.Assignees {
 		out.Assignees = append(out.Assignees, types.User{Login: u.Login})
+	}
+	if a.Milestone != nil {
+		m := a.Milestone.toType()
+		out.Milestone = &m
 	}
 	return out
 }

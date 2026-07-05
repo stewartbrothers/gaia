@@ -85,6 +85,48 @@ func TestGetIssueGHPreservesHTMLURL(t *testing.T) {
 	}
 }
 
+// TestGetIssueGHMapsMilestone pins #388: GitHub inlines the milestone
+// object on the issue payload; toType() maps it with Number surfaced
+// as ID (matching CreateMilestone/EditMilestone's contract).
+func TestGetIssueGHMapsMilestone(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		issue := makeIssue(8, "z", "open")
+		issue["milestone"] = map[string]any{
+			"number": 3, "title": "Sprint 1", "state": "open",
+			"open_issues": 2, "closed_issues": 1,
+			"created_at": "2026-01-01T00:00:00Z",
+			"updated_at": "2026-01-01T00:00:00Z",
+		}
+		_ = json.NewEncoder(w).Encode(issue)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, err := p.GetIssue(context.Background(), "o", "r", 8, provider.GetIssueOptions{})
+	if err != nil {
+		t.Fatalf("GetIssue: %v", err)
+	}
+	if got.Milestone == nil || got.Milestone.ID != 3 || got.Milestone.Title != "Sprint 1" {
+		t.Errorf("Milestone: got %+v", got.Milestone)
+	}
+}
+
+func TestGetIssueGHNoMilestone(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(makeIssue(9, "unassigned", "open"))
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	got, err := p.GetIssue(context.Background(), "o", "r", 9, provider.GetIssueOptions{})
+	if err != nil {
+		t.Fatalf("GetIssue: %v", err)
+	}
+	if got.Milestone != nil {
+		t.Errorf("Milestone: got %+v, want nil", got.Milestone)
+	}
+}
+
 func TestListIssuesGHBodyOmitted(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		issue := makeIssue(1, "has body", "open")

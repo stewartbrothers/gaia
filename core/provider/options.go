@@ -93,11 +93,14 @@ type SearchOptions struct {
 // CreateIssueOptions configures CreateIssue. JSON tags drive both
 // the dry-run output (so an agent sees the wire shape) and the
 // upstream POST body — both line up with what Forgejo expects.
+// Milestone is the milestone ID (GitHub: milestone number, surfaced
+// as ID) to attach the new issue to; 0 means no milestone.
 type CreateIssueOptions struct {
 	Title     string   `json:"title"`
 	Body      string   `json:"body,omitempty"`
 	Labels    []string `json:"labels,omitempty"`
 	Assignees []string `json:"assignees,omitempty"`
+	Milestone int64    `json:"milestone,omitempty"`
 }
 
 // EditIssueOptions configures EditIssue. Empty string fields are
@@ -105,7 +108,9 @@ type CreateIssueOptions struct {
 // upstream — matching Forgejo's PATCH semantics. AddLabels and
 // RemoveLabels apply only the named changes (a Phase 1.5 follow-up
 // will route those through /issues/{n}/labels rather than the issue
-// PATCH endpoint).
+// PATCH endpoint). Milestone is *int64 for tri-state: nil = no
+// change, pointer-to-0 = detach the current milestone, pointer to a
+// positive ID = attach that milestone (#388).
 type EditIssueOptions struct {
 	Title        string   `json:"title,omitempty"`
 	Body         string   `json:"body,omitempty"`
@@ -113,6 +118,7 @@ type EditIssueOptions struct {
 	AddLabels    []string `json:"add_labels,omitempty"`
 	RemoveLabels []string `json:"remove_labels,omitempty"`
 	Assignees    []string `json:"assignees,omitempty"`
+	Milestone    *int64   `json:"milestone,omitempty"`
 }
 
 // CreatePullRequestOptions configures CreatePullRequest. Head/Base
