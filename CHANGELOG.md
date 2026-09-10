@@ -10,6 +10,8 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-09-10
+
 ### Fixed
 
 - **CI: `govulncheck` step red on every PR** — `go.mod` pinned
@@ -1080,7 +1082,8 @@ Pre-v1.0, expect minor-bump churn at the public surface.
 - OS keychain backing for `credentials.yaml` (vs current 0600
   plaintext): `gh` does this, gaia doesn't yet.
 
-[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/stewartbrothers/gaia/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/stewartbrothers/gaia/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/stewartbrothers/gaia/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/stewartbrothers/gaia/compare/v0.5.0...v0.6.0
