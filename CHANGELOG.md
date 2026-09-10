@@ -12,6 +12,13 @@ reserved for breaking changes only.
 
 ### Fixed
 
+- **CI: `govulncheck` step red on every PR** — `go.mod` pinned
+  `toolchain go1.26.4`, against which six stdlib advisories landed
+  since the last release (GO-2026-6218, -6090, -6089, -5972, -5856,
+  -5026 in `net/url`, `crypto/tls`, `net/http`, `encoding/asn1`), all
+  on reachable paths. Bumped the pin to `go1.26.8`; the `go 1.26.0`
+  language floor and the workflows' `go-version: '1.26'` are
+  unchanged. (#394)
 - **`gaia issue dep add|remove` with a bare same-repo number on
   Forgejo** — the documented `--blocker 7` / `--blocks 7` form sent
   `{"index": 7}` with no repo identity, and Forgejo compares the body's
