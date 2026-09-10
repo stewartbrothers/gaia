@@ -357,8 +357,10 @@ type ListIssueDepsOptions struct {
 // compatible with the original int-only API). Populated values
 // target a cross-repo dependency edge (#325).
 //
-// Forgejo: cross-repo serialises as {index, owner, repo} in the
-// request body; omitempty preserves the same-repo {index} shape.
+// Forgejo: the request body is always {index, owner, repo} — a
+// same-repo ref is expanded to the host issue's own owner/repo
+// before serialising, because Forgejo resolves the body's identity
+// rather than defaulting it (#392).
 //
 // GitHub: cross-repo means the number → issue_id resolve targets the
 // dep's repo, not the host's, then the POST body uses the same

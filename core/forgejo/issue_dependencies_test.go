@@ -252,9 +252,9 @@ func TestGetIssueWithBlockingFetchesBlocks(t *testing.T) {
 }
 
 // TestAddIssueDependencyCrossRepo pins #325 on Forgejo: when dep
-// carries Owner+Repo, the POST body extends from {index} to
-// {index, owner, repo}. Same-repo refs still emit just {index}
-// (omitempty), proven by TestAddIssueDependencyHappy above.
+// carries Owner+Repo, the POST body names THAT repo rather than the
+// host's. Same-repo refs name the host repo instead (#392) — see
+// TestAddIssueDependencySameRepoSendsHostRepoIdentity.
 func TestAddIssueDependencyCrossRepo(t *testing.T) {
 	var capturedBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -280,13 +280,16 @@ func TestAddIssueDependencyCrossRepo(t *testing.T) {
 	}
 }
 
-// TestAddIssueDependencySameRepoOmitsOwnerRepo pins the omitempty
-// contract: a same-repo ref's body must NOT include owner/repo
-// fields (existing Forgejo same-repo wire shape preserved).
-func TestAddIssueDependencySameRepoOmitsOwnerRepo(t *testing.T) {
-	var rawBody []byte
+// TestAddIssueDependencySameRepoSendsHostRepoIdentity is the #392
+// regression: a bare same-repo ref must still name the HOST repo in
+// the body. Forgejo compares body owner/repo against the URL's repo
+// and only takes the same-repo fast path when they match — an empty
+// pair is treated as a cross-repo lookup of ""/"" and 404s with
+// IsErrRepoNotExist (owner_name: "", name: "").
+func TestAddIssueDependencySameRepoSendsHostRepoIdentity(t *testing.T) {
+	var capturedBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rawBody, _ = io.ReadAll(r.Body)
+		_ = json.NewDecoder(r.Body).Decode(&capturedBody)
 		_ = json.NewEncoder(w).Encode(makeIssue(7, "blocker", "open"))
 	}))
 	defer srv.Close()
@@ -297,8 +300,34 @@ func TestAddIssueDependencySameRepoOmitsOwnerRepo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddIssueDependency: %v", err)
 	}
-	if string(rawBody) != `{"index":7}`+"\n" && string(rawBody) != `{"index":7}` {
-		t.Errorf("same-repo body must be just {index:7}; got %s", rawBody)
+	if capturedBody["owner"] != "Gerwood" {
+		t.Errorf("body owner: got %v, want Gerwood (the host repo)", capturedBody["owner"])
+	}
+	if capturedBody["repo"] != "gaia" {
+		t.Errorf("body repo: got %v, want gaia (the host repo)", capturedBody["repo"])
+	}
+}
+
+// TestRemoveIssueDependencySameRepoSendsHostRepoIdentity is the
+// DELETE half of #392 — same body helper, same failure mode.
+func TestRemoveIssueDependencySameRepoSendsHostRepoIdentity(t *testing.T) {
+	var capturedBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&capturedBody)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	p := newTestProvider(t, srv.URL)
+	if err := p.RemoveIssueDependency(context.Background(), "Gerwood", "gaia", 42,
+		provider.IssueDepRef{Number: 7}); err != nil {
+		t.Fatalf("RemoveIssueDependency: %v", err)
+	}
+	if capturedBody["owner"] != "Gerwood" {
+		t.Errorf("body owner: got %v, want Gerwood (the host repo)", capturedBody["owner"])
+	}
+	if capturedBody["repo"] != "gaia" {
+		t.Errorf("body repo: got %v, want gaia (the host repo)", capturedBody["repo"])
 	}
 }
 
