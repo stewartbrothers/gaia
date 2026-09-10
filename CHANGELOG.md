@@ -10,6 +10,19 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`gaia issue dep add|remove` with a bare same-repo number on
+  Forgejo** — the documented `--blocker 7` / `--blocks 7` form sent
+  `{"index": 7}` with no repo identity, and Forgejo compares the body's
+  owner/repo against the URL's repo rather than defaulting them: an
+  empty pair was resolved as a cross-repo lookup of `""/""` and every
+  call 404'd with `IsErrRepoNotExist (owner_name: , name: )`. The body
+  now always carries owner/repo — the host issue's own repo for a
+  same-repo ref, the other repo for a cross-repo `owner/repo#N` ref
+  (unchanged). GitHub was never affected (it keys writes by internal
+  `issue_id`). (#392)
+
 ## [0.8.0] — 2026-07-05
 
 ### Added
