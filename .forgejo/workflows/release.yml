@@ -379,7 +379,10 @@ jobs:
       # GitHub mirror so the one-line installer can download them.
       # Gated on GH_RELEASE_TOKEN — when unset, logs a notice and
       # continues. Set via Repository Settings → Secrets: a GitHub
-      # fine-grained PAT with write:contents on stewartbrothers/gaia.
+      # fine-grained PAT with Contents: Read and write on
+      # stewartbrothers/gaia. This token does NOT need (and cannot
+      # have) packages access — the container push uses its own
+      # classic-PAT secret, GHCR_TOKEN, in the ghcr job. See #399.
       - name: Check whether GitHub release token is configured
         id: gh_release_gate
         env:
@@ -443,17 +446,33 @@ jobs:
 
       # Container image: build multi-arch and push to GitHub Container
       # Registry (ghcr.io/stewartbrothers/gaia-mcp). Gated on
-      # GH_RELEASE_TOKEN — the same PAT used for the release publish
-      # step, but it also needs write:packages scope. When unset,
-      # logs a notice and skips; no effect on the binary release.
+      # GHCR_TOKEN, which is a SEPARATE secret from GH_RELEASE_TOKEN
+      # and must be a **classic** PAT with write:packages +
+      # read:packages.
+      #
+      # Why a second secret: ghcr.io does not accept fine-grained
+      # PATs at all ("GitHub Packages only supports authentication
+      # using a personal access token (classic)" — GitHub docs), and
+      # there is no packages permission to grant on a fine-grained
+      # token. The release publish in build-and-publish, by contrast,
+      # wants a fine-grained PAT with Contents: Read and write. One
+      # secret cannot satisfy both, and the workflow previously
+      # claimed it could — see #399.
+      #
+      # Keeping them apart also means the classic token needs no repo
+      # scope, and a GHCR failure can't take the binary release with
+      # it. When unset, logs a notice and skips; no effect on the
+      # binary release.
       - name: Check whether GHCR token is configured
         id: ghcr_gate
         env:
-          GH_RELEASE_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
         run: |
-          if [ -z "${GH_RELEASE_TOKEN:-}" ]; then
+          if [ -z "${GHCR_TOKEN:-}" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::GH_RELEASE_TOKEN not configured — skipping GHCR container publish for ${{ github.ref_name }}."
+            echo "::notice::GHCR_TOKEN not configured — skipping GHCR container publish for ${{ github.ref_name }}."
+            echo "::notice::Set GHCR_TOKEN (classic PAT, write:packages + read:packages)."
+            echo "::notice::Fine-grained PATs cannot authenticate to ghcr.io."
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
@@ -461,14 +480,28 @@ jobs:
       - name: Publish container image to GHCR
         if: steps.ghcr_gate.outputs.configured == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           # Suppress the "credentials stored unencrypted" warning — on an
           # ephemeral runner the config.json lives only for this job.
-          echo "$GH_TOKEN" | docker login ghcr.io -u stewartbrothers --password-stdin 2>&1 \
-            | grep -v "WARNING! Your credentials are stored unencrypted" || true
+          #
+          # PIPESTATUS, not `|| true`: the warning filter must not also
+          # discard a REJECTED login. It used to, and the failure then
+          # resurfaced three minutes later at the end of the multi-arch
+          # build as "failed to fetch anonymous token: 403 Forbidden" —
+          # buildx silently falling back to no credentials. Reading like
+          # a registry-permissions problem, it cost a release's worth of
+          # misdirected diagnosis. See #397.
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u stewartbrothers --password-stdin 2>&1 \
+            | grep -v "WARNING! Your credentials are stored unencrypted"
+          if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+            echo "::error::docker login ghcr.io failed — check the GHCR_TOKEN secret."
+            echo "::error::It must be a classic PAT with write:packages + read:packages;"
+            echo "::error::ghcr.io rejects fine-grained PATs."
+            exit 1
+          fi
 
           commit_sha=$(git rev-parse --short HEAD)
 
