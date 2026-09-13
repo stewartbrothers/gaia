@@ -10,6 +10,36 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-09-13
+
+### Fixed
+
+- **Release workflow: GHCR now has its own credential** — the
+  workflow asked `GH_RELEASE_TOKEN` to be a fine-grained PAT (for the
+  release publish) *and* to carry `write:packages` (for the container
+  push). No such token exists: ghcr.io accepts classic PATs only, and
+  fine-grained tokens have no packages permission to grant.
+  `RELEASING.md` said classic, the workflow said fine-grained, and
+  whichever a maintainer read last decided which half of the release
+  broke. Split into `GH_RELEASE_TOKEN` (fine-grained, `Contents: Read
+  and write`) and `GHCR_TOKEN` (classic, `write:packages`, no repo
+  scope); both stay independently gated, so an unset secret skips its
+  step rather than failing the release. (#399)
+- **Release workflow: a rejected `docker login` no longer passes
+  silently** — the GHCR job filtered docker's unencrypted-credentials
+  warning with `| grep -v … || true`, and the `|| true` covered the
+  whole pipeline, so a failed login was discarded and buildx carried
+  on unauthenticated. The failure then surfaced three minutes later
+  as `failed to fetch anonymous token: 403 Forbidden`, which reads
+  like a registry-permissions problem. A `PIPESTATUS` check keeps the
+  filter and fails in seconds naming the secret. (#397)
+
+### Note
+
+No functional change to the `gaia` or `gaia-mcp` binaries — this
+release carries workflow and documentation fixes only, and exists to
+re-drive the publish pipeline that failed on v0.8.1 (#396).
+
 ## [0.8.1] — 2026-09-10
 
 ### Fixed
@@ -1082,7 +1112,8 @@ Pre-v1.0, expect minor-bump churn at the public surface.
 - OS keychain backing for `credentials.yaml` (vs current 0600
   plaintext): `gh` does this, gaia doesn't yet.
 
-[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/stewartbrothers/gaia/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/stewartbrothers/gaia/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/stewartbrothers/gaia/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/stewartbrothers/gaia/compare/v0.6.0...v0.7.0
