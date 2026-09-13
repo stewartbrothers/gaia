@@ -270,7 +270,7 @@ Run through the checklist:
       `GH_RELEASE_TOKEN` was unset, the workflow skips this step
       with a notice.
 - [ ] **One-line installer** works: `curl -fsSL https://raw.githubusercontent.com/stewartbrothers/gaia/main/scripts/install.sh | TAG=vX.Y.Z bash`
-- [ ] **Container image** published: `docker pull ghcr.io/stewartbrothers/gaia-mcp:vX.Y.Z` and `docker pull ghcr.io/stewartbrothers/gaia-mcp:latest` both succeed. If `GH_RELEASE_TOKEN` lacked `write:packages`, the workflow skips with a notice.
+- [ ] **Container image** published: `docker pull ghcr.io/stewartbrothers/gaia-mcp:vX.Y.Z` and `docker pull ghcr.io/stewartbrothers/gaia-mcp:latest` both succeed. If `GHCR_TOKEN` is unset, the workflow skips this step with a notice.
 - [ ] **`brew upgrade gaia`** on a tap-installed Mac picks up the
       new version: `brew upgrade gaia && gaia version`. (Skip if
       the formula bump didn't run.)
@@ -325,7 +325,8 @@ and PR #283.
    | "Deploy Key: N: ... is not authorized to write" during goreleaser brew push | On the **`homebrew-gaia`** tap repo: Forgejo UI → Settings → Deploy Keys → delete the key → re-add the same public half with **Allow write access** ticked. Deploy keys' permission flag is set-at-creation; it can't be toggled in place. The new pre-flight probe step ("Verify deploy key has write access") catches this in < 5 seconds; if it fires, the goreleaser step never runs and no partial state is created. |
    | `! [rejected] HEAD -> main (fetch first)` during README bump | The fix landed in this file's commit history: the step now `git fetch origin main && git checkout -B main origin/main` before sed+commit+push, so any concurrent push (brew tap, etc.) is automatically rebased over. The step is also `continue-on-error: true` — a README bump failure no longer tanks the GitHub release / GHCR / mirror steps that come after. |
    | "Only signed in user is allowed to call APIs" / 403 from `gaia release publish` | The `FORGEJO_RELEASE_TOKEN` secret is missing, expired, or lacks `write:repository` scope. Rotate it (Forgejo UI → Settings → Secrets), then re-run. |
-   | GHCR push: `401 Unauthorized` or `403 Forbidden` | The `GH_RELEASE_TOKEN` secret needs the `write:packages` scope (not just `public_repo`). Fine-grained PATs can't push to GHCR — must be a classic PAT. |
+   | GHCR push: `401 Unauthorized`, `403 Forbidden`, or `failed to fetch anonymous token` | The `GHCR_TOKEN` secret must be a **classic** PAT with `write:packages` — ghcr.io rejects fine-grained PATs outright. `anonymous` in the error means `docker login` was rejected and buildx fell back to no credentials (#397). |
+   | GitHub release: `401 Bad credentials` | The value in `GH_RELEASE_TOKEN` isn't a token GitHub recognises — distinct from an expired token (also 401, but with an expiry message) and from an under-scoped one (403). Usually the secret holds a token that was since regenerated or deleted: regenerating mints a new value and kills the old one while the name and expiry on the token page stay put, so the token can look healthy in the UI while the secret is dead (#396). |
 
 3. **After fixing the underlying issue, re-run the workflow** —
    don't manually plug the gap. Re-running re-builds the same
@@ -419,14 +420,27 @@ Repository Settings → Secrets → Add Secret:
   Homebrew formula doesn't get auto-updated and tap users stay
   on the previous tag until the next manual update.
 
-- **`GH_RELEASE_TOKEN`** — GitHub **classic** PAT with scopes
-  `public_repo` (create releases + upload assets) and
-  `write:packages` (push container image to GHCR; includes
-  `read:packages`). Fine-grained PATs cannot push to GHCR.
-  Used by the release workflow to create the GitHub release,
-  upload artifacts, and push the container image.
-  **Strongly recommended** — the public one-line installer and
-  `docker pull` both depend on it.
+- **`GH_RELEASE_TOKEN`** — GitHub PAT used by the release workflow
+  to create the GitHub release and upload artifacts. A
+  **fine-grained** PAT with `Contents: Read and write` on
+  `stewartbrothers/gaia` is sufficient and is the recommended
+  shape; a classic PAT with `public_repo` also works.
+  **Strongly recommended** — the public one-line installer depends
+  on it.
+
+- **`GHCR_TOKEN`** — GitHub **classic** PAT with `write:packages`
+  (includes `read:packages`), used only to push the container image
+  to GHCR. This *must* be a classic token: ghcr.io does not accept
+  fine-grained PATs ("GitHub Packages only supports authentication
+  using a personal access token (classic)"), and there is no
+  packages permission to grant on a fine-grained one. It needs no
+  repo scope. **Optional**; if absent the container push skips with
+  a notice and the binary release is unaffected.
+
+  Kept separate from `GH_RELEASE_TOKEN` deliberately (#399): one
+  secret cannot be both fine-grained-for-contents and
+  classic-for-packages, and the two jobs failing independently is
+  worth more than the convenience of a single value.
 
 - **`GITHUB_MIRROR_SSH_KEY`** — SSH private key matching a deploy
   key with **write** access on `github.com/stewartbrothers/gaia`

@@ -19,7 +19,8 @@ name: Release smoke test
 # What it intentionally does NOT cover:
 #
 #   - Real secret use (FORGEJO_RELEASE_TOKEN, GORELEASER_TAP_DEPLOY_KEY
-#     write permission, GH_RELEASE_TOKEN scopes, GITHUB_MIRROR_SSH_KEY).
+#     write permission, GH_RELEASE_TOKEN / GHCR_TOKEN validity,
+#     GITHUB_MIRROR_SSH_KEY).
 #     Those still need the next live release cycle to validate. The
 #     deploy-key write probe (release.yml's "Verify deploy key has
 #     write access" step) handles that pre-flight class of failures at
