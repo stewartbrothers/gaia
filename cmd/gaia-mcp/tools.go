@@ -168,10 +168,10 @@ func optInt64Ptr(args map[string]any, key string) *int64 {
 // Resource groups gated by a [provider.Capability] are omitted from the
 // listing when the configured provider declares that capability
 // unsupported (#342), so an agent's tool manifest only shows what the
-// active backend can actually serve. Real forges (Forgejo, GitHub)
-// declare nothing unsupported, so every group registers — this only
-// trims the manifest for a future asymmetric provider. An unresolvable
-// provider name is permissive (everything registers).
+// active backend can actually serve. Forgejo and GitHub declare only
+// the Aikestra-specific board and priority groups unsupported; Aikestra
+// declares everything its API v1 lacks (#404). An unresolvable provider
+// name is permissive (everything registers).
 func registerAllTools(s *server.MCPServer) {
 	registerToolsForProvider(s, configuredProviderName())
 }
@@ -182,15 +182,28 @@ func registerAllTools(s *server.MCPServer) {
 func registerToolsForProvider(s *server.MCPServer, name string) {
 	supports := func(c provider.Capability) bool { return provider.Supports(name, c) }
 
-	// Ungated: every backend gaia targets has issues, labels, search,
-	// and git tags (a universal git op — no CapTags, #378).
+	// Ungated: every backend gaia targets has issues, dependencies, and
+	// git branches and tags (universal git ops — no CapTags, #378).
 	registerIssueTools(s)
-	registerLabelTools(s)
-	registerSearchTool(s)
 	registerIssueDepTools(s)
 	registerTagTools(s)
+	registerBranchTools(s)
 
-	// Capability-gated resource groups.
+	// Capability-gated resource groups. Labels and search are gated
+	// because Aikestra has neither (#404).
+	if supports(provider.CapLabels) {
+		registerLabelTools(s)
+	}
+	if supports(provider.CapSearch) {
+		registerSearchTool(s)
+	}
+	if supports(provider.CapBoards) {
+		registerBoardTools(s)
+	}
+	if supports(provider.CapIssuePriority) {
+		registerIssuePriorityTool(s)
+	}
+
 	if supports(provider.CapPullRequests) {
 		registerPRTools(s)
 	}
@@ -213,7 +226,7 @@ func registerToolsForProvider(s *server.MCPServer, name string) {
 		registerMilestoneTools(s)
 	}
 	if supports(provider.CapBranchProtection) {
-		registerBranchTools(s)
+		registerBranchProtectionTools(s)
 	}
 	if supports(provider.CapSecrets) {
 		registerSecretsTools(s)

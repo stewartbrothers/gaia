@@ -48,6 +48,7 @@ func registerIssueTools(s *server.MCPServer) {
 		mcp.WithString("state", mcp.Description("open | closed")),
 		mcp.WithArray("assignees", mcp.Description("replace assignees with these logins"), mcp.Items(map[string]any{"type": "string"})),
 		mcp.WithNumber("milestone", mcp.Description("milestone ID to attach; 0 to detach the current milestone; omit for no change")),
+		mcp.WithString("note", mcp.Description("why, recorded with a state or assignee change (Aikestra; required when the Project requires notes)")),
 	), ctxBoundHandler(handleIssueEdit))
 
 	s.AddTool(mcp.NewTool("gaia_issue_comment",
@@ -147,6 +148,7 @@ func handleIssueEdit(ctx context.Context, args map[string]any) (*mcp.CallToolRes
 		State:     optString(args, "state"),
 		Assignees: optStringSlice(args, "assignees"),
 		Milestone: optInt64Ptr(args, "milestone"),
+		Note:      optString(args, "note"),
 	})
 	if err != nil {
 		return toolError(err), nil

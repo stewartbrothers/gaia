@@ -24,7 +24,12 @@ func registerBranchTools(s *server.MCPServer) {
 		mcp.WithString("name", mcp.Required(), mcp.Description("new branch name")),
 		mcp.WithString("from", mcp.Description("source ref (branch, tag, or commit); default: the repo's default branch")),
 	), ctxBoundHandler(handleBranchCreate))
+}
 
+// registerBranchProtectionTools is split from registerBranchTools
+// because branches are universal while protection rules are gated by
+// CapBranchProtection (Aikestra has branches but no protection, #404).
+func registerBranchProtectionTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("gaia_branch_protection_get",
 		mcp.WithDescription("Show a branch's protection rule: required status-check contexts, the strict up-to-date flag, and required approvals."),
 		mcp.WithString("repo", mcp.Required(), mcp.Description("owner/name")),
