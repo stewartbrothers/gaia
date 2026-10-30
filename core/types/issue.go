@@ -43,4 +43,15 @@ type Issue struct {
 	// inline the milestone object on the issue payload, no extra
 	// round-trip. See #388.
 	Milestone *Milestone `json:"milestone,omitempty"`
+	// Type, DoNow, Board, Stage, and Parent carry Aikestra's typed-issue
+	// and board model (#404). Forgejo and GitHub leave them zero, so
+	// omitempty keeps their output unchanged. Type is the Issue's single
+	// type (feature, bug, …) — Aikestra's stand-in for labels. DoNow is
+	// its "Do Now" priority flag. Board/Stage name where it sits on a
+	// kanban board. Parent is the parent Issue's number.
+	Type   string `json:"type,omitempty"`
+	DoNow  bool   `json:"do_now,omitempty"`
+	Board  string `json:"board,omitempty"`
+	Stage  string `json:"stage,omitempty"`
+	Parent int    `json:"parent,omitempty"`
 }

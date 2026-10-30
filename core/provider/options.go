@@ -119,6 +119,10 @@ type EditIssueOptions struct {
 	RemoveLabels []string `json:"remove_labels,omitempty"`
 	Assignees    []string `json:"assignees,omitempty"`
 	Milestone    *int64   `json:"milestone,omitempty"`
+	// Note is the "why" recorded with a state or assignee change. Only
+	// Aikestra uses it — a Project can require one (`note_required`);
+	// Forgejo and GitHub ignore it (#404).
+	Note string `json:"note,omitempty"`
 }
 
 // CreatePullRequestOptions configures CreatePullRequest. Head/Base
@@ -543,4 +547,22 @@ type SetBranchProtectionOptions struct {
 	StrictStatusChecks bool
 	// RequiredApprovals is the number of approving reviews to require.
 	RequiredApprovals int
+}
+
+// --- Boards (#404) -------------------------------------------------
+
+// ListBoardsOptions paginates a ListBoards call.
+type ListBoardsOptions struct {
+	Limit  int
+	Cursor string
+}
+
+// MoveIssueOptions configures MoveIssue. Stage is required (a stage name,
+// case-insensitive, or ID). Board is optional (name or ID); empty keeps
+// the issue's current board. Note is the "why", which a Project can
+// require. JSON tags give the dry-run and the wire body the same shape.
+type MoveIssueOptions struct {
+	Stage string `json:"stage"`
+	Board string `json:"board,omitempty"`
+	Note  string `json:"note,omitempty"`
 }

@@ -15,6 +15,8 @@ func init() {
 		// Self-hosted-only: there is no universal Forgejo endpoint, so a
 		// missing API URL is a usage error, not a default to substitute.
 		TokenEnvNames: []string{"FORGEJO_TOKEN", "GITEA_TOKEN"},
+		// Boards and the Do Now flag are Aikestra concepts (#404).
+		Unsupported: []provider.Capability{provider.CapBoards, provider.CapIssuePriority},
 		Factory: func(cfg provider.BuildConfig) (provider.Provider, error) {
 			if cfg.APIURL == "" {
 				return nil, exitcode.Errorf(exitcode.Usage,

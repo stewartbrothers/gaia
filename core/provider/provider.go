@@ -42,4 +42,6 @@ type Provider interface {
 	VariablesOps
 	RunnersOps
 	CollaboratorsOps
+	BoardOps
+	IssuePriorityOps
 }
