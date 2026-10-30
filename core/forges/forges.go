@@ -11,6 +11,7 @@
 package forges
 
 import (
+	_ "github.com/stewartbrothers/gaia/core/aikestra"
 	_ "github.com/stewartbrothers/gaia/core/forgejo"
 	_ "github.com/stewartbrothers/gaia/core/github"
 )

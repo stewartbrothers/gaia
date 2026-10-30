@@ -1,0 +1,1296 @@
+{
+  "openapi": {
+    "request": {
+      "method": "GET",
+      "path": "/openapi.json"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "openapi": "3.1.0",
+        "info": {
+          "title": "Aikestra API",
+          "version": "1.0.0",
+          "description": "Aikestra's public REST API.\n\n**Authentication.** Send `Authorization: Bearer <access token>` (mint one under Account → Access tokens). Browser session cookies are not accepted. A missing, unknown, revoked or expired token is `401 unauthenticated`. A delegated-agent token acts as a Delegated Agent: it holds only its own Roles, never its User's; its work is attributed to its User.\n\n**Not found vs forbidden.** Anything you can't see — including a Project you are not a member of — is `404 not_found`, exactly as if it didn't exist. `403 forbidden` only answers for something you can see but may not change.\n\n**Errors** are always `{ \"error\": { \"code\", \"message\" } }`. Match on `code`.\n\n**Lists** answer `{ \"items\": [...], \"next_cursor\": string | null }`. Page with `limit` (1–100, default 30) and `cursor` (opaque, from `next_cursor`). `next_cursor` is null exactly when there are no more items. Repo content lists also carry `truncated`: true when the server stopped at a hard limit.\n\n**Projection.** Every JSON resource accepts `fields=a,b,c` to return only those top-level fields; an unknown field is `400 invalid_fields`.\n\n**Names.** Projects, Repos, Boards and Stages are addressed by the same slugs and names as the UI (earlier Project slugs and Repo names still resolve); people by email. Timestamps are ISO-8601 UTC.\n\n**Rate limiting** is not applied yet."
+        }
+      }
+    }
+  },
+  "user": {
+    "request": {
+      "method": "GET",
+      "path": "/user"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "principal": "user",
+        "credential_id": null,
+        "id": "13ce1d84-3053-4a43-bdd0-2798577bd48c",
+        "email": "ada@example.com",
+        "name": "ada"
+      }
+    }
+  },
+  "user_agent": {
+    "request": {
+      "method": "GET",
+      "path": "/user"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "principal": "delegated-agent",
+        "credential_id": "d3153523-196c-45a3-9066-d01781df77db",
+        "id": "13ce1d84-3053-4a43-bdd0-2798577bd48c",
+        "email": "ada@example.com",
+        "name": "ada"
+      }
+    }
+  },
+  "unauthenticated": {
+    "request": {
+      "method": "GET",
+      "path": "/user"
+    },
+    "response": {
+      "status": 401,
+      "www_authenticate": "Bearer realm=\"aikestra\"",
+      "body": {
+        "error": {
+          "code": "unauthenticated",
+          "message": "That access token is not valid"
+        }
+      }
+    }
+  },
+  "issue_create": {
+    "request": {
+      "method": "POST",
+      "path": "/projects/acme/issues",
+      "body": {
+        "title": "Login is slow",
+        "body": "Make it fast",
+        "type": "bug",
+        "assignee": "me"
+      }
+    },
+    "response": {
+      "status": 201,
+      "body": {
+        "id": "64293560-9af6-4bf9-ad55-ccdbe4c88f6f",
+        "number": 1,
+        "title": "Login is slow",
+        "body": "Make it fast",
+        "type": "bug",
+        "state": "open",
+        "priority": false,
+        "assignee": "ada@example.com",
+        "author": "ada@example.com",
+        "parent": null,
+        "repo": null,
+        "board": "Main",
+        "stage": "Todo",
+        "stage_entered_at": "2026-10-30T13:12:58.548Z",
+        "created_at": "2026-10-30T13:12:58.548Z",
+        "updated_at": "2026-10-30T13:12:58.548Z",
+        "closed_at": null
+      }
+    }
+  },
+  "issue_create_minimal": {
+    "request": {
+      "method": "POST",
+      "path": "/projects/acme/issues",
+      "body": {
+        "title": "Write docs"
+      }
+    },
+    "response": {
+      "status": 201,
+      "body": {
+        "id": "31c92f29-ec82-48ac-91cf-617e229b5cda",
+        "number": 2,
+        "title": "Write docs",
+        "body": "",
+        "type": "task",
+        "state": "open",
+        "priority": false,
+        "assignee": null,
+        "author": "ada@example.com",
+        "parent": null,
+        "repo": null,
+        "board": "Main",
+        "stage": "Todo",
+        "stage_entered_at": "2026-10-30T13:12:58.588Z",
+        "created_at": "2026-10-30T13:12:58.588Z",
+        "updated_at": "2026-10-30T13:12:58.588Z",
+        "closed_at": null
+      }
+    }
+  },
+  "issues_page1": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/issues?limit=2"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "items": [
+          {
+            "id": "1ffef22b-0555-44a7-8c90-5acfd0a06c68",
+            "number": 4,
+            "title": "Tidy up",
+            "body": "",
+            "type": "task",
+            "state": "open",
+            "priority": false,
+            "assignee": null,
+            "author": "ada@example.com",
+            "parent": null,
+            "repo": null,
+            "board": "Main",
+            "stage": "Todo",
+            "stage_entered_at": "2026-10-30T13:12:58.635Z",
+            "created_at": "2026-10-30T13:12:58.635Z",
+            "updated_at": "2026-10-30T13:12:58.635Z",
+            "closed_at": null
+          },
+          {
+            "id": "a1a1006a-6192-4578-85ca-10bdda856920",
+            "number": 3,
+            "title": "Ship it",
+            "body": "",
+            "type": "task",
+            "state": "open",
+            "priority": false,
+            "assignee": null,
+            "author": "ada@example.com",
+            "parent": null,
+            "repo": null,
+            "board": "Main",
+            "stage": "Todo",
+            "stage_entered_at": "2026-10-30T13:12:58.612Z",
+            "created_at": "2026-10-30T13:12:58.612Z",
+            "updated_at": "2026-10-30T13:12:58.612Z",
+            "closed_at": null
+          }
+        ],
+        "next_cursor": "eyJ2IjoxLCJwIjozfQ"
+      }
+    }
+  },
+  "issues_page2": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/issues?limit=2&cursor=eyJ2IjoxLCJwIjozfQ"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "items": [
+          {
+            "id": "31c92f29-ec82-48ac-91cf-617e229b5cda",
+            "number": 2,
+            "title": "Write docs",
+            "body": "",
+            "type": "task",
+            "state": "open",
+            "priority": false,
+            "assignee": null,
+            "author": "ada@example.com",
+            "parent": null,
+            "repo": null,
+            "board": "Main",
+            "stage": "Todo",
+            "stage_entered_at": "2026-10-30T13:12:58.588Z",
+            "created_at": "2026-10-30T13:12:58.588Z",
+            "updated_at": "2026-10-30T13:12:58.588Z",
+            "closed_at": null
+          },
+          {
+            "id": "64293560-9af6-4bf9-ad55-ccdbe4c88f6f",
+            "number": 1,
+            "title": "Login is slow",
+            "body": "Make it fast",
+            "type": "bug",
+            "state": "open",
+            "priority": false,
+            "assignee": "ada@example.com",
+            "author": "ada@example.com",
+            "parent": null,
+            "repo": null,
+            "board": "Main",
+            "stage": "Todo",
+            "stage_entered_at": "2026-10-30T13:12:58.548Z",
+            "created_at": "2026-10-30T13:12:58.548Z",
+            "updated_at": "2026-10-30T13:12:58.548Z",
+            "closed_at": null
+          }
+        ],
+        "next_cursor": null
+      }
+    }
+  },
+  "issues_filtered": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/issues?state=all&type=bug&assignee=me&q=login&limit=30"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "items": [
+          {
+            "id": "64293560-9af6-4bf9-ad55-ccdbe4c88f6f",
+            "number": 1,
+            "title": "Login is slow",
+            "body": "Make it fast",
+            "type": "bug",
+            "state": "open",
+            "priority": false,
+            "assignee": "ada@example.com",
+            "author": "ada@example.com",
+            "parent": null,
+            "repo": null,
+            "board": "Main",
+            "stage": "Todo",
+            "stage_entered_at": "2026-10-30T13:12:58.548Z",
+            "created_at": "2026-10-30T13:12:58.548Z",
+            "updated_at": "2026-10-30T13:12:58.548Z",
+            "closed_at": null
+          }
+        ],
+        "next_cursor": null
+      }
+    }
+  },
+  "issue_get": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/issues/1"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "id": "64293560-9af6-4bf9-ad55-ccdbe4c88f6f",
+        "number": 1,
+        "title": "Login is slow",
+        "body": "Make it fast",
+        "type": "bug",
+        "state": "open",
+        "priority": false,
+        "assignee": "ada@example.com",
+        "author": "ada@example.com",
+        "parent": null,
+        "repo": null,
+        "board": "Main",
+        "stage": "Todo",
+        "stage_entered_at": "2026-10-30T13:12:58.548Z",
+        "created_at": "2026-10-30T13:12:58.548Z",
+        "updated_at": "2026-10-30T13:12:58.548Z",
+        "closed_at": null
+      }
+    }
+  },
+  "issue_get_missing": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/issues/999"
+    },
+    "response": {
+      "status": 404,
+      "body": {
+        "error": {
+          "code": "not_found",
+          "message": "No such Issue"
+        }
+      }
+    }
+  },
+  "issue_get_no_access": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/issues/1"
+    },
+    "response": {
+      "status": 404,
+      "body": {
+        "error": {
+          "code": "not_found",
+          "message": "No such Project"
+        }
+      }
+    }
+  },
+  "issue_patch": {
+    "request": {
+      "method": "PATCH",
+      "path": "/projects/acme/issues/2",
+      "body": {
+        "title": "Write the docs",
+        "type": "docs"
+      }
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "id": "31c92f29-ec82-48ac-91cf-617e229b5cda",
+        "number": 2,
+        "title": "Write the docs",
+        "body": "",
+        "type": "docs",
+        "state": "open",
+        "priority": false,
+        "assignee": null,
+        "author": "ada@example.com",
+        "parent": null,
+        "repo": null,
+        "board": "Main",
+        "stage": "Todo",
+        "stage_entered_at": "2026-10-30T13:12:58.588Z",
+        "created_at": "2026-10-30T13:12:58.588Z",
+        "updated_at": "2026-10-30T13:12:58.710Z",
+        "closed_at": null
+      }
+    }
+  },
+  "issue_close": {
+    "request": {
+      "method": "PUT",
+      "path": "/projects/acme/issues/2/state",
+      "body": {
+        "state": "closed"
+      }
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "id": "31c92f29-ec82-48ac-91cf-617e229b5cda",
+        "number": 2,
+        "title": "Write the docs",
+        "body": "",
+        "type": "docs",
+        "state": "closed",
+        "priority": false,
+        "assignee": null,
+        "author": "ada@example.com",
+        "parent": null,
+        "repo": null,
+        "board": "Main",
+        "stage": "Todo",
+        "stage_entered_at": "2026-10-30T13:12:58.588Z",
+        "created_at": "2026-10-30T13:12:58.588Z",
+        "updated_at": "2026-10-30T13:12:58.727Z",
+        "closed_at": "2026-10-30T13:12:58.727Z"
+      }
+    }
+  },
+  "issue_reopen": {
+    "request": {
+      "method": "PUT",
+      "path": "/projects/acme/issues/2/state",
+      "body": {
+        "state": "open"
+      }
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "id": "31c92f29-ec82-48ac-91cf-617e229b5cda",
+        "number": 2,
+        "title": "Write the docs",
+        "body": "",
+        "type": "docs",
+        "state": "open",
+        "priority": false,
+        "assignee": null,
+        "author": "ada@example.com",
+        "parent": null,
+        "repo": null,
+        "board": "Main",
+        "stage": "Todo",
+        "stage_entered_at": "2026-10-30T13:12:58.588Z",
+        "created_at": "2026-10-30T13:12:58.588Z",
+        "updated_at": "2026-10-30T13:12:58.745Z",
+        "closed_at": null
+      }
+    }
+  },
+  "issue_assign": {
+    "request": {
+      "method": "PUT",
+      "path": "/projects/acme/issues/2/assignee",
+      "body": {
+        "assignee": "bob@example.com"
+      }
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "id": "31c92f29-ec82-48ac-91cf-617e229b5cda",
+        "number": 2,
+        "title": "Write the docs",
+        "body": "",
+        "type": "docs",
+        "state": "open",
+        "priority": false,
+        "assignee": "bob@example.com",
+        "author": "ada@example.com",
+        "parent": null,
+        "repo": null,
+        "board": "Main",
+        "stage": "Todo",
+        "stage_entered_at": "2026-10-30T13:12:58.588Z",
+        "created_at": "2026-10-30T13:12:58.588Z",
+        "updated_at": "2026-10-30T13:12:58.765Z",
+        "closed_at": null
+      }
+    }
+  },
+  "issue_unassign": {
+    "request": {
+      "method": "PUT",
+      "path": "/projects/acme/issues/2/assignee",
+      "body": {
+        "assignee": null
+      }
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "id": "31c92f29-ec82-48ac-91cf-617e229b5cda",
+        "number": 2,
+        "title": "Write the docs",
+        "body": "",
+        "type": "docs",
+        "state": "open",
+        "priority": false,
+        "assignee": null,
+        "author": "ada@example.com",
+        "parent": null,
+        "repo": null,
+        "board": "Main",
+        "stage": "Todo",
+        "stage_entered_at": "2026-10-30T13:12:58.588Z",
+        "created_at": "2026-10-30T13:12:58.588Z",
+        "updated_at": "2026-10-30T13:12:58.791Z",
+        "closed_at": null
+      }
+    }
+  },
+  "issue_priority_on": {
+    "request": {
+      "method": "PUT",
+      "path": "/projects/acme/issues/2/priority",
+      "body": {
+        "priority": true
+      }
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "id": "31c92f29-ec82-48ac-91cf-617e229b5cda",
+        "number": 2,
+        "title": "Write the docs",
+        "body": "",
+        "type": "docs",
+        "state": "open",
+        "priority": true,
+        "assignee": null,
+        "author": "ada@example.com",
+        "parent": null,
+        "repo": null,
+        "board": "Main",
+        "stage": "Todo",
+        "stage_entered_at": "2026-10-30T13:12:58.588Z",
+        "created_at": "2026-10-30T13:12:58.588Z",
+        "updated_at": "2026-10-30T13:12:58.812Z",
+        "closed_at": null
+      }
+    }
+  },
+  "issue_priority_off": {
+    "request": {
+      "method": "PUT",
+      "path": "/projects/acme/issues/2/priority",
+      "body": {
+        "priority": false
+      }
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "id": "31c92f29-ec82-48ac-91cf-617e229b5cda",
+        "number": 2,
+        "title": "Write the docs",
+        "body": "",
+        "type": "docs",
+        "state": "open",
+        "priority": false,
+        "assignee": null,
+        "author": "ada@example.com",
+        "parent": null,
+        "repo": null,
+        "board": "Main",
+        "stage": "Todo",
+        "stage_entered_at": "2026-10-30T13:12:58.588Z",
+        "created_at": "2026-10-30T13:12:58.588Z",
+        "updated_at": "2026-10-30T13:12:58.829Z",
+        "closed_at": null
+      }
+    }
+  },
+  "note_required": {
+    "request": {
+      "method": "PUT",
+      "path": "/projects/acme/issues/2/state",
+      "body": {
+        "state": "closed"
+      }
+    },
+    "response": {
+      "status": 422,
+      "body": {
+        "error": {
+          "code": "note_required",
+          "message": "This Project requires a note to close an Issue"
+        }
+      }
+    }
+  },
+  "issue_close_with_note": {
+    "request": {
+      "method": "PUT",
+      "path": "/projects/acme/issues/2/state",
+      "body": {
+        "state": "closed",
+        "note": "Done"
+      }
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "id": "31c92f29-ec82-48ac-91cf-617e229b5cda",
+        "number": 2,
+        "title": "Write the docs",
+        "body": "",
+        "type": "docs",
+        "state": "closed",
+        "priority": false,
+        "assignee": null,
+        "author": "ada@example.com",
+        "parent": null,
+        "repo": null,
+        "board": "Main",
+        "stage": "Todo",
+        "stage_entered_at": "2026-10-30T13:12:58.588Z",
+        "created_at": "2026-10-30T13:12:58.588Z",
+        "updated_at": "2026-10-30T13:12:58.864Z",
+        "closed_at": "2026-10-30T13:12:58.864Z"
+      }
+    }
+  },
+  "issue_reopen_with_note": {
+    "request": {
+      "method": "PUT",
+      "path": "/projects/acme/issues/2/state",
+      "body": {
+        "state": "open",
+        "note": "Not done"
+      }
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "id": "31c92f29-ec82-48ac-91cf-617e229b5cda",
+        "number": 2,
+        "title": "Write the docs",
+        "body": "",
+        "type": "docs",
+        "state": "open",
+        "priority": false,
+        "assignee": null,
+        "author": "ada@example.com",
+        "parent": null,
+        "repo": null,
+        "board": "Main",
+        "stage": "Todo",
+        "stage_entered_at": "2026-10-30T13:12:58.588Z",
+        "created_at": "2026-10-30T13:12:58.588Z",
+        "updated_at": "2026-10-30T13:12:58.880Z",
+        "closed_at": null
+      }
+    }
+  },
+  "comment_create": {
+    "request": {
+      "method": "POST",
+      "path": "/projects/acme/issues/1/comments",
+      "body": {
+        "body": "First look"
+      }
+    },
+    "response": {
+      "status": 201,
+      "body": {
+        "id": "b8882ace-c0f6-4460-828a-c42009b6629f",
+        "author": "ada@example.com",
+        "body": "First look",
+        "created_at": "2026-10-30T13:12:58.903Z",
+        "updated_at": "2026-10-30T13:12:58.903Z"
+      }
+    }
+  },
+  "comments": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/issues/1/comments?limit=100"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "items": [
+          {
+            "id": "b8882ace-c0f6-4460-828a-c42009b6629f",
+            "author": "ada@example.com",
+            "body": "First look",
+            "created_at": "2026-10-30T13:12:58.903Z",
+            "updated_at": "2026-10-30T13:12:58.903Z"
+          },
+          {
+            "id": "83ff35e4-d0ce-46a9-994c-d9371efd6156",
+            "author": "bob@example.com",
+            "body": "Agreed",
+            "created_at": "2026-10-30T13:12:58.920Z",
+            "updated_at": "2026-10-30T13:12:58.920Z"
+          }
+        ],
+        "next_cursor": null
+      }
+    }
+  },
+  "comments_page1": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/issues/1/comments?limit=1"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "items": [
+          {
+            "id": "b8882ace-c0f6-4460-828a-c42009b6629f",
+            "author": "ada@example.com",
+            "body": "First look",
+            "created_at": "2026-10-30T13:12:58.903Z",
+            "updated_at": "2026-10-30T13:12:58.903Z"
+          }
+        ],
+        "next_cursor": "eyJ2IjoxLCJwIjoiMjAyNi0xMC0zMFQxMzoxMjo1OC45MDNafGI4ODgyYWNlLWMwZjYtNDQ2MC04MjhhLWM0MjAwOWI2NjI5ZiJ9"
+      }
+    }
+  },
+  "comments_page2": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/issues/1/comments?limit=1&cursor=eyJ2IjoxLCJwIjoiMjAyNi0xMC0zMFQxMzoxMjo1OC45MDNafGI4ODgyYWNlLWMwZjYtNDQ2MC04MjhhLWM0MjAwOWI2NjI5ZiJ9"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "items": [
+          {
+            "id": "83ff35e4-d0ce-46a9-994c-d9371efd6156",
+            "author": "bob@example.com",
+            "body": "Agreed",
+            "created_at": "2026-10-30T13:12:58.920Z",
+            "updated_at": "2026-10-30T13:12:58.920Z"
+          }
+        ],
+        "next_cursor": null
+      }
+    }
+  },
+  "relationship_add_blocked_by": {
+    "request": {
+      "method": "POST",
+      "path": "/projects/acme/issues/3/relationships",
+      "body": {
+        "relation": "blocked_by",
+        "issue": 1
+      }
+    },
+    "response": {
+      "status": 201,
+      "body": {
+        "id": "5b0f1ba4-2a2e-4864-99e6-c469e5ab09b3",
+        "relation": "blocked_by",
+        "issue": 1,
+        "title": "Login is slow",
+        "state": "open"
+      }
+    }
+  },
+  "relationship_add_blocks": {
+    "request": {
+      "method": "POST",
+      "path": "/projects/acme/issues/3/relationships",
+      "body": {
+        "relation": "blocks",
+        "issue": 4
+      }
+    },
+    "response": {
+      "status": 201,
+      "body": {
+        "id": "bb8fbbe0-ce5e-4c49-b109-f279c7704dff",
+        "relation": "blocks",
+        "issue": 4,
+        "title": "Tidy up",
+        "state": "open"
+      }
+    }
+  },
+  "relationships": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/issues/3/relationships?limit=100"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "items": [
+          {
+            "id": null,
+            "relation": "child",
+            "issue": 5,
+            "title": "Child",
+            "state": "open"
+          },
+          {
+            "id": "5b0f1ba4-2a2e-4864-99e6-c469e5ab09b3",
+            "relation": "blocked_by",
+            "issue": 1,
+            "title": "Login is slow",
+            "state": "open"
+          },
+          {
+            "id": "bb8fbbe0-ce5e-4c49-b109-f279c7704dff",
+            "relation": "blocks",
+            "issue": 4,
+            "title": "Tidy up",
+            "state": "open"
+          },
+          {
+            "id": "d19cd12f-d3e5-4fcd-893e-539d9c3d9f6c",
+            "relation": "related_to",
+            "issue": 2,
+            "title": "Write the docs",
+            "state": "open"
+          }
+        ],
+        "next_cursor": null
+      }
+    }
+  },
+  "issue_get_blocked": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/issues/3"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "id": "a1a1006a-6192-4578-85ca-10bdda856920",
+        "number": 3,
+        "title": "Ship it",
+        "body": "",
+        "type": "task",
+        "state": "open",
+        "priority": false,
+        "assignee": null,
+        "author": "ada@example.com",
+        "parent": null,
+        "repo": null,
+        "board": "Main",
+        "stage": "Todo",
+        "stage_entered_at": "2026-10-30T13:12:58.612Z",
+        "created_at": "2026-10-30T13:12:58.612Z",
+        "updated_at": "2026-10-30T13:12:58.612Z",
+        "closed_at": null
+      }
+    }
+  },
+  "cycle": {
+    "request": {
+      "method": "POST",
+      "path": "/projects/acme/issues/1/relationships",
+      "body": {
+        "relation": "blocked_by",
+        "issue": 3
+      }
+    },
+    "response": {
+      "status": 409,
+      "body": {
+        "error": {
+          "code": "cycle",
+          "message": "That Blocks relationship would form a cycle"
+        }
+      }
+    }
+  },
+  "relationship_add_missing": {
+    "request": {
+      "method": "POST",
+      "path": "/projects/acme/issues/3/relationships",
+      "body": {
+        "relation": "blocks",
+        "issue": 999
+      }
+    },
+    "response": {
+      "status": 422,
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "No Issue #999 in this Project"
+        }
+      }
+    }
+  },
+  "boards": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/boards?limit=100"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "items": [
+          {
+            "id": "7e0d3ce8-2a48-4c57-883f-9104f34407f9",
+            "name": "Main",
+            "default": true,
+            "paused": false,
+            "stages": [
+              {
+                "id": "60a25db3-7371-4566-a768-cfb6ad3fcd9c",
+                "name": "Todo",
+                "position": 0,
+                "paused": false
+              },
+              {
+                "id": "cf5cb7e2-4a97-456d-86d0-0abc1bd1c9ff",
+                "name": "Dev",
+                "position": 1,
+                "paused": false
+              },
+              {
+                "id": "7c929ab9-ff62-47cb-b3ef-5f04cf2f89c8",
+                "name": "Review",
+                "position": 2,
+                "paused": false
+              },
+              {
+                "id": "1653fc80-8af0-4e9a-a55e-3ab0c3c3463f",
+                "name": "Test",
+                "position": 3,
+                "paused": false
+              },
+              {
+                "id": "c6d3bb0d-2f6c-434a-a499-ef6d99c5110c",
+                "name": "Release",
+                "position": 4,
+                "paused": false
+              },
+              {
+                "id": "6d697a2d-3d41-4ba5-a451-a5eec44dd1fa",
+                "name": "Done",
+                "position": 5,
+                "paused": false
+              }
+            ],
+            "created_at": "2026-10-30T13:12:58.437Z"
+          }
+        ],
+        "next_cursor": null
+      }
+    }
+  },
+  "board": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/boards/main"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "id": "7e0d3ce8-2a48-4c57-883f-9104f34407f9",
+        "name": "Main",
+        "default": true,
+        "paused": false,
+        "stages": [
+          {
+            "id": "60a25db3-7371-4566-a768-cfb6ad3fcd9c",
+            "name": "Todo",
+            "position": 0,
+            "paused": false,
+            "issues": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ]
+          },
+          {
+            "id": "cf5cb7e2-4a97-456d-86d0-0abc1bd1c9ff",
+            "name": "Dev",
+            "position": 1,
+            "paused": false,
+            "issues": []
+          },
+          {
+            "id": "7c929ab9-ff62-47cb-b3ef-5f04cf2f89c8",
+            "name": "Review",
+            "position": 2,
+            "paused": false,
+            "issues": []
+          },
+          {
+            "id": "1653fc80-8af0-4e9a-a55e-3ab0c3c3463f",
+            "name": "Test",
+            "position": 3,
+            "paused": false,
+            "issues": []
+          },
+          {
+            "id": "c6d3bb0d-2f6c-434a-a499-ef6d99c5110c",
+            "name": "Release",
+            "position": 4,
+            "paused": false,
+            "issues": []
+          },
+          {
+            "id": "6d697a2d-3d41-4ba5-a451-a5eec44dd1fa",
+            "name": "Done",
+            "position": 5,
+            "paused": false,
+            "issues": []
+          }
+        ],
+        "created_at": "2026-10-30T13:12:58.437Z"
+      }
+    }
+  },
+  "board_missing": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/boards/nope"
+    },
+    "response": {
+      "status": 404,
+      "body": {
+        "error": {
+          "code": "not_found",
+          "message": "No such Board"
+        }
+      }
+    }
+  },
+  "placement_blocked": {
+    "request": {
+      "method": "PUT",
+      "path": "/projects/acme/issues/3/placement",
+      "body": {
+        "stage": "dev"
+      }
+    },
+    "response": {
+      "status": 409,
+      "body": {
+        "error": {
+          "code": "blocked",
+          "message": "Blocked by #1: it can't leave its Stage until they are closed"
+        }
+      }
+    }
+  },
+  "placement": {
+    "request": {
+      "method": "PUT",
+      "path": "/projects/acme/issues/2/placement",
+      "body": {
+        "stage": "dev",
+        "board": "main",
+        "note": "Starting"
+      }
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "id": "31c92f29-ec82-48ac-91cf-617e229b5cda",
+        "number": 2,
+        "title": "Write the docs",
+        "body": "",
+        "type": "docs",
+        "state": "open",
+        "priority": false,
+        "assignee": null,
+        "author": "ada@example.com",
+        "parent": null,
+        "repo": null,
+        "board": "Main",
+        "stage": "Dev",
+        "stage_entered_at": "2026-10-30T13:12:59.206Z",
+        "created_at": "2026-10-30T13:12:58.588Z",
+        "updated_at": "2026-10-30T13:12:59.206Z",
+        "closed_at": null
+      }
+    }
+  },
+  "placement_bad_stage": {
+    "request": {
+      "method": "PUT",
+      "path": "/projects/acme/issues/2/placement",
+      "body": {
+        "stage": "Nowhere"
+      }
+    },
+    "response": {
+      "status": 422,
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "No such Stage on Board \"Main\""
+        }
+      }
+    }
+  },
+  "relationship_delete": {
+    "request": {
+      "method": "DELETE",
+      "path": "/projects/acme/issues/3/relationships/5b0f1ba4-2a2e-4864-99e6-c469e5ab09b3"
+    },
+    "response": {
+      "status": 204
+    }
+  },
+  "repo_create": {
+    "request": {
+      "method": "POST",
+      "path": "/projects/acme/repos",
+      "body": {
+        "name": "app"
+      }
+    },
+    "response": {
+      "status": 201,
+      "body": {
+        "id": "e1a6fcb7-cba8-4a93-bdb2-fff0ae8328de",
+        "name": "app",
+        "project": "acme",
+        "clone_url_https": "https://git.example.com/git/acme/app.git",
+        "clone_url_ssh": "ssh://git@git.example.com/acme/app.git",
+        "created_at": "2026-10-30T13:12:59.248Z"
+      }
+    }
+  },
+  "conflict": {
+    "request": {
+      "method": "POST",
+      "path": "/projects/acme/repos",
+      "body": {
+        "name": "app"
+      }
+    },
+    "response": {
+      "status": 409,
+      "body": {
+        "error": {
+          "code": "conflict",
+          "message": "This Project already has, or had, a Repo named \"app\""
+        }
+      }
+    }
+  },
+  "repos": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/repos?limit=100"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "items": [
+          {
+            "id": "e1a6fcb7-cba8-4a93-bdb2-fff0ae8328de",
+            "name": "app",
+            "project": "acme",
+            "clone_url_https": "https://git.example.com/git/acme/app.git",
+            "clone_url_ssh": "ssh://git@git.example.com/acme/app.git",
+            "created_at": "2026-10-30T13:12:59.248Z"
+          }
+        ],
+        "next_cursor": null
+      }
+    }
+  },
+  "refs": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/repos/app/refs?limit=100"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "items": [
+          {
+            "name": "dev",
+            "kind": "branch",
+            "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "subject": "s",
+            "date": "2026-10-01T10:00:00.000Z",
+            "default": false
+          },
+          {
+            "name": "main",
+            "kind": "branch",
+            "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "subject": "s",
+            "date": "2026-10-01T00:00:00.000Z",
+            "default": true
+          },
+          {
+            "name": "v1",
+            "kind": "tag",
+            "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "subject": "s",
+            "date": "2026-10-01T10:00:00.000Z",
+            "default": false
+          }
+        ],
+        "next_cursor": null,
+        "truncated": false
+      }
+    }
+  },
+  "forbidden": {
+    "request": {
+      "method": "POST",
+      "path": "/projects/acme/repos",
+      "body": {
+        "name": "x"
+      }
+    },
+    "response": {
+      "status": 403,
+      "body": {
+        "error": {
+          "code": "forbidden",
+          "message": "You're not allowed to create a Repo in this Project"
+        }
+      }
+    }
+  },
+  "invalid_fields": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/issues/1?fields=nope"
+    },
+    "response": {
+      "status": 400,
+      "body": {
+        "error": {
+          "code": "invalid_fields",
+          "message": "Unknown field \"nope\"; this resource has: id, number, title, body, type, state, priority, assignee, author, parent, repo, board, stage, stage_entered_at, created_at, updated_at, closed_at"
+        }
+      }
+    }
+  },
+  "invalid_cursor": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/issues?cursor=bad"
+    },
+    "response": {
+      "status": 400,
+      "body": {
+        "error": {
+          "code": "invalid_cursor",
+          "message": "That cursor is not valid for this list"
+        }
+      }
+    }
+  },
+  "invalid_request": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/issues?limit=500"
+    },
+    "response": {
+      "status": 400,
+      "body": {
+        "error": {
+          "code": "invalid_request",
+          "message": "limit must be an integer from 1 to 100"
+        }
+      }
+    }
+  },
+  "method_not_allowed": {
+    "request": {
+      "method": "DELETE",
+      "path": "/projects/acme/issues/1"
+    },
+    "response": {
+      "status": 405,
+      "body": {
+        "error": {
+          "code": "method_not_allowed",
+          "message": "Use GET, PATCH"
+        }
+      }
+    }
+  },
+  "unsupported_media_type": {
+    "request": {
+      "method": "POST",
+      "path": "/projects/acme/issues",
+      "body": {
+        "title": "x"
+      }
+    },
+    "response": {
+      "status": 415,
+      "body": {
+        "error": {
+          "code": "unsupported_media_type",
+          "message": "Send the body as application/json"
+        }
+      }
+    }
+  },
+  "validation_failed": {
+    "request": {
+      "method": "POST",
+      "path": "/projects/acme/issues",
+      "body": {
+        "title": "Typed",
+        "type": "nonsense"
+      }
+    },
+    "response": {
+      "status": 422,
+      "body": {
+        "error": {
+          "code": "validation_failed",
+          "message": "\"nonsense\" isn't one of this Project's Issue types."
+        }
+      }
+    }
+  }
+}
