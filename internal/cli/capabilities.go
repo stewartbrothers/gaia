@@ -41,16 +41,15 @@ func gatedCapability(cmd *cobra.Command) (provider.Capability, bool) {
 // unsupported (#342). It is deliberately cheap and best-effort:
 //
 //   - A command with no capability annotation (version, auth, issue,
-//     label, …) returns immediately, resolving no settings — so meta and
+//     tag, …) returns immediately, resolving no settings — so meta and
 //     offline commands pay nothing and never need a configured provider.
 //   - If the provider name can't be resolved (unconfigured) or the
 //     provider isn't registered, the guard does not block — the command
 //     proceeds and surfaces its own error.
 //
-// Real forges (Forgejo, GitHub) declare no unsupported capabilities, so
-// this never blocks anything in production; it is the seam a future
-// asymmetric provider (e.g. an issues-only backend) uses to keep
-// operators from invoking commands it can't serve.
+// It keeps operators from invoking commands the active provider can't
+// serve: Aikestra's missing PRs, labels, wikis, … (#404), and the
+// Aikestra-only boards and Do Now priority on Forgejo and GitHub.
 func capabilityGuard(flags *globalFlags) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, _ []string) error {
 		cap, gated := gatedCapability(cmd)

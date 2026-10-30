@@ -27,6 +27,8 @@ func newIssueCmd(flags *globalFlags) *cobra.Command {
 	cmd.AddCommand(newIssueCommentEditCmd(flags))
 	cmd.AddCommand(newIssueCommentDeleteCmd(flags))
 	cmd.AddCommand(newIssueDepCmd(flags))
+	cmd.AddCommand(annotateCapability(newIssueMoveCmd(flags), provider.CapBoards))
+	cmd.AddCommand(annotateCapability(newIssuePriorityCmd(flags), provider.CapIssuePriority))
 	return cmd
 }
 
@@ -166,6 +168,7 @@ func prettyIssueView(w io.Writer, data any) error {
 	if len(issue.Labels) > 0 {
 		_, _ = fmt.Fprintf(w, "Labels: %s\n", joinLabelNames(issue.Labels))
 	}
+	writeAikestraFields(w, issue)
 	if issue.Milestone != nil {
 		_, _ = fmt.Fprintf(w, "Milestone: #%d\n", issue.Milestone.ID)
 		writeExternal(w, issue.Milestone.Title)

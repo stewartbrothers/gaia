@@ -108,6 +108,7 @@ func newIssueEditCmd(flags *globalFlags) *cobra.Command {
 		addLabels    []string
 		removeLabels []string
 		milestone    string
+		note         string
 		dryRun       bool
 	)
 	cmd := &cobra.Command{
@@ -143,6 +144,7 @@ func newIssueEditCmd(flags *globalFlags) *cobra.Command {
 				AddLabels:    addLabels,
 				RemoveLabels: removeLabels,
 				Milestone:    ms,
+				Note:         note,
 			}
 			if dryRun {
 				return printDryRun(cmd, fmt.Sprintf("PATCH /repos/%s/%s/issues/%d", owner, repo, n), opts)
@@ -161,9 +163,14 @@ func newIssueEditCmd(flags *globalFlags) *cobra.Command {
 	cmd.Flags().StringSliceVar(&addLabels, "add-label", nil, "add label by name (repeatable)")
 	cmd.Flags().StringSliceVar(&removeLabels, "remove-label", nil, "remove label by name (repeatable)")
 	cmd.Flags().StringVar(&milestone, "milestone", "", "milestone ID to attach; \"none\" to detach (empty = no change)")
+	cmd.Flags().StringVar(&note, "note", "", noteFlagHelp)
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the request and exit without patching")
 	return cmd
 }
+
+// noteFlagHelp documents --note on the commands that change an issue's
+// state or assignee. Only Aikestra records it (#404).
+const noteFlagHelp = "why, recorded with a state or assignee change (Aikestra; required when the Project requires notes)"
 
 // parseMilestoneFlag parses the --milestone edit flag's tri-state
 // value: "" means no change (nil), "none"/"0" means detach the
@@ -194,7 +201,8 @@ func newIssueReopenCmd(flags *globalFlags) *cobra.Command {
 }
 
 func newIssueStateCmd(flags *globalFlags, name, state, short string) *cobra.Command {
-	return &cobra.Command{
+	var note string
+	cmd := &cobra.Command{
 		Use:   name + " <number>",
 		Short: short,
 		Args:  cobra.ExactArgs(1),
@@ -211,13 +219,15 @@ func newIssueStateCmd(flags *globalFlags, name, state, short string) *cobra.Comm
 			if err != nil {
 				return err
 			}
-			issue, err := p.EditIssue(cmd.Context(), owner, repo, n, provider.EditIssueOptions{State: state})
+			issue, err := p.EditIssue(cmd.Context(), owner, repo, n, provider.EditIssueOptions{State: state, Note: note})
 			if err != nil {
 				return err
 			}
 			return renderEnvelope(cmd, flags, issue, nil, prettyIssueView)
 		},
 	}
+	cmd.Flags().StringVar(&note, "note", "", noteFlagHelp)
+	return cmd
 }
 
 func newIssueCommentCmd(flags *globalFlags) *cobra.Command {

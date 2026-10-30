@@ -18,7 +18,7 @@ func newBranchCmd(flags *globalFlags) *cobra.Command {
 	}
 	cmd.AddCommand(newBranchListCmd(flags))
 	cmd.AddCommand(newBranchCreateCmd(flags))
-	cmd.AddCommand(newBranchProtectionCmd(flags))
+	cmd.AddCommand(annotateCapability(newBranchProtectionCmd(flags), provider.CapBranchProtection))
 	return cmd
 }
 

@@ -251,6 +251,7 @@ get fixed, and future sessions repeat the same workaround.
 - `area:core` — Provider interface, shared types
 - `area:provider-forgejo` — Forgejo-specific API mapping
 - `area:provider-github` — GitHub provider gaps
+- `area:provider-aikestra` — Aikestra provider mapping
 - `area:release` — release/packaging/distribution
 - `area:mcp` — MCP tool coverage
 
@@ -260,12 +261,13 @@ This labeling lets gaps be filtered and worked by workstream:
 **Current coverage** (pass `--format json --fields a,b,c` to keep output
 tight when scripting):
 
-- Identity: `gaia version`, `gaia whoami`, `gaia auth forgejo|gh|status|logout`
+- Identity: `gaia version`, `gaia whoami`, `gaia auth forgejo|gh|aikestra|status|logout`
 - Self-documentation: `gaia learn` (prints the embedded agent guide; `--format json` for envelope shape)
 - Project setup: `gaia gitignore` (prints the recommended `.gitignore` block; `--check` audits an existing file, exits non-zero on missing entries; `--quiet` for CI gating)
 - Config diagnostics: `gaia config doctor` (lints resolved config + credentials; flags multi-project safety, credential hygiene, profile coherence, and the `.forgejo/`-over-`.github/` workflows precedence footgun (`workflows-shadowed`, #346); `--strict` promotes WARN to ERR; `--quiet` exits non-zero on ERR only; `--format json` for envelope shape)
 - Issues: `list [--assignee @me|--author @me] | view [--with-blockers N|--with-blocking N] | create [--milestone ID] | edit [--add-label/--remove-label] [--milestone ID|none] | close | reopen | comment | comment-edit | comment-delete | dep list|add|remove [--blocker|--blocks][=owner/repo#N for cross-repo]`. `@me` on `--assignee`/`--author` resolves to the configured user via one extra `Whoami` call (#299). `dep` subcommand manages issue dependencies on both Forgejo and GitHub (REST landed in API version 2026-03-10; #317 / #326). `--blocker` / `--blocks` accept either a bare integer (same-repo) or `owner/repo#N` (cross-repo, #325). `--milestone` attaches an issue to a milestone at create time, or on edit takes an ID (attach), `none`/`0` (detach), or is omitted (no change) — both forges inline the milestone object on every issue read for free (#388).
 - PRs: `list | view | diff | comments | create | edit | close | reopen | comment-create | merge | review | checkout`
+- Boards (Aikestra-only, #404): `board list | view <board>`, `issue move <n> --stage <stage> [--board] [--note]` (409 `blocked` → exit 9 naming the blockers), `issue priority <n> do-now|normal`. `--note` on `issue close|reopen|edit` passes Aikestra's required "why". Gated by `CapBoards` / `CapIssuePriority`; Forgejo and GitHub declare both unsupported.
 - Labels: `list [--name SUBSTR] | create | edit | delete`. `--name` does case-insensitive substring matching client-side on both forges (#328).
 - Releases: `list | view | create | edit | delete | publish`
 - Search: `gaia search <query>`

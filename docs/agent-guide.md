@@ -93,6 +93,7 @@ the output isn't useful enough for what you're trying to do.
 | Package registry artifacts | `gaia packages list \| view \| delete \| upload` — Forgejo generic registry; `upload` publishes one artifact to a `<type>/<name>/<version>` triple |
 | Forge server identity | `gaia server version` — prints the forge instance's own version string (separate from `gaia version`, which prints the CLI build) |
 | Local read cache | `gaia cache nuke` — wipes gaia's on-disk cache of forge reads if you suspect stale data |
+| Kanban boards (Aikestra) | `gaia board list \| view <board>` — a project's boards, their ordered stages, and (on `view`) each stage's open issue numbers in queue order. Move an issue with `gaia issue move <n> --stage <stage> [--board <board>] [--note <why>]`; a move is refused with exit 9 (PolicyViolation) while an open issue blocks it, and the error names the blockers. `gaia issue priority <n> do-now\|normal` sets the Do Now flag. Aikestra-only — gated off on Forgejo and GitHub (#404). |
 
 Two of these deserve a note for agents:
 
@@ -373,6 +374,36 @@ Use a chain when:
 
 Full reference: [`docs/chain.md`](chain.md).
 
+## Aikestra
+
+Aikestra is an agent-first forge with its own
+model, so a few gaia concepts map differently (`--provider aikestra`,
+#404):
+
+- **`owner` is the Project slug**, `repo` a Repo in it. **Issues belong
+  to the Project**, not a repo: `gaia issue list --repo acme/web` lists
+  every acme Issue.
+- **No labels.** An Issue has one `type` (feature, bug, …). `--label`
+  on `issue create|list` and `--add-label` on `issue edit` take a single
+  type; `--remove-label` is refused. Issue output carries `type`,
+  `do_now`, `board`, `stage`, and `parent`.
+- **One assignee, identified by email**; `@me`/`me` work.
+- **Notes.** A Project can require a "why" on close, reopen, reassign,
+  and moves. Pass `--note` to `issue close|reopen|edit|move`; without
+  one the call fails with exit 2 and a `note_required` message.
+- **Dependencies** are `blocks`/`blocked_by` relationships within one
+  Project; `gaia issue dep` works, cross-project refs are refused.
+- **Branches and tags are read-only** (`branch list`, `tag list`); push
+  with git to create them.
+- **Not in Aikestra API v1** — PRs, CI status, search, labels, releases,
+  packages, wiki, webhooks, Actions, runners, milestones, secrets,
+  variables, collaborators. Those commands stop at the capability guard
+  and the MCP tools aren't registered; a direct call exits 12
+  (NotImplemented). Don't emulate them, and don't poll in tight loops:
+  Aikestra has no rate limiting yet.
+- **404 also means "no access."** Aikestra never reveals that something
+  exists to a caller who can't see it.
+
 ## Auth setup
 
 `gaia` reads credentials from a layered store. For 90% of flows you
@@ -386,6 +417,11 @@ gaia auth forgejo https://git.example.com/api/v1
 # GitHub
 gaia auth gh
 # → prompts for a fine-grained PAT, validates via api.github.com
+
+# Aikestra — pass the web/API origin, not the git clone origin (they
+# can differ). Mint a token under Account → Access tokens; a Delegated
+# Agent credential is preferred for agents. Env fallback: AIKESTRA_TOKEN.
+gaia auth aikestra https://aikestra.example/api/v1
 
 # Verify
 gaia whoami       # uses the just-stored credential — no env vars needed
@@ -469,6 +505,7 @@ slots into the right workstream:
 | `area:core` | Provider interface, shared types |
 | `area:provider-forgejo` | Forgejo-specific API mapping |
 | `area:provider-github` | GitHub provider gaps |
+| `area:provider-aikestra` | Aikestra provider mapping (gaps in Aikestra's own API go to the Aikestra project) |
 | `area:ci` | CI / Actions / workflow-run logs |
 | `area:release` | Release / packaging / distribution |
 | `area:mcp` | MCP tool coverage |

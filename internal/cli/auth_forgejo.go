@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
@@ -13,18 +14,46 @@ import (
 )
 
 func newAuthForgejoCmd() *cobra.Command {
-	var project bool
-	var noGitignore bool
-
-	cmd := &cobra.Command{
-		Use:   "forgejo <url>",
-		Short: "Authenticate to a Forgejo instance",
-		Long: `Prompts for a Personal Access Token, validates it against the given
+	return newSelfHostedAuthCmd(selfHostedAuth{
+		provider: "forgejo",
+		display:  "Forgejo",
+		long: `Prompts for a Personal Access Token, validates it against the given
 Forgejo URL, and records the credential. After this, gaia commands
 against this host work without env vars or flags.
 
 Visit <url>/user/settings/applications to create a Personal Access
-Token. Recommended scopes: read:repository, write:issue, read:user.
+Token. Recommended scopes: read:repository, write:issue, read:user.`,
+		tokenHelp: func(origin string) string {
+			return fmt.Sprintf("Visit %s/user/settings/applications to create a\nPersonal Access Token.", origin)
+		},
+		whoami: func(ctx context.Context, apiURL, token string) (string, error) {
+			return forgejo.NewProvider(forgejo.Options{BaseURL: apiURL, Token: token}).Whoami(ctx)
+		},
+	})
+}
+
+// selfHostedAuth describes a `gaia auth <forge> <url>` command for a
+// forge with no universal endpoint: the operator names the instance, and
+// the credential is keyed by its API host.
+type selfHostedAuth struct {
+	provider string // credential-store key, e.g. "forgejo"
+	display  string // human name, e.g. "Forgejo"
+	long     string // help text, before the shared --project paragraph
+	// tokenHelp says where to mint a token, given the instance origin
+	// (the API URL without /api/v1).
+	tokenHelp func(origin string) string
+	// whoami validates the token and returns the identity to record.
+	whoami func(ctx context.Context, apiURL, token string) (string, error)
+}
+
+func newSelfHostedAuthCmd(spec selfHostedAuth) *cobra.Command {
+	var project bool
+	var noGitignore bool
+
+	cmd := &cobra.Command{
+		Use:   spec.provider + " <url>",
+		Short: "Authenticate to a " + spec.display + " instance",
+		Long: spec.long + `
 
 By default the credential is saved globally
 (~/.config/gaia/credentials.yaml). With --project, it is saved to
@@ -40,8 +69,8 @@ is added to the repo's .gitignore.`,
 			}
 
 			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Forgejo at %s\n\n", apiURL)
-			_, _ = fmt.Fprintf(out, "Visit %s/user/settings/applications to create a\nPersonal Access Token.\n\n", strings.TrimSuffix(apiURL, "/api/v1"))
+			_, _ = fmt.Fprintf(out, "%s at %s\n\n", spec.display, apiURL)
+			_, _ = fmt.Fprintf(out, "%s\n\n", spec.tokenHelp(strings.TrimSuffix(apiURL, "/api/v1")))
 
 			token, err := readSecret(cmd.InOrStdin(), out, "Paste token: ")
 			if err != nil {
@@ -52,11 +81,7 @@ is added to the repo's .gitignore.`,
 			}
 
 			// Validate BEFORE persisting — invalid tokens never get saved.
-			client := forgejo.NewProvider(forgejo.Options{
-				BaseURL: apiURL,
-				Token:   token,
-			})
-			login, err := client.Whoami(cmd.Context())
+			login, err := spec.whoami(cmd.Context(), apiURL, token)
 			if err != nil {
 				return err
 			}
@@ -76,7 +101,7 @@ is added to the repo's .gitignore.`,
 			if err != nil {
 				return err
 			}
-			store.Set("forgejo", parsed.Host, cred)
+			store.Set(spec.provider, parsed.Host, cred)
 			if err := auth.Save(path, store); err != nil {
 				return err
 			}
@@ -104,8 +129,9 @@ is added to the repo's .gitignore.`,
 }
 
 // normalizeForgejoURL trims trailing slashes and ensures the URL ends
-// with /api/v1. Forgejo's API base is always at that path; users may
-// pass either the bare instance URL or the full api/v1 form.
+// with /api/v1. Forgejo's (and Aikestra's) API base is always at that
+// path; users may pass either the bare instance URL or the full api/v1
+// form.
 func normalizeForgejoURL(raw string) string {
 	s := strings.TrimRight(raw, "/")
 	if !strings.HasSuffix(s, "/api/v1") {
