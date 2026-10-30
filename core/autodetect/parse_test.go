@@ -20,6 +20,10 @@ func TestParseRemoteURL(t *testing.T) {
 		{"https-no-suffix", "https://forge.example.com/myorg/myrepo", "forge.example.com", "myorg", "myrepo"},
 		{"https-with-userinfo", "https://user:tok@git.example/foo/bar.git", "git.example", "foo", "bar"},
 		{"git-protocol", "git://github.com/foo/bar.git", "github.com", "foo", "bar"},
+		// Aikestra serves git over HTTPS under /git/<project>/<repo>.git (#404).
+		{"aikestra-https", "https://aikestra.example/git/acme/web.git", "aikestra.example", "acme", "web"},
+		{"aikestra-https-dev", "http://127.0.0.1:4100/git/acme/web.git", "127.0.0.1", "acme", "web"},
+		{"aikestra-ssh", "ssh://git@aikestra.example:2222/acme/web.git", "aikestra.example", "acme", "web"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
