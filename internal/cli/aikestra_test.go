@@ -157,11 +157,28 @@ func TestAikestraBranchListIsNotGatedByBranchProtection(t *testing.T) {
 }
 
 func TestAikestraGatesUnsupported(t *testing.T) {
-	for _, args := range [][]string{{"label", "list"}, {"search", "x"}, {"pr", "list"}, {"milestone", "list"}} {
+	for _, args := range [][]string{{"label", "list"}, {"pr", "list"}, {"milestone", "list"}} {
 		_, calls, err := runAikestra(t, issueReply, args...)
 		if err == nil || !strings.Contains(err.Error(), "does not support") || len(calls) != 0 {
 			t.Errorf("%v: err %v calls %+v", args, err, calls)
 		}
+	}
+}
+
+// search runs the Project's Issue title search (#404).
+func TestAikestraSearch(t *testing.T) {
+	reply := func(string) string {
+		return `{"items":[{"number":12,"title":"Website contact form","repo":null}],"next_cursor":null}`
+	}
+	out, calls, err := runAikestra(t, reply, "search", "website")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || calls[0].Path != "/projects/acme/issues" || !strings.Contains(calls[0].Query, "q=website") {
+		t.Fatalf("calls %+v", calls)
+	}
+	if !strings.Contains(out, `"number": 12`) {
+		t.Errorf("out %s", out)
 	}
 }
 

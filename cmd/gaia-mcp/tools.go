@@ -189,8 +189,8 @@ func registerToolsForProvider(s *server.MCPServer, name string) {
 	registerTagTools(s)
 	registerBranchTools(s)
 
-	// Capability-gated resource groups. Labels and search are gated
-	// because Aikestra has neither (#404).
+	// Capability-gated resource groups. Labels are gated because
+	// Aikestra has none (#404).
 	if supports(provider.CapLabels) {
 		registerLabelTools(s)
 	}

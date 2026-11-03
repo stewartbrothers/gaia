@@ -11,7 +11,7 @@
         "info": {
           "title": "Aikestra API",
           "version": "1.0.0",
-          "description": "Aikestra's public REST API.\n\n**Authentication.** Send `Authorization: Bearer <access token>` (mint one under Account → Access tokens). Browser session cookies are not accepted. A missing, unknown, revoked or expired token is `401 unauthenticated`. A delegated-agent token acts as a Delegated Agent: it holds only its own Roles, never its User's; its work is attributed to its User.\n\n**Not found vs forbidden.** Anything you can't see — including a Project you are not a member of — is `404 not_found`, exactly as if it didn't exist. `403 forbidden` only answers for something you can see but may not change.\n\n**Errors** are always `{ \"error\": { \"code\", \"message\" } }`. Match on `code`.\n\n**Lists** answer `{ \"items\": [...], \"next_cursor\": string | null }`. Page with `limit` (1–100, default 30) and `cursor` (opaque, from `next_cursor`). `next_cursor` is null exactly when there are no more items. Repo content lists also carry `truncated`: true when the server stopped at a hard limit.\n\n**Projection.** Every JSON resource accepts `fields=a,b,c` to return only those top-level fields; an unknown field is `400 invalid_fields`.\n\n**Names.** Projects, Repos, Boards and Stages are addressed by the same slugs and names as the UI (earlier Project slugs and Repo names still resolve); people by email. Timestamps are ISO-8601 UTC.\n\n**Rate limiting** is not applied yet."
+          "description": "Aikestra's public REST API.\n\n**Authentication.** Send `Authorization: Bearer <access token>` (mint one under Account \u2192 Access tokens). Browser session cookies are not accepted. A missing, unknown, revoked or expired token is `401 unauthenticated`. A delegated-agent token acts as a Delegated Agent: it holds only its own Roles, never its User's; its work is attributed to its User.\n\n**Not found vs forbidden.** Anything you can't see \u2014 including a Project you are not a member of \u2014 is `404 not_found`, exactly as if it didn't exist. `403 forbidden` only answers for something you can see but may not change.\n\n**Errors** are always `{ \"error\": { \"code\", \"message\" } }`. Match on `code`.\n\n**Lists** answer `{ \"items\": [...], \"next_cursor\": string | null }`. Page with `limit` (1\u2013100, default 30) and `cursor` (opaque, from `next_cursor`). `next_cursor` is null exactly when there are no more items. Repo content lists also carry `truncated`: true when the server stopped at a hard limit.\n\n**Projection.** Every JSON resource accepts `fields=a,b,c` to return only those top-level fields; an unknown field is `400 invalid_fields`.\n\n**Names.** Projects, Repos, Boards and Stages are addressed by the same slugs and names as the UI (earlier Project slugs and Repo names still resolve); people by email. Timestamps are ISO-8601 UTC.\n\n**Rate limiting** is not applied yet."
         }
       }
     }
@@ -1290,6 +1290,35 @@
           "code": "validation_failed",
           "message": "\"nonsense\" isn't one of this Project's Issue types."
         }
+      }
+    }
+  },
+  "issue_search": {
+    "request": {
+      "method": "GET",
+      "path": "/projects/acme/issues?state=all&q=website&limit=30&fields=number,title,repo"
+    },
+    "response": {
+      "status": 200,
+      "body": {
+        "items": [
+          {
+            "number": 12,
+            "repo": null,
+            "title": "Website contact form sends no email"
+          },
+          {
+            "number": 11,
+            "repo": null,
+            "title": "Add a launch schedule page to the website"
+          },
+          {
+            "number": 10,
+            "repo": null,
+            "title": "Move the website to the new domain"
+          }
+        ],
+        "next_cursor": null
       }
     }
   }

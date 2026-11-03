@@ -53,11 +53,6 @@ func (p *Provider) SubmitReview(_ context.Context, _ string, _ string, _ int, _ 
 	return notImplemented("pull requests")
 }
 
-// Search is not in Aikestra API v1.
-func (p *Provider) Search(_ context.Context, _ string, _ provider.SearchOptions) ([]types.SearchResult, *provider.Page, error) {
-	return nil, nil, notImplemented("search")
-}
-
 // ListLabels is not in Aikestra API v1.
 func (p *Provider) ListLabels(_ context.Context, _ string, _ string, _ provider.ListLabelsOptions) ([]types.Label, error) {
 	return nil, notImplemented("labels")

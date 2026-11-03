@@ -313,12 +313,12 @@ func TestRegistration(t *testing.T) {
 	if got := provider.TokenEnvNames("aikestra"); !reflect.DeepEqual(got, []string{"AIKESTRA_TOKEN"}) {
 		t.Errorf("token envs %v", got)
 	}
-	for _, c := range []provider.Capability{provider.CapPullRequests, provider.CapLabels, provider.CapSearch, provider.CapMilestones} {
+	for _, c := range []provider.Capability{provider.CapPullRequests, provider.CapLabels, provider.CapMilestones} {
 		if provider.Supports("aikestra", c) {
 			t.Errorf("aikestra claims %s", c)
 		}
 	}
-	for _, c := range []provider.Capability{provider.CapBoards, provider.CapIssuePriority} {
+	for _, c := range []provider.Capability{provider.CapBoards, provider.CapIssuePriority, provider.CapSearch} {
 		if !provider.Supports("aikestra", c) {
 			t.Errorf("aikestra lacks %s", c)
 		}

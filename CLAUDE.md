@@ -270,7 +270,7 @@ tight when scripting):
 - Boards (Aikestra-only, #404): `board list | view <board>`, `issue move <n> --stage <stage> [--board] [--note]` (409 `blocked` → exit 9 naming the blockers), `issue priority <n> do-now|normal`. `--note` on `issue close|reopen|edit` passes Aikestra's required "why". Gated by `CapBoards` / `CapIssuePriority`; Forgejo and GitHub declare both unsupported.
 - Labels: `list [--name SUBSTR] | create | edit | delete`. `--name` does case-insensitive substring matching client-side on both forges (#328).
 - Releases: `list | view | create | edit | delete | publish`
-- Search: `gaia search <query>`
+- Search: `gaia search <query>` (Aikestra: Issue-title substring within one Project; needs `--repo`, issues only, #404)
 - Webhooks: `list | view | create | edit | delete | deliveries | redeliver | test`
 - Milestones: `list | view | create | edit | delete | issues | assign <milestone-id> <issue-number>...`.
   Milestone IDs are positional integers (forge-assigned); `list` defaults to

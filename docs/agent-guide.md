@@ -396,7 +396,11 @@ model, so a few gaia concepts map differently (`--provider aikestra`,
   Project; `gaia issue dep` works, cross-project refs are refused.
 - **Branches and tags are read-only** (`branch list`, `tag list`); push
   with git to create them.
-- **Not in Aikestra API v1** — PRs, CI status, search, labels, releases,
+- **Search is Issue titles in one Project.** `gaia search <q> --repo
+  <project>/<repo>` is a case-insensitive title substring match over
+  every state of the Project's Issues. Searching across Projects,
+  bodies, comments, or PRs exits 12.
+- **Not in Aikestra API v1** — PRs, CI status, labels, releases,
   packages, wiki, webhooks, Actions, runners, milestones, secrets,
   variables, collaborators. Those commands stop at the capability guard
   with exit 12 (NotImplemented) and the MCP tools aren't registered. Don't emulate them, and don't poll in tight loops:

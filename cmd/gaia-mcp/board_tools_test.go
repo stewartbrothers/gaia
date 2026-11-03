@@ -159,12 +159,12 @@ func TestRegisterToolsForAikestra(t *testing.T) {
 	s := server.NewMCPServer("gaia-mcp-test", "test")
 	registerToolsForProvider(s, "aikestra")
 	tools := s.ListTools()
-	for _, name := range []string{"gaia_board_list", "gaia_board_view", "gaia_issue_move", "gaia_issue_priority", "gaia_branch_list", "gaia_tag_list", "gaia_issue_list", "gaia_issue_dep_list"} {
+	for _, name := range []string{"gaia_board_list", "gaia_board_view", "gaia_issue_move", "gaia_issue_priority", "gaia_branch_list", "gaia_tag_list", "gaia_issue_list", "gaia_issue_dep_list", "gaia_search"} {
 		if _, ok := tools[name]; !ok {
 			t.Errorf("missing %s", name)
 		}
 	}
-	for _, prefix := range []string{"gaia_label", "gaia_search", "gaia_pr", "gaia_branch_protection", "gaia_milestone", "gaia_wiki"} {
+	for _, prefix := range []string{"gaia_label", "gaia_pr", "gaia_branch_protection", "gaia_milestone", "gaia_wiki"} {
 		if hasToolWithPrefix(s, prefix) {
 			t.Errorf("%s tools registered for aikestra", prefix)
 		}

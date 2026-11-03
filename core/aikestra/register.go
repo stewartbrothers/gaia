@@ -22,7 +22,6 @@ var unsupported = []provider.Capability{
 	provider.CapRunners,
 	provider.CapCollaborators,
 	provider.CapLabels,
-	provider.CapSearch,
 }
 
 // init self-registers the Aikestra adapter with the provider registry.
