@@ -403,8 +403,12 @@ model, so a few gaia concepts map differently (`--provider aikestra`,
 - **Not in Aikestra API v1** — PRs, CI status, labels, releases,
   packages, wiki, webhooks, Actions, runners, milestones, secrets,
   variables, collaborators. Those commands stop at the capability guard
-  with exit 12 (NotImplemented) and the MCP tools aren't registered. Don't emulate them, and don't poll in tight loops:
-  Aikestra has no rate limiting yet.
+  with exit 12 (NotImplemented) and the MCP tools aren't registered.
+  Don't emulate them.
+- **Shed load is retried once.** A `429 rate_limited` or `503 busy`
+  is retried after its `Retry-After` (capped at 30s), writes included,
+  since the server refused it unhandled. Still shedding: exit 5
+  (RateLimit) or 6 (Network). Don't poll in tight loops.
 - **404 also means "no access."** Aikestra never reveals that something
   exists to a caller who can't see it.
 

@@ -49,9 +49,13 @@ const (
 	maxLimit     = 100
 
 	// maxWalkPages bounds a client-side walk over a cursor list (used
-	// where gaia's contract has no page, e.g. comments). Aikestra has no
-	// rate limiting yet, so don't let a runaway list hammer it.
+	// where gaia's contract has no page, e.g. comments), so a runaway
+	// list can't hammer the server.
 	maxWalkPages = 50
+
+	// maxRetryAfter caps how long one honoured Retry-After may block a
+	// CLI call or MCP tool.
+	maxRetryAfter = 30 * time.Second
 )
 
 // Client is the HTTP-level Aikestra API client. It is safe for
@@ -62,6 +66,8 @@ type Client struct {
 	userAgent  string
 	httpClient *http.Client
 	retryWait  time.Duration
+	// sleep waits d or until ctx ends; tests replace it.
+	sleep func(ctx context.Context, d time.Duration) error
 }
 
 // Options configure a Client. BaseURL and Token are required; other
@@ -77,7 +83,8 @@ type Options struct {
 	// with a 30-second timeout.
 	HTTPClient *http.Client
 	// RetryWait is the backoff before the single retry of a GET that hit
-	// a 5xx. Defaults to 500ms.
+	// a 5xx, or of a shed request that carried no Retry-After. Defaults
+	// to 500ms.
 	RetryWait time.Duration
 }
 
@@ -101,6 +108,18 @@ func New(opts Options) *Client {
 		userAgent:  ua,
 		httpClient: httpClient,
 		retryWait:  rw,
+		sleep:      sleepCtx,
+	}
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -218,15 +237,14 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	if err != nil {
 		return exitcode.Wrap(scrubError(err, c.token), exitcode.Network, fmt.Sprintf("%s %s", method, path))
 	}
-	if method == http.MethodGet && resp.StatusCode >= 500 {
+	if c.shouldRetry(method, resp) {
+		wait := c.retryDelay(resp)
 		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
-		select {
-		case <-time.After(c.retryWait):
-		case <-ctx.Done():
-			return exitcode.Wrap(ctx.Err(), exitcode.Network, fmt.Sprintf("%s %s (canceled before retry)", method, path))
+		if err := c.sleep(ctx, wait); err != nil {
+			return exitcode.Wrap(err, exitcode.Network, fmt.Sprintf("%s %s (canceled before retry)", method, path))
 		}
-		resp, err = c.send(ctx, method, urlStr, nil)
+		resp, err = c.send(ctx, method, urlStr, raw)
 		if err != nil {
 			return exitcode.Wrap(scrubError(err, c.token), exitcode.Network, fmt.Sprintf("%s %s (retry)", method, path))
 		}
@@ -275,6 +293,40 @@ func (c *Client) buildURL(path string, query url.Values) string {
 		u += "?" + query.Encode()
 	}
 	return u
+}
+
+// shouldRetry reports whether resp earns the single retry. Shed load —
+// 429, or 503 `busy` — was refused before the server handled it, so any
+// method may retry. Any other 5xx retries only a GET: a write may have
+// been applied. Other 4xx never retry. A 503's body is peeked for its
+// code and put back for statusError.
+func (c *Client) shouldRetry(method string, resp *http.Response) bool {
+	switch {
+	case resp.StatusCode == http.StatusTooManyRequests:
+		return true
+	case resp.StatusCode == http.StatusServiceUnavailable:
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+		_ = resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(raw))
+		var e errorResponse
+		if json.Unmarshal(raw, &e) == nil && e.Error.Code == "busy" {
+			return true
+		}
+	}
+	return method == http.MethodGet && resp.StatusCode >= 500
+}
+
+// retryDelay honours Retry-After (whole seconds, as Aikestra sends it),
+// capped at maxRetryAfter; without one it falls back to retryWait.
+func (c *Client) retryDelay(resp *http.Response) time.Duration {
+	secs, err := strconv.Atoi(strings.TrimSpace(resp.Header.Get("Retry-After")))
+	if err != nil || secs <= 0 {
+		return c.retryWait
+	}
+	if d := time.Duration(secs) * time.Second; d < maxRetryAfter {
+		return d
+	}
+	return maxRetryAfter
 }
 
 // statusError decodes Aikestra's `{"error":{"code","message"}}` body and
@@ -331,8 +383,10 @@ func mapError(status int, code string) (exit int, hint string) {
 		return exitcode.PolicyViolation, ""
 	case "conflict", "cycle":
 		return exitcode.Generic, ""
-	case "internal_error":
+	case "internal_error", "busy":
 		return exitcode.Network, ""
+	case "rate_limited":
+		return exitcode.RateLimit, ""
 	}
 	return exitcode.FromHTTP(status), ""
 }
