@@ -82,7 +82,7 @@ auth setup.`,
 
 	pf := root.PersistentFlags()
 	pf.StringVar(&flags.Profile, "profile", "", "config profile name")
-	pf.StringVar(&flags.Provider, "provider", "", "provider: forgejo or github")
+	pf.StringVar(&flags.Provider, "provider", "", "provider: forgejo, github, or aikestra")
 	pf.StringVar(&flags.APIURL, "api-url", "", "API base URL override")
 	pf.StringVar(&flags.Repo, "repo", "", "owner/name (overrides git-remote autodetect)")
 	pf.StringVarP(&flags.Format, "format", "F", "json", "output format: json, pretty, or ndjson (ndjson streams list commands one item per line; rejected on single-resource commands)")
@@ -100,8 +100,8 @@ auth setup.`,
 	root.AddCommand(newAuthCmd(flags))
 	root.AddCommand(newIssueCmd(flags))
 	root.AddCommand(annotateCapability(newPRCmd(flags), provider.CapPullRequests))
-	root.AddCommand(newSearchCmd(flags))
-	root.AddCommand(newLabelCmd(flags))
+	root.AddCommand(annotateCapability(newSearchCmd(flags), provider.CapSearch))
+	root.AddCommand(annotateCapability(newLabelCmd(flags), provider.CapLabels))
 	root.AddCommand(annotateCapability(newReleaseCmd(flags), provider.CapReleases))
 	root.AddCommand(newChainCmd(flags))
 	root.AddCommand(annotateCapability(newPackagesCmd(flags), provider.CapPackages))
@@ -111,7 +111,10 @@ auth setup.`,
 	root.AddCommand(newCacheCmd(flags))
 	root.AddCommand(newConfigCmd(flags))
 	root.AddCommand(annotateCapability(newMilestoneCmd(flags), provider.CapMilestones))
-	root.AddCommand(annotateCapability(newBranchCmd(flags), provider.CapBranchProtection))
+	// Branches are a universal git op; only `branch protection` is gated
+	// (see newBranchCmd).
+	root.AddCommand(newBranchCmd(flags))
+	root.AddCommand(annotateCapability(newBoardCmd(flags), provider.CapBoards))
 	// Tags are a universal git op (like issues, not like branch
 	// protection): every forge gaia targets has them, so `tag` registers
 	// unconditionally rather than via annotateCapability — there is no

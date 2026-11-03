@@ -346,6 +346,8 @@ func checkCredentialHygiene(in Inputs) []Finding {
 				envNames = []string{"FORGEJO_TOKEN", "GITEA_TOKEN"}
 			case "github":
 				envNames = []string{"GITHUB_TOKEN", "GH_TOKEN"}
+			case "aikestra":
+				envNames = []string{"AIKESTRA_TOKEN"}
 			}
 			for _, name := range envNames {
 				if in.EnvVars[name] {
@@ -497,6 +499,8 @@ func canonicalEnvFallbacks(provider string) []string {
 		return []string{"FORGEJO_TOKEN", "GITEA_TOKEN"}
 	case "github":
 		return []string{"GITHUB_TOKEN", "GH_TOKEN"}
+	case "aikestra":
+		return []string{"AIKESTRA_TOKEN"}
 	}
 	return nil
 }
@@ -507,6 +511,8 @@ func providerCommandFor(provider string) string {
 	switch provider {
 	case "github":
 		return "gh"
+	case "aikestra":
+		return "aikestra"
 	default:
 		return "forgejo"
 	}

@@ -289,3 +289,14 @@ func (*noopProvider) DeleteBranchProtection(_ context.Context, _, _, _ string) e
 // Reference time.Time so an unused-import check never fires while tests
 // scaffold up. Removed once a real test uses it.
 var _ = time.Now
+
+func (*noopProvider) ListBoards(_ context.Context, _ string, _ provider.ListBoardsOptions) ([]types.Board, *provider.Page, error) {
+	return nil, nil, nil
+}
+func (*noopProvider) GetBoard(_ context.Context, _, _ string) (*types.Board, error) { return nil, nil }
+func (*noopProvider) MoveIssue(_ context.Context, _, _ string, _ int, _ provider.MoveIssueOptions) (*types.Issue, error) {
+	return nil, nil
+}
+func (*noopProvider) SetIssuePriority(_ context.Context, _, _ string, _ int, _ bool) (*types.Issue, error) {
+	return nil, nil
+}

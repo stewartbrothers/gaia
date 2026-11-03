@@ -219,6 +219,18 @@ func TestEnvAndCredentialsOverlapWarn(t *testing.T) {
 	}
 }
 
+func TestEnvAndCredentialsOverlapAikestra(t *testing.T) {
+	store := newStore(t, "aikestra", "aikestra.example", "tok")
+	got := doctor.Run(doctor.Inputs{
+		Credentials: &auth.Layered{Global: store},
+		EnvVars:     map[string]bool{"AIKESTRA_TOKEN": true},
+	})
+	f := findByCode(t, got, doctor.CodeEnvAndCredOverlap)
+	if f == nil || !strings.Contains(f.Message, "AIKESTRA_TOKEN") {
+		t.Fatalf("missing aikestra overlap finding; got: %v", codes(got))
+	}
+}
+
 func TestEnvAndCredentialsNoOverlapWhenEnvUnset(t *testing.T) {
 	store := newStore(t, "forgejo", "example.com", "tok")
 	in := doctor.Inputs{

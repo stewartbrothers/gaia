@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stewartbrothers/gaia/core/exitcode"
 	"github.com/stewartbrothers/gaia/core/provider"
 	"github.com/stewartbrothers/gaia/internal/cli"
 )
@@ -40,6 +41,11 @@ func TestCapabilityGuardBlocksUnsupported(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "does not support wikis") {
 		t.Fatalf("error = %q, want capability-gate message", err.Error())
+	}
+	// An unsupported capability is NotImplemented (12), the same code the
+	// provider itself returns — not Usage (2): the request was well-formed.
+	if got := exitcode.Of(err); got != exitcode.NotImplemented {
+		t.Fatalf("exit code = %d, want NotImplemented (%d)", got, exitcode.NotImplemented)
 	}
 }
 

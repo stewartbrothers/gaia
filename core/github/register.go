@@ -15,6 +15,8 @@ func init() {
 		// when none is configured.
 		DefaultAPIURL: "https://api.github.com",
 		TokenEnvNames: []string{"GITHUB_TOKEN", "GH_TOKEN"},
+		// Boards and the Do Now flag are Aikestra concepts (#404).
+		Unsupported: []provider.Capability{provider.CapBoards, provider.CapIssuePriority},
 		Factory: func(cfg provider.BuildConfig) (provider.Provider, error) {
 			return NewProvider(Options{
 				BaseURL: cfg.APIURL,

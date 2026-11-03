@@ -21,6 +21,7 @@ func clearGaiaEnv(t *testing.T) {
 		"GITEA_TOKEN", // upstream tea-CLI fallback
 		"GITHUB_TOKEN",
 		"GH_TOKEN", // upstream gh-CLI fallback
+		"AIKESTRA_TOKEN",
 		"GIT_FORGE_GITEA_TOKEN",
 		"XDG_CONFIG_HOME",
 	} {

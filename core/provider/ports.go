@@ -413,6 +413,35 @@ type CollaboratorsOps interface {
 	ListCollaborators(ctx context.Context, owner, repo string, opts ListCollaboratorsOptions) ([]types.Collaborator, *Page, error)
 }
 
+// BoardOps covers kanban boards: listing a project's boards, reading one
+// board's stages and their issue queues, and moving an issue between
+// stages (a "placement"). Gated by [CapBoards]. Aikestra-only (#404);
+// Forgejo and GitHub return NotImplemented. Boards belong to the owner
+// (an Aikestra Project), not to a repo.
+type BoardOps interface {
+	// ListBoards returns the owner's boards with their stages (stage
+	// issue queues are left empty; fetch one board for those).
+	ListBoards(ctx context.Context, owner string, opts ListBoardsOptions) ([]types.Board, *Page, error)
+
+	// GetBoard returns one board, by name (case-insensitive) or ID, with
+	// each stage's open issue numbers in queue order.
+	GetBoard(ctx context.Context, owner, board string) (*types.Board, error)
+
+	// MoveIssue places issue n on opts.Stage (of opts.Board, or the
+	// issue's current board when empty) and returns the updated issue.
+	// A move out of a stage while an open issue blocks n is refused with
+	// [exitcode.PolicyViolation]; the error message names the blockers.
+	MoveIssue(ctx context.Context, owner, repo string, n int, opts MoveIssueOptions) (*types.Issue, error)
+}
+
+// IssuePriorityOps covers an issue's "Do Now" priority flag. Gated by
+// [CapIssuePriority]. Aikestra-only (#404).
+type IssuePriorityOps interface {
+	// SetIssuePriority turns issue n's Do Now flag on or off and returns
+	// the updated issue.
+	SetIssuePriority(ctx context.Context, owner, repo string, n int, doNow bool) (*types.Issue, error)
+}
+
 // BranchOps covers listing and creating git branches — universal git
 // operations both forges support. CreateBranch resolves the source ref
 // (opts.From, or the repo's default branch when empty) to a commit and

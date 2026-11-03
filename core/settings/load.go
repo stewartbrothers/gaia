@@ -190,6 +190,7 @@ func Load(ov Override) (Settings, error) {
 var tokenEnvNames = []string{
 	"FORGEJO_TOKEN", "GITEA_TOKEN",
 	"GITHUB_TOKEN", "GH_TOKEN",
+	"AIKESTRA_TOKEN",
 }
 
 // cacheDisabledByEnv mirrors forgebuilder's helper of the same name —

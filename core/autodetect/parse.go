@@ -24,7 +24,9 @@ type Repo struct {
 // Accepts the SCP-like form (`git@host:owner/name(.git)?`), the
 // `ssh://` form, the `https://` form, and the `git://` form. Sub-group
 // paths (gitlab style `group/sub/repo`) are NOT supported and return
-// an error — Forgejo and GitHub both use `owner/name`.
+// an error — Forgejo and GitHub both use `owner/name`. Aikestra's HTTPS
+// form, `<origin>/git/<project>/<repo>.git`, has its `git/` prefix
+// dropped, so Owner is the Project slug.
 func ParseRemoteURL(raw string) (*Repo, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -38,6 +40,12 @@ func ParseRemoteURL(raw string) (*Repo, error) {
 
 	path = strings.TrimSuffix(path, ".git")
 	parts := strings.Split(path, "/")
+	// Aikestra serves git over HTTP(S) under a /git/ prefix:
+	// <origin>/git/<project>/<repo>.git (#404). Its SSH form is the plain
+	// /<project>/<repo>.git, handled like every other forge.
+	if len(parts) == 3 && parts[0] == "git" && isHTTPRemote(raw) {
+		parts = parts[1:]
+	}
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return nil, fmt.Errorf("autodetect: expected owner/name path, got %q (from %q)", path, raw)
 	}
@@ -82,4 +90,8 @@ func splitHostPath(raw string) (host, path string, err error) {
 		hostPart = hostPart[at+1:]
 	}
 	return hostPart, raw[colon+1:], nil
+}
+
+func isHTTPRemote(raw string) bool {
+	return strings.HasPrefix(raw, "https://") || strings.HasPrefix(raw, "http://")
 }

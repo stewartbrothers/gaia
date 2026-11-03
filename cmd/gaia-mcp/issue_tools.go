@@ -11,12 +11,16 @@ import (
 	"github.com/stewartbrothers/gaia/core/provider"
 )
 
+// issueTypeDesc documents the type argument on the issue tools.
+const issueTypeDesc = "issue type, e.g. bug or feature (Aikestra only; other forges refuse it)"
+
 func registerIssueTools(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("gaia_issue_list",
 		mcp.WithDescription("List issues in a repo. Returns trimmed Issue records inside the gaia envelope."),
 		mcp.WithString("repo", mcp.Required(), mcp.Description("owner/name")),
 		mcp.WithString("state", mcp.Description("open | closed | all")),
 		mcp.WithArray("labels", mcp.Description("filter to issues with these label names"), mcp.Items(map[string]any{"type": "string"})),
+		mcp.WithString("type", mcp.Description(issueTypeDesc)),
 		mcp.WithString("query", mcp.Description("substring search")),
 		mcp.WithNumber("limit", mcp.Description("max results (default 30, cap 200)")),
 		mcp.WithString("cursor", mcp.Description("opaque pagination cursor from a previous response")),
@@ -37,6 +41,7 @@ func registerIssueTools(s *server.MCPServer) {
 		mcp.WithArray("labels", mcp.Description("label names"), mcp.Items(map[string]any{"type": "string"})),
 		mcp.WithArray("assignees", mcp.Description("assignee logins"), mcp.Items(map[string]any{"type": "string"})),
 		mcp.WithNumber("milestone", mcp.Description("milestone ID to attach (omit for none)")),
+		mcp.WithString("type", mcp.Description(issueTypeDesc)),
 	), ctxBoundHandler(handleIssueCreate))
 
 	s.AddTool(mcp.NewTool("gaia_issue_edit",
@@ -48,6 +53,8 @@ func registerIssueTools(s *server.MCPServer) {
 		mcp.WithString("state", mcp.Description("open | closed")),
 		mcp.WithArray("assignees", mcp.Description("replace assignees with these logins"), mcp.Items(map[string]any{"type": "string"})),
 		mcp.WithNumber("milestone", mcp.Description("milestone ID to attach; 0 to detach the current milestone; omit for no change")),
+		mcp.WithString("note", mcp.Description("why, recorded with a state or assignee change (Aikestra; required when the Project requires notes)")),
+		mcp.WithString("type", mcp.Description(issueTypeDesc)),
 	), ctxBoundHandler(handleIssueEdit))
 
 	s.AddTool(mcp.NewTool("gaia_issue_comment",
@@ -70,6 +77,7 @@ func handleIssueList(ctx context.Context, args map[string]any) (*mcp.CallToolRes
 	issues, page, err := p.ListIssues(ctx, owner, repo, provider.ListIssuesOptions{
 		State:  optString(args, "state"),
 		Labels: optStringSlice(args, "labels"),
+		Type:   optString(args, "type"),
 		Query:  optString(args, "query"),
 		Limit:  optInt(args, "limit"),
 		Cursor: optString(args, "cursor"),
@@ -121,6 +129,7 @@ func handleIssueCreate(ctx context.Context, args map[string]any) (*mcp.CallToolR
 		Labels:    optStringSlice(args, "labels"),
 		Assignees: optStringSlice(args, "assignees"),
 		Milestone: optInt64(args, "milestone"),
+		Type:      optString(args, "type"),
 	})
 	if err != nil {
 		return toolError(err), nil
@@ -147,6 +156,8 @@ func handleIssueEdit(ctx context.Context, args map[string]any) (*mcp.CallToolRes
 		State:     optString(args, "state"),
 		Assignees: optStringSlice(args, "assignees"),
 		Milestone: optInt64Ptr(args, "milestone"),
+		Note:      optString(args, "note"),
+		Type:      optString(args, "type"),
 	})
 	if err != nil {
 		return toolError(err), nil

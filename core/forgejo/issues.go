@@ -87,6 +87,9 @@ func (a *apiComment) toType(source string) types.Comment {
 // endpoint also returns PRs by default; we set `type=issues` so
 // callers don't have to filter client-side.
 func (p *Provider) ListIssues(ctx context.Context, owner, repo string, opts provider.ListIssuesOptions) ([]types.Issue, *provider.Page, error) {
+	if opts.Type != "" {
+		return nil, nil, errIssueType
+	}
 	limit := clampLimit(opts.Limit)
 	q := url.Values{}
 	q.Set("type", "issues")

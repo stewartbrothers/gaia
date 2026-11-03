@@ -98,6 +98,9 @@ func (a *apiComment) toType() types.Comment {
 // `/repos/{o}/{r}/issues` endpoint returns BOTH; we filter PRs out
 // client-side using the `pull_request` field.
 func (p *Provider) ListIssues(ctx context.Context, owner, repo string, opts provider.ListIssuesOptions) ([]types.Issue, *provider.Page, error) {
+	if opts.Type != "" {
+		return nil, nil, errIssueType
+	}
 	limit := clampLimit(opts.Limit)
 	q := url.Values{}
 	q.Set("per_page", strconv.Itoa(limit))

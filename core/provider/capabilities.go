@@ -34,6 +34,17 @@ const (
 	CapVariables        Capability = "variables"
 	CapRunners          Capability = "runners"
 	CapCollaborators    Capability = "collaborators"
+
+	// CapLabels and CapSearch gate the label catalog and cross-repo
+	// search. Aikestra has neither (#404): it types Issues instead of
+	// labelling them, and API v1 has no search.
+	CapLabels Capability = "labels"
+	CapSearch Capability = "search"
+	// CapBoards and CapIssuePriority gate kanban boards (stages, moving
+	// an issue between them) and the "Do Now" priority flag. Only
+	// Aikestra offers them; Forgejo and GitHub declare them unsupported.
+	CapBoards        Capability = "boards"
+	CapIssuePriority Capability = "issue_priority"
 )
 
 // Supports reports whether the provider registered under name offers
