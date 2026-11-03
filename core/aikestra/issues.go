@@ -13,8 +13,8 @@ import (
 // Issues belong to an Aikestra Project and only optionally reference a
 // Repo, so every method here addresses /projects/{owner}/issues and
 // ignores `repo`: `gaia issue list --repo acme/web` lists all of acme's
-// Issues. Aikestra has no labels; a gaia label maps onto the Issue's
-// single `type`, and an Issue has at most one assignee.
+// Issues. Aikestra has no labels (refused, never mapped onto `type`); an
+// Issue has one `type`, set with --type, and at most one assignee.
 
 // apiIssue is Aikestra's Issue schema.
 type apiIssue struct {
@@ -60,8 +60,8 @@ func (a apiIssue) toType() types.Issue {
 	return out
 }
 
-// ListIssues lists the Project's Issues, newest first. One label filters
-// by type. Aikestra's filters are state, type, assignee (email, "me" or
+// ListIssues lists the Project's Issues, newest first; labels are
+// refused. Aikestra's filters are state, type, assignee (email, "me" or
 // "none") and a title substring; there is no author or since filter, and
 // filtering client-side would break the server's cursor, so those are
 // refused rather than emulated.
@@ -72,16 +72,15 @@ func (p *Provider) ListIssues(ctx context.Context, owner, _ string, opts provide
 	if !opts.Since.IsZero() {
 		return nil, nil, notImplemented("filtering issues by update time")
 	}
-	issueType, err := typeFromLabels(opts.Labels)
-	if err != nil {
-		return nil, nil, err
+	if len(opts.Labels) > 0 {
+		return nil, nil, errLabels
 	}
 	q := url.Values{}
 	if opts.State != "" {
 		q.Set("state", opts.State)
 	}
-	if issueType != "" {
-		q.Set("type", issueType)
+	if opts.Type != "" {
+		q.Set("type", opts.Type)
 	}
 	if opts.Assignee != "" {
 		q.Set("assignee", meAlias(opts.Assignee))
@@ -143,22 +142,21 @@ type apiCreateIssue struct {
 	Assignee *string `json:"assignee,omitempty"`
 }
 
-// CreateIssue opens an Issue on the Project. One label becomes its type
-// (the Project's default, `task`, otherwise); at most one assignee
+// CreateIssue opens an Issue on the Project. --type sets its type (the
+// Project's default, `task`, otherwise); at most one assignee
 // (an email or "me").
 func (p *Provider) CreateIssue(ctx context.Context, owner, _ string, opts provider.CreateIssueOptions) (*types.Issue, error) {
 	if opts.Milestone != 0 {
 		return nil, notImplemented("milestones")
 	}
-	issueType, err := typeFromLabels(opts.Labels)
-	if err != nil {
-		return nil, err
+	if len(opts.Labels) > 0 {
+		return nil, errLabels
 	}
 	assignee, err := singleAssignee(opts.Assignees)
 	if err != nil {
 		return nil, err
 	}
-	body := apiCreateIssue{Title: opts.Title, Body: opts.Body, Type: issueType}
+	body := apiCreateIssue{Title: opts.Title, Body: opts.Body, Type: opts.Type}
 	if assignee != "" {
 		body.Assignee = &assignee
 	}
@@ -195,21 +193,16 @@ type apiSetAssignee struct {
 // leaves a half-applied edit. With nothing to change it returns the
 // current Issue.
 //
-// AddLabels takes one label, which becomes the type. RemoveLabels is
-// refused: an Aikestra Issue always has a type, so set a different one
-// instead. opts.Note travels with the state and assignee changes.
+// opts.Type sets the type; labels are refused. opts.Note travels with
+// the state and assignee changes.
 func (p *Provider) EditIssue(ctx context.Context, owner, repo string, n int, opts provider.EditIssueOptions) (*types.Issue, error) {
 	if opts.Milestone != nil {
 		return nil, notImplemented("milestones")
 	}
-	if len(opts.RemoveLabels) > 0 {
-		return nil, exitcode.Errorf(exitcode.NotImplemented,
-			"an Aikestra Issue always has a type; set a different one with --add-label <type> instead of removing it")
+	if len(opts.AddLabels) > 0 || len(opts.RemoveLabels) > 0 {
+		return nil, errLabels
 	}
-	issueType, err := typeFromLabels(opts.AddLabels)
-	if err != nil {
-		return nil, err
-	}
+	issueType := opts.Type
 	assignee, err := singleAssignee(opts.Assignees)
 	if err != nil {
 		return nil, err
@@ -259,20 +252,11 @@ func (p *Provider) SetIssuePriority(ctx context.Context, owner, _ string, n int,
 	return &out, nil
 }
 
-// typeFromLabels maps gaia labels onto an Aikestra Issue type. An Issue
-// has exactly one type, so more than one label is a usage error. Whether
-// the name is one of the Project's types is the server's call (422
-// validation_failed otherwise) — types are configurable per Project.
-func typeFromLabels(labels []string) (string, error) {
-	switch len(labels) {
-	case 0:
-		return "", nil
-	case 1:
-		return labels[0], nil
-	}
-	return "", exitcode.Errorf(exitcode.Usage,
-		"Aikestra has no labels: an Issue has one type, so pass a single --label (got %d)", len(labels))
-}
+// errLabels refuses labels. They are not-implemented in Aikestra API v1
+// (briefing v1) and are never emulated by mapping them onto the Issue
+// type; --type sets and filters the type itself.
+var errLabels = exitcode.Errorf(exitcode.NotImplemented,
+	"the aikestra provider does not support labels; use --type for the Issue type")
 
 // singleAssignee enforces Aikestra's one-assignee model.
 func singleAssignee(assignees []string) (string, error) {

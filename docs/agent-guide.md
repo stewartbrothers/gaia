@@ -383,10 +383,11 @@ model, so a few gaia concepts map differently (`--provider aikestra`,
 - **`owner` is the Project slug**, `repo` a Repo in it. **Issues belong
   to the Project**, not a repo: `gaia issue list --repo acme/web` lists
   every acme Issue.
-- **No labels.** An Issue has one `type` (feature, bug, …). `--label`
-  on `issue create|list` and `--add-label` on `issue edit` take a single
-  type; `--remove-label` is refused. Issue output carries `type`,
-  `do_now`, `board`, `stage`, and `parent`.
+- **No labels.** An Issue has one `type` (feature, bug, …; configurable
+  per Project). Set or filter it with `--type` on `issue list|create|edit`
+  (MCP: `type`). Any label flag exits 12; labels are never mapped onto
+  the type. Issue output carries `type`, `do_now`, `board`, `stage`,
+  and `parent`.
 - **One assignee, identified by email**; `@me`/`me` work.
 - **Notes.** A Project can require a "why" on close, reopen, reassign,
   and moves. Pass `--note` to `issue close|reopen|edit|move`; without

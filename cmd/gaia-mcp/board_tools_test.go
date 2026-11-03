@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/server"
@@ -119,6 +120,38 @@ func TestIssueEditToolPassesNote(t *testing.T) {
 	}
 	if path != "/projects/acme/issues/2/state" || body["note"] != "Done" {
 		t.Errorf("%s %v", path, body)
+	}
+}
+
+// The type argument reaches Aikestra's type field on list, create, and
+// edit (#404).
+func TestIssueToolsPassType(t *testing.T) {
+	var method, path, query string
+	var body map[string]any
+	pinAikestra(t, func(w http.ResponseWriter, r *http.Request) {
+		method, path, query, body = r.Method, r.URL.Path, r.URL.RawQuery, nil
+		if raw, _ := io.ReadAll(r.Body); len(raw) > 0 {
+			_ = json.Unmarshal(raw, &body)
+		}
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"items":[` + boardToolIssue + `],"next_cursor":null}`))
+			return
+		}
+		_, _ = w.Write([]byte(boardToolIssue))
+	})
+	ctx := context.Background()
+
+	res, err := callTool(ctx, handleIssueList, map[string]any{"repo": "acme/web", "type": "bug"})
+	if err != nil || res.IsError || !strings.Contains(query, "type=bug") {
+		t.Fatalf("list: err=%v query=%q", err, query)
+	}
+	res, err = callTool(ctx, handleIssueCreate, map[string]any{"repo": "acme/web", "title": "T", "type": "bug"})
+	if err != nil || res.IsError || method != http.MethodPost || body["type"] != "bug" {
+		t.Fatalf("create: err=%v %s %v", err, method, body)
+	}
+	res, err = callTool(ctx, handleIssueEdit, map[string]any{"repo": "acme/web", "number": float64(2), "type": "docs"})
+	if err != nil || res.IsError || method != http.MethodPatch || path != "/projects/acme/issues/2" || body["type"] != "docs" {
+		t.Fatalf("edit: err=%v %s %s %v", err, method, path, body)
 	}
 }
 

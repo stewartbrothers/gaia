@@ -77,7 +77,7 @@ func TestListIssues_WalksCursorToNull(t *testing.T) {
 
 func TestListIssues_Filters(t *testing.T) {
 	got, _, err := replay(t, "issues_filtered").ListIssues(context.Background(), "acme", "", provider.ListIssuesOptions{
-		State: "all", Labels: []string{"bug"}, Assignee: "@me", Query: "login", Limit: 30,
+		State: "all", Type: "bug", Assignee: "@me", Query: "login", Limit: 30,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -100,8 +100,10 @@ func TestListIssues_Refused(t *testing.T) {
 	wantCode(t, err, exitcode.NotImplemented, "author")
 	_, _, err = p.ListIssues(ctx, "acme", "", provider.ListIssuesOptions{Since: time.Now()})
 	wantCode(t, err, exitcode.NotImplemented, "")
-	_, _, err = p.ListIssues(ctx, "acme", "", provider.ListIssuesOptions{Labels: []string{"bug", "docs"}})
-	wantCode(t, err, exitcode.Usage, "one type")
+	// Labels are not-implemented in Aikestra (briefing v1): never mapped
+	// onto type. --type is the real field.
+	_, _, err = p.ListIssues(ctx, "acme", "", provider.ListIssuesOptions{Labels: []string{"bug"}})
+	wantCode(t, err, exitcode.NotImplemented, "labels")
 }
 
 func TestGetIssue(t *testing.T) {
@@ -149,7 +151,7 @@ func TestGetIssue_NotFoundAndNoAccessLookTheSame(t *testing.T) {
 
 func TestCreateIssue(t *testing.T) {
 	got, err := replay(t, "issue_create").CreateIssue(context.Background(), "acme", "web", provider.CreateIssueOptions{
-		Title: "Login is slow", Body: "Make it fast", Labels: []string{"bug"}, Assignees: []string{"@me"},
+		Title: "Login is slow", Body: "Make it fast", Type: "bug", Assignees: []string{"@me"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -174,19 +176,21 @@ func TestCreateIssue_Refused(t *testing.T) {
 	wantCode(t, err, exitcode.NotImplemented, "milestones")
 	_, err = p.CreateIssue(ctx, "acme", "", provider.CreateIssueOptions{Title: "x", Assignees: []string{"a", "b"}})
 	wantCode(t, err, exitcode.Usage, "one assignee")
+	_, err = p.CreateIssue(ctx, "acme", "", provider.CreateIssueOptions{Title: "x", Labels: []string{"bug"}})
+	wantCode(t, err, exitcode.NotImplemented, "labels")
 }
 
 func TestCreateIssue_ValidationFailed(t *testing.T) {
 	// The unknown type is the server's call: types are per-Project.
 	_, err := replay(t, "validation_failed").CreateIssue(context.Background(), "acme", "", provider.CreateIssueOptions{
-		Title: "Typed", Labels: []string{"nonsense"},
+		Title: "Typed", Type: "nonsense",
 	})
 	wantCode(t, err, exitcode.Usage, "validation_failed")
 }
 
 func TestEditIssue_PatchesTitleAndType(t *testing.T) {
 	got, err := replay(t, "issue_patch").EditIssue(context.Background(), "acme", "", 2, provider.EditIssueOptions{
-		Title: "Write the docs", AddLabels: []string{"docs"},
+		Title: "Write the docs", Type: "docs",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -252,12 +256,12 @@ func TestEditIssue_RefusedBeforeAnyWrite(t *testing.T) {
 	ctx := context.Background()
 	// Each would otherwise also PATCH the title: nothing may be sent.
 	_, err := p.EditIssue(ctx, "acme", "", 2, provider.EditIssueOptions{Title: "x", RemoveLabels: []string{"bug"}})
-	wantCode(t, err, exitcode.NotImplemented, "always has a type")
+	wantCode(t, err, exitcode.NotImplemented, "labels")
 	none := int64(0)
 	_, err = p.EditIssue(ctx, "acme", "", 2, provider.EditIssueOptions{Title: "x", Milestone: &none})
 	wantCode(t, err, exitcode.NotImplemented, "milestones")
-	_, err = p.EditIssue(ctx, "acme", "", 2, provider.EditIssueOptions{Title: "x", AddLabels: []string{"a", "b"}})
-	wantCode(t, err, exitcode.Usage, "")
+	_, err = p.EditIssue(ctx, "acme", "", 2, provider.EditIssueOptions{Title: "x", AddLabels: []string{"docs"}})
+	wantCode(t, err, exitcode.NotImplemented, "labels")
 	_, err = p.EditIssue(ctx, "acme", "", 2, provider.EditIssueOptions{Title: "x", Assignees: []string{"a", "b"}})
 	wantCode(t, err, exitcode.Usage, "")
 }

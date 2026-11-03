@@ -15,8 +15,11 @@ type Page struct {
 // "open", "closed", "all" (or "" → "open"). Empty Limit takes the
 // default (set by the calling layer; see docs/output-format.md).
 type ListIssuesOptions struct {
-	State    string
-	Labels   []string
+	State  string
+	Labels []string
+	// Type filters by Issue type (Aikestra only, #404); Forgejo and
+	// GitHub refuse it with NotImplemented.
+	Type     string
 	Assignee string
 	Author   string
 	Since    time.Time
@@ -101,6 +104,9 @@ type CreateIssueOptions struct {
 	Labels    []string `json:"labels,omitempty"`
 	Assignees []string `json:"assignees,omitempty"`
 	Milestone int64    `json:"milestone,omitempty"`
+	// Type is the Issue type (Aikestra only, #404); Forgejo and GitHub
+	// refuse it with NotImplemented.
+	Type string `json:"type,omitempty"`
 }
 
 // EditIssueOptions configures EditIssue. Empty string fields are
@@ -123,6 +129,9 @@ type EditIssueOptions struct {
 	// Aikestra uses it — a Project can require one (`note_required`);
 	// Forgejo and GitHub ignore it (#404).
 	Note string `json:"note,omitempty"`
+	// Type changes the Issue type (Aikestra only, #404); Forgejo and
+	// GitHub refuse it with NotImplemented.
+	Type string `json:"type,omitempty"`
 }
 
 // CreatePullRequestOptions configures CreatePullRequest. Head/Base

@@ -35,6 +35,7 @@ func newIssueCmd(flags *globalFlags) *cobra.Command {
 type issueListOptions struct {
 	State    string
 	Label    []string
+	Type     string
 	Assignee string
 	Author   string
 	Since    string
@@ -62,6 +63,7 @@ func newIssueListCmd(flags *globalFlags) *cobra.Command {
 			po := provider.ListIssuesOptions{
 				State:    opts.State,
 				Labels:   opts.Label,
+				Type:     opts.Type,
 				Assignee: opts.Assignee,
 				Author:   opts.Author,
 				Query:    opts.Query,
@@ -97,6 +99,7 @@ func newIssueListCmd(flags *globalFlags) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&opts.State, "state", "", "filter by state: open, closed, all")
 	cmd.Flags().StringSliceVar(&opts.Label, "label", nil, "filter by label (repeatable)")
+	cmd.Flags().StringVar(&opts.Type, "type", "", typeFlagHelp)
 	cmd.Flags().StringVar(&opts.Assignee, "assignee", "", `filter by assignee login (accepts "@me" to resolve via whoami)`)
 	cmd.Flags().StringVar(&opts.Author, "author", "", `filter by author login (accepts "@me" to resolve via whoami)`)
 	cmd.Flags().StringVar(&opts.Since, "since", "", "filter to updated after RFC3339 timestamp")

@@ -73,6 +73,9 @@ func (a *apiCreatedComment) toType() types.Comment {
 
 // CreateIssue opens a new issue on the named repo.
 func (p *Provider) CreateIssue(ctx context.Context, owner, repo string, opts provider.CreateIssueOptions) (*types.Issue, error) {
+	if opts.Type != "" {
+		return nil, errIssueType
+	}
 	body := apiCreateIssueRequest{
 		Title:     opts.Title,
 		Body:      opts.Body,
@@ -93,6 +96,9 @@ func (p *Provider) CreateIssue(ctx context.Context, owner, repo string, opts pro
 // body; AddLabels/RemoveLabels are applied via the issue labels
 // endpoints after the PATCH. GitHub accepts names (not IDs) in both.
 func (p *Provider) EditIssue(ctx context.Context, owner, repo string, n int, opts provider.EditIssueOptions) (*types.Issue, error) {
+	if opts.Type != "" {
+		return nil, errIssueType
+	}
 	body := apiEditIssueRequest{
 		Title:     opts.Title,
 		Body:      opts.Body,

@@ -47,6 +47,7 @@ func newIssueCreateCmd(flags *globalFlags) *cobra.Command {
 		title     string
 		body      string
 		labels    []string
+		issueType string
 		assigns   []string
 		milestone int64
 		dryRun    bool
@@ -79,6 +80,7 @@ request body without making the call.`,
 				Labels:    labels,
 				Assignees: assigns,
 				Milestone: milestone,
+				Type:      issueType,
 			}
 			if dryRun {
 				return printDryRun(cmd, fmt.Sprintf("POST /repos/%s/%s/issues", owner, repo), opts)
@@ -93,6 +95,7 @@ request body without making the call.`,
 	cmd.Flags().StringVar(&title, "title", "", "issue title (required)")
 	cmd.Flags().StringVar(&body, "body", "", "issue body, or \"-\" for stdin")
 	cmd.Flags().StringSliceVar(&labels, "label", nil, "label name (repeatable)")
+	cmd.Flags().StringVar(&issueType, "type", "", typeFlagHelp)
 	cmd.Flags().StringSliceVar(&assigns, "assignee", nil, "assignee login (repeatable)")
 	cmd.Flags().Int64Var(&milestone, "milestone", 0, "milestone ID to attach (0 = none)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the request and exit without posting")
@@ -107,6 +110,7 @@ func newIssueEditCmd(flags *globalFlags) *cobra.Command {
 		assigns      []string
 		addLabels    []string
 		removeLabels []string
+		issueType    string
 		milestone    string
 		note         string
 		dryRun       bool
@@ -145,6 +149,7 @@ func newIssueEditCmd(flags *globalFlags) *cobra.Command {
 				RemoveLabels: removeLabels,
 				Milestone:    ms,
 				Note:         note,
+				Type:         issueType,
 			}
 			if dryRun {
 				return printDryRun(cmd, fmt.Sprintf("PATCH /repos/%s/%s/issues/%d", owner, repo, n), opts)
@@ -162,11 +167,15 @@ func newIssueEditCmd(flags *globalFlags) *cobra.Command {
 	cmd.Flags().StringSliceVar(&assigns, "assignee", nil, "replace assignees with these logins")
 	cmd.Flags().StringSliceVar(&addLabels, "add-label", nil, "add label by name (repeatable)")
 	cmd.Flags().StringSliceVar(&removeLabels, "remove-label", nil, "remove label by name (repeatable)")
+	cmd.Flags().StringVar(&issueType, "type", "", typeFlagHelp)
 	cmd.Flags().StringVar(&milestone, "milestone", "", "milestone ID to attach; \"none\" to detach (empty = no change)")
 	cmd.Flags().StringVar(&note, "note", "", noteFlagHelp)
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the request and exit without patching")
 	return cmd
 }
+
+// typeFlagHelp documents --type on issue list, create, and edit.
+const typeFlagHelp = "issue type, e.g. bug or feature (Aikestra only; Forgejo and GitHub exit 12)"
 
 // noteFlagHelp documents --note on the commands that change an issue's
 // state or assignee. Only Aikestra records it (#404).

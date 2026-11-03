@@ -37,6 +37,9 @@ type apiEditIssueRequest struct {
 // CreateIssue opens a new issue. Label names in opts.Labels are
 // resolved to IDs via the repo's label list before posting.
 func (p *Provider) CreateIssue(ctx context.Context, owner, repo string, opts provider.CreateIssueOptions) (*types.Issue, error) {
+	if opts.Type != "" {
+		return nil, errIssueType
+	}
 	var labelIDs []int64
 	if len(opts.Labels) > 0 {
 		nameToID, err := p.resolveLabelNames(ctx, owner, repo, opts.Labels)
@@ -70,6 +73,9 @@ func (p *Provider) CreateIssue(ctx context.Context, owner, repo string, opts pro
 // applied via the dedicated /issues/{n}/labels endpoints after the
 // PATCH.
 func (p *Provider) EditIssue(ctx context.Context, owner, repo string, n int, opts provider.EditIssueOptions) (*types.Issue, error) {
+	if opts.Type != "" {
+		return nil, errIssueType
+	}
 	body := apiEditIssueRequest{
 		Title:     opts.Title,
 		Body:      opts.Body,

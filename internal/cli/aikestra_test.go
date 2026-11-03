@@ -176,3 +176,35 @@ func TestBoardsGatedOnForgejo(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 }
+
+// --type reaches Aikestra's type field on list, create, and edit; a
+// label is refused with NotImplemented before any request (briefing v1:
+// labels are not-implemented and never emulated).
+func TestAikestraIssueType(t *testing.T) {
+	list := func(string) string { return `{"items":[` + aikestraIssue + `],"next_cursor":null}` }
+	_, calls, err := runAikestra(t, list, "issue", "list", "--type", "bug")
+	if err != nil || len(calls) != 1 || !strings.Contains(calls[0].Query, "type=bug") {
+		t.Fatalf("list: err %v calls %+v", err, calls)
+	}
+
+	_, calls, err = runAikestra(t, issueReply, "issue", "create", "--title", "T", "--type", "bug")
+	if err != nil || len(calls) != 1 || calls[0].Method != "POST" || calls[0].Body["type"] != "bug" {
+		t.Fatalf("create: err %v calls %+v", err, calls)
+	}
+
+	_, calls, err = runAikestra(t, issueReply, "issue", "edit", "2", "--type", "docs")
+	if err != nil || len(calls) != 1 || calls[0].Method != "PATCH" || calls[0].Body["type"] != "docs" {
+		t.Fatalf("edit: err %v calls %+v", err, calls)
+	}
+
+	for _, args := range [][]string{
+		{"issue", "list", "--label", "bug"},
+		{"issue", "create", "--title", "T", "--label", "bug"},
+		{"issue", "edit", "2", "--add-label", "bug"},
+	} {
+		_, calls, err := runAikestra(t, issueReply, args...)
+		if exitcode.Of(err) != exitcode.NotImplemented || len(calls) != 0 {
+			t.Errorf("%v: err %v calls %+v", args, err, calls)
+		}
+	}
+}
