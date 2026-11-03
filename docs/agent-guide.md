@@ -398,8 +398,7 @@ model, so a few gaia concepts map differently (`--provider aikestra`,
 - **Not in Aikestra API v1** — PRs, CI status, search, labels, releases,
   packages, wiki, webhooks, Actions, runners, milestones, secrets,
   variables, collaborators. Those commands stop at the capability guard
-  and the MCP tools aren't registered; a direct call exits 12
-  (NotImplemented). Don't emulate them, and don't poll in tight loops:
+  with exit 12 (NotImplemented) and the MCP tools aren't registered. Don't emulate them, and don't poll in tight loops:
   Aikestra has no rate limiting yet.
 - **404 also means "no access."** Aikestra never reveals that something
   exists to a caller who can't see it.

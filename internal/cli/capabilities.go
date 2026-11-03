@@ -64,7 +64,7 @@ func capabilityGuard(flags *globalFlags) func(*cobra.Command, []string) error {
 		if name == "" || provider.Supports(name, cap) {
 			return nil
 		}
-		return exitcode.Errorf(exitcode.Usage,
+		return exitcode.Errorf(exitcode.NotImplemented,
 			"the %s provider does not support %s", name, cap)
 	}
 }
