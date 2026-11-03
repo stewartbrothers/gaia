@@ -10,6 +10,51 @@ reserved for breaking changes only.
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-11-04
+
+A third provider, **Aikestra**, an agent-first forge, over its public
+API v1. It adds Kanban board commands, Do Now priority, and an Issue
+`--type` flag.
+
+### Breaking
+
+- **Unsupported commands now exit 12 (NotImplemented), not 2 (Usage).**
+  When the active provider lacks a capability (for example `gaia pr`
+  against Aikestra), the capability guard used to answer with exit 2.
+  It now exits 12, matching what the provider itself returns for the
+  same operation. Scripts that branch on 2 for "this forge can't" must
+  switch to 12. In #406.
+
+### Added
+
+- **Aikestra provider** (`--provider aikestra`). Run `gaia auth aikestra
+  <api-url>` (token env: `AIKESTRA_TOKEN`), and git remotes of the form
+  `/git/<project>/<repo>` are autodetected. A Project is gaia's owner,
+  and Issues are Project-wide. It supports issues (list, view, create,
+  edit, close, reopen, comment), dependencies (`blocks`/`blocked_by`),
+  branch list, tag list, and Issue-title search within one Project.
+  `429 rate_limited` and `503 busy` are retried once after
+  `Retry-After` (capped at 30s). PRs, labels, releases, CI and the
+  other surfaces Aikestra lacks exit 12 and are never emulated.
+  Closes #404, in #406.
+- **Board commands (Aikestra only)**: `gaia board list|view`,
+  `gaia issue move <n> --stage <stage> [--board] [--note]` (exits 9
+  naming the blockers when an open Issue blocks the move), and
+  `gaia issue priority <n> do-now|normal`. The matching MCP tools are
+  registered only for Aikestra. In #406.
+- **`--note`** on `issue close|reopen|edit` records the "why" that an
+  Aikestra Project can require. Forgejo and GitHub ignore it. In #406.
+- **`--type`** on `issue list|create|edit` (MCP: `type`) sets or filters
+  the Aikestra Issue type. Forgejo and GitHub refuse it with exit 12
+  rather than silently dropping a filter. In #406.
+
+### Security
+
+- **Go toolchain bumped to 1.26.10.** go1.26.8 had 10 stdlib
+  vulnerabilities in net/http, net/textproto, crypto/tls and
+  crypto/x509 that gaia's code reaches, and govulncheck failed every
+  CI run. Closes #409, in #410.
+
 ## [0.8.2] — 2026-09-13
 
 ### Fixed
@@ -1112,7 +1157,8 @@ Pre-v1.0, expect minor-bump churn at the public surface.
 - OS keychain backing for `credentials.yaml` (vs current 0600
   plaintext): `gh` does this, gaia doesn't yet.
 
-[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/stewartbrothers/gaia/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/stewartbrothers/gaia/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/stewartbrothers/gaia/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/stewartbrothers/gaia/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/stewartbrothers/gaia/compare/v0.7.0...v0.8.0
