@@ -157,6 +157,11 @@ type Inputs struct {
 	// owner/name from the cwd's git remote. Empty when no remote
 	// or not in a repo.
 	GitRemoteRepo string
+
+	// GitRemoteSkipped, if non-empty, explains why autodetect
+	// ignored the cwd's git remote for the active provider
+	// (e.g. an Aikestra profile in a Forgejo checkout, #412).
+	GitRemoteSkipped string
 }
 
 // Run executes every check against in and returns the findings in
@@ -521,7 +526,8 @@ func providerCommandFor(provider string) string {
 // --- Repo resolution INFO ---------------------------------------
 
 // checkRepoResolution mirrors the cmd/cli resolveRepo precedence
-// (flag > git remote > project default_repo) and surfaces the
+// (flag > git remote, when it fits the provider > project
+// default_repo) and surfaces the
 // outcome as INFO. Helps the operator debug split-host forge
 // setups where SSH push host differs from API host.
 func checkRepoResolution(in Inputs) Finding {
@@ -543,6 +549,14 @@ func checkRepoResolution(in Inputs) Finding {
 			resolved = merged.DefaultRepo
 		}
 	}
+	if resolved == "" && in.GitRemoteSkipped != "" {
+		return Finding{
+			Level:       LevelWarn,
+			Code:        CodeRepoResolution,
+			Message:     "repo not resolvable: " + in.GitRemoteSkipped + ", and no project default_repo",
+			Remediation: "set default_repo in .gaia/config.yaml, or pass --repo owner/name",
+		}
+	}
 	if resolved == "" {
 		return Finding{
 			Level:       LevelInfo,
@@ -551,11 +565,15 @@ func checkRepoResolution(in Inputs) Finding {
 			Remediation: "run inside a configured checkout, or pass --repo owner/name",
 		}
 	}
-	return Finding{
+	f := Finding{
 		Level:   LevelInfo,
 		Code:    CodeRepoResolution,
 		Message: fmt.Sprintf("repo would resolve to %s (source: %s)", resolved, source),
 	}
+	if in.GitRemoteSkipped != "" && in.RepoFlag == "" {
+		f.Message += "; " + in.GitRemoteSkipped
+	}
+	return f
 }
 
 // --- Cwd context INFO -------------------------------------------

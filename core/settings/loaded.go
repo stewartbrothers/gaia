@@ -33,7 +33,10 @@ type loadedSettings struct {
 	cwd           string
 	repoRoot      string
 	gitRemoteRepo string
-	envVars       map[string]bool
+	// gitRemoteSkipped explains why autodetect ignored the git
+	// remote for the active provider (#412). Empty when it didn't.
+	gitRemoteSkipped string
+	envVars          map[string]bool
 
 	// Unresolved overrides retained for Inspector
 	profileFlag string
@@ -78,6 +81,7 @@ func (i *loadedInspector) ProjectCredentialsPath() string { return i.projectCred
 func (i *loadedInspector) Cwd() string                    { return i.cwd }
 func (i *loadedInspector) RepoRoot() string               { return i.repoRoot }
 func (i *loadedInspector) GitRemoteRepo() string          { return i.gitRemoteRepo }
+func (i *loadedInspector) GitRemoteSkipped() string       { return i.gitRemoteSkipped }
 func (i *loadedInspector) EnvVars() map[string]bool       { return i.envVars }
 func (i *loadedInspector) ProfileFlag() string            { return i.profileFlag }
 func (i *loadedInspector) RepoFlag() string               { return i.repoFlag }

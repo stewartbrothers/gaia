@@ -3,6 +3,7 @@ package settings_test
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -443,4 +444,63 @@ profiles:
 	// GitRemoteRepo: cwd has no real git remote, so detection
 	// returns "" without erroring. Accept either empty or a value.
 	_ = i.GitRemoteRepo()
+}
+
+// gitRepoWithOrigin makes dir a real git checkout whose origin is url,
+// so autodetect has something to parse.
+func gitRepoWithOrigin(t *testing.T, dir, url string) {
+	t.Helper()
+	for _, args := range [][]string{
+		{"init", "-q", dir},
+		{"-C", dir, "remote", "add", "origin", url},
+	} {
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+// #412: an Aikestra profile in a checkout whose origin is a Forgejo
+// remote must take default_repo, not the remote's owner/name.
+func TestLoad_AikestraIgnoresGitRemote(t *testing.T) {
+	cwd := t.TempDir()
+	pinXDG(t, t.TempDir())
+	clearTokenEnv(t)
+	gitRepoWithOrigin(t, cwd, "git@repo.example.com:Gerwood/aikestra.git")
+	writeFile(t, cwd, ".gaia/config.yaml", `
+default_profile: aikestra
+default_repo: aikestra/aikestra
+profiles:
+  aikestra: { provider: aikestra, api_url: http://localhost:8080/api/v1 }
+  forgejo:  { provider: forgejo,  api_url: https://git.example.com/api/v1 }
+`)
+
+	s, err := settings.Load(settings.Override{Cwd: cwd})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	owner, name, ok := s.Repo()
+	if !ok || owner != "aikestra" || name != "aikestra" {
+		t.Errorf("Repo: got (%q,%q,%v) want (aikestra,aikestra,true)", owner, name, ok)
+	}
+	i := s.Inspector()
+	if i.GitRemoteRepo() != "" {
+		t.Errorf("GitRemoteRepo: got %q, want empty (remote skipped)", i.GitRemoteRepo())
+	}
+	if i.GitRemoteSkipped() == "" {
+		t.Errorf("GitRemoteSkipped: want a reason naming the skipped remote")
+	}
+
+	// The forgejo profile in the same checkout still autodetects.
+	s, err = settings.Load(settings.Override{Cwd: cwd, Profile: "forgejo"})
+	if err != nil {
+		t.Fatalf("Load forgejo: %v", err)
+	}
+	owner, name, ok = s.Repo()
+	if !ok || owner != "Gerwood" || name != "aikestra" {
+		t.Errorf("forgejo Repo: got (%q,%q,%v) want (Gerwood,aikestra,true)", owner, name, ok)
+	}
+	if s.Inspector().GitRemoteSkipped() != "" {
+		t.Errorf("forgejo: remote should not be skipped, got %q", s.Inspector().GitRemoteSkipped())
+	}
 }

@@ -158,7 +158,19 @@ resolves the target `owner/name` in this order (first match wins):
 1. **`--repo owner/name`** flag — explicit override.
 2. **Git-remote autodetect** — parses `origin`'s URL from the cwd
    (see `core/autodetect/parse.go`). Works in any normal git
-   checkout with no extra config.
+   checkout with no extra config. The remote is used only when it
+   can belong to the active provider (#412):
+   - **aikestra** — never; Aikestra doesn't host git, so a remote
+     can't name a Project. Set `default_repo` instead.
+   - **github** — only a `github.com` remote, or one on the GitHub
+     Enterprise host named by `api_url`.
+   - **forgejo** — any remote except `github.com` (split SSH/API
+     hosts such as `repo.`/`git.` still autodetect).
+
+   A skipped remote falls through to step 3; `gaia config doctor`
+   names it and says why. This lets one checkout serve two forges:
+   e.g. issues on an Aikestra default profile (`default_repo:
+   project/repo`) and PRs on `--profile forgejo` (autodetected).
 3. **Project `default_repo`** — load-bearing for forges where the
    SSH push host and the HTTPS API host differ (e.g.,
    `repo.example.com` SSH but `git.example.com` API): autodetect

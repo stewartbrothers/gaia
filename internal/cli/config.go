@@ -165,6 +165,7 @@ func buildDoctorInputs(flags *globalFlags) (doctor.Inputs, error) {
 		Credentials:            i.Credentials(),
 		EnvVars:                i.EnvVars(),
 		GitRemoteRepo:          i.GitRemoteRepo(),
+		GitRemoteSkipped:       i.GitRemoteSkipped(),
 	}, nil
 }
 

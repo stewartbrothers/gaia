@@ -100,6 +100,10 @@ type Inspector interface {
 	Cwd() string
 	RepoRoot() string
 	GitRemoteRepo() string
+	// GitRemoteSkipped names the git remote autodetect ignored
+	// because it can't belong to the active provider, and why
+	// (#412). Empty when the remote was used or absent.
+	GitRemoteSkipped() string
 
 	// EnvVars is a presence-only snapshot — names known to be set at
 	// Load time map to true. Values are never exposed. Doctor uses

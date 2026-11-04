@@ -607,3 +607,43 @@ func newStore(t *testing.T, provider, host, token string) *auth.Store {
 	s.Set(provider, host, auth.Credential{APIURL: "https://" + host + "/api/v1", Token: token})
 	return s
 }
+
+// #412: when autodetect skipped the git remote because it can't
+// belong to the active provider, doctor names the skip alongside
+// the default_repo it fell back to.
+func TestRepoResolutionSkippedRemoteFallsBackToDefault(t *testing.T) {
+	in := doctor.Inputs{
+		Project:          &config.Config{DefaultRepo: "aikestra/aikestra"},
+		GitRemoteSkipped: "git remote Gerwood/aikestra skipped: the aikestra provider does not host git repos",
+	}
+	f := findByCode(t, doctor.Run(in), doctor.CodeRepoResolution)
+	if f == nil {
+		t.Fatal("missing repo-resolution finding")
+	}
+	if f.Level != doctor.LevelInfo {
+		t.Errorf("level: got %v want INFO", f.Level)
+	}
+	for _, want := range []string{"aikestra/aikestra", "default_repo", "Gerwood/aikestra skipped"} {
+		if !strings.Contains(f.Message, want) {
+			t.Errorf("message lacks %q: %s", want, f.Message)
+		}
+	}
+}
+
+// With nothing to fall back to, a skipped remote is a WARN: every
+// repo-scoped command will fail until default_repo is set.
+func TestRepoResolutionSkippedRemoteNoDefaultWarns(t *testing.T) {
+	in := doctor.Inputs{
+		GitRemoteSkipped: "git remote Gerwood/aikestra skipped: the aikestra provider does not host git repos",
+	}
+	f := findByCode(t, doctor.Run(in), doctor.CodeRepoResolution)
+	if f == nil {
+		t.Fatal("missing repo-resolution finding")
+	}
+	if f.Level != doctor.LevelWarn {
+		t.Errorf("level: got %v want WARN", f.Level)
+	}
+	if !strings.Contains(f.Message, "skipped") || !strings.Contains(f.Remediation, "default_repo") {
+		t.Errorf("finding should name the skip and point at default_repo: %+v", f)
+	}
+}

@@ -2,6 +2,7 @@ package settings
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -156,14 +157,19 @@ func Load(ov Override) (Settings, error) {
 		}
 	}
 
-	// --- Repo resolution: flag > git remote > project default -----
+	// --- Repo resolution: flag > git remote (if it fits the provider, #412) > project default
 	switch {
 	case ov.Repo != "":
 		s.repo = parseOwnerName(ov.Repo)
 	default:
 		if detected, derr := autodetect.FromGitRemoteCached(context.Background(), ov.Cache, cwd, ""); derr == nil {
-			s.repo = ownerName{owner: detected.Owner, name: detected.Name, ok: true}
-			s.gitRemoteRepo = detected.Owner + "/" + detected.Name
+			slug := detected.Owner + "/" + detected.Name
+			if fits, why := remoteFitsProvider(s.provider, s.apiURL, detected.Host); fits {
+				s.repo = ownerName{owner: detected.Owner, name: detected.Name, ok: true}
+				s.gitRemoteRepo = slug
+			} else {
+				s.gitRemoteSkipped = fmt.Sprintf("git remote %s skipped: %s", slug, why)
+			}
 		}
 		if !s.repo.ok && s.defaultRepo != "" {
 			s.repo = parseOwnerName(s.defaultRepo)
