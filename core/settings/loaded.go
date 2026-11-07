@@ -36,7 +36,10 @@ type loadedSettings struct {
 	// gitRemoteSkipped explains why autodetect ignored the git
 	// remote for the active provider (#412). Empty when it didn't.
 	gitRemoteSkipped string
-	envVars          map[string]bool
+	// forgeFromRemote notes that the git remote picked the forge
+	// because config named none (#412). Empty otherwise.
+	forgeFromRemote string
+	envVars         map[string]bool
 
 	// Unresolved overrides retained for Inspector
 	profileFlag string
@@ -82,6 +85,7 @@ func (i *loadedInspector) Cwd() string                    { return i.cwd }
 func (i *loadedInspector) RepoRoot() string               { return i.repoRoot }
 func (i *loadedInspector) GitRemoteRepo() string          { return i.gitRemoteRepo }
 func (i *loadedInspector) GitRemoteSkipped() string       { return i.gitRemoteSkipped }
+func (i *loadedInspector) ForgeFromRemote() string        { return i.forgeFromRemote }
 func (i *loadedInspector) EnvVars() map[string]bool       { return i.envVars }
 func (i *loadedInspector) ProfileFlag() string            { return i.profileFlag }
 func (i *loadedInspector) RepoFlag() string               { return i.repoFlag }

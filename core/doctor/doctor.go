@@ -162,6 +162,10 @@ type Inputs struct {
 	// ignored the cwd's git remote for the active provider
 	// (e.g. an Aikestra profile in a Forgejo checkout, #412).
 	GitRemoteSkipped string
+
+	// ForgeFromRemote, if non-empty, notes that the git remote
+	// picked the forge because config named none (#412).
+	ForgeFromRemote string
 }
 
 // Run executes every check against in and returns the findings in
@@ -572,6 +576,9 @@ func checkRepoResolution(in Inputs) Finding {
 	}
 	if in.GitRemoteSkipped != "" && in.RepoFlag == "" {
 		f.Message += "; " + in.GitRemoteSkipped
+	}
+	if in.ForgeFromRemote != "" {
+		f.Message += "; " + in.ForgeFromRemote
 	}
 	return f
 }

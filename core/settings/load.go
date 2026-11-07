@@ -121,15 +121,40 @@ func Load(ov Override) (Settings, error) {
 	}
 	s.credentials = &auth.Layered{Global: globalStore, Project: projectStore}
 
-	// If neither config nor env named a provider, fall back to the
-	// sole-credential heuristic (covers the "ran `gaia auth gh` once,
-	// no config yet" path).
+	// --- Git remote: a clue to the forge and the repo (#412) -----
+	var remote *autodetect.Repo
+	if ov.Repo == "" {
+		if d, derr := autodetect.FromGitRemoteCached(context.Background(), ov.Cache, cwd, ""); derr == nil {
+			remote = d
+		}
+	}
+	logins := storedLogins(s.credentials)
+
+	// If neither config nor env named a forge, lean on the remote: a
+	// stored login on the remote's hostname, or GitHub for github.com.
+	// Failing that, the sole-credential heuristic (covers the "ran
+	// `gaia auth gh` once, no config yet" path).
 	if s.provider == "" && s.apiURL == "" {
-		if soleProvider, _, soleCred, ok := singleCredential(s.credentials); ok {
-			s.provider = soleProvider
-			s.apiURL = soleCred.APIURL
-			if s.token == "" {
-				s.token = soleCred.Token
+		if remote != nil {
+			if p, cred, ok := forgeForRemote(remote.Host, logins); ok {
+				s.provider = p
+				s.apiURL = cred.APIURL
+				if s.token == "" {
+					s.token = cred.Token
+				}
+				if s.token == "" {
+					s.token = config.TokenFromEnv(p)
+				}
+				s.forgeFromRemote = fmt.Sprintf("forge %s picked from git remote host %s", p, remote.Host)
+			}
+		}
+		if s.provider == "" {
+			if soleProvider, _, soleCred, ok := singleCredential(s.credentials); ok {
+				s.provider = soleProvider
+				s.apiURL = soleCred.APIURL
+				if s.token == "" {
+					s.token = soleCred.Token
+				}
 			}
 		}
 	}
@@ -157,15 +182,17 @@ func Load(ov Override) (Settings, error) {
 		}
 	}
 
-	// --- Repo resolution: flag > git remote (if it fits the provider, #412) > project default
+	// --- Repo resolution: flag > git remote (when it fits the forge,
+	// #412) > project default_repo -----------------------------------
 	switch {
 	case ov.Repo != "":
 		s.repo = parseOwnerName(ov.Repo)
 	default:
-		if detected, derr := autodetect.FromGitRemoteCached(context.Background(), ov.Cache, cwd, ""); derr == nil {
-			slug := detected.Owner + "/" + detected.Name
-			if fits, why := remoteFitsProvider(s.provider, s.apiURL, detected.Host); fits {
-				s.repo = ownerName{owner: detected.Owner, name: detected.Name, ok: true}
+		if remote != nil {
+			slug := remote.Owner + "/" + remote.Name
+			fits, why := remoteFitsProvider(s.provider, s.apiURL, remote.Host, otherForgeHosts(s.provider, s.apiURL, mergedCfg, logins))
+			if fits {
+				s.repo = ownerName{owner: remote.Owner, name: remote.Name, ok: true}
 				s.gitRemoteRepo = slug
 			} else {
 				s.gitRemoteSkipped = fmt.Sprintf("git remote %s skipped: %s", slug, why)

@@ -9,8 +9,8 @@ import (
 // resolveRepo returns (owner, name) for the operation. Order:
 //
 //  1. flags.Repo ("owner/name") if set.
-//  2. autodetect from cwd's git remote, when it can belong to the
-//     active provider (never for aikestra; #412).
+//  2. autodetect from cwd's git remote, unless the remote plainly
+//     belongs to a different forge (#412).
 //  3. project config's default_repo (.gaia/config.yaml in repo root).
 //  4. error — caller can't proceed without a target.
 //
@@ -38,7 +38,7 @@ func resolveRepo(flags *globalFlags) (owner, name string, err error) {
 		return splitOwnerName(flags.Repo, "--repo expected owner/name")
 	}
 	return "", "", exitcode.Errorf(exitcode.Usage,
-		"no --repo given, no usable git remote for this provider, and no default_repo in .gaia/config.yaml — pass --repo owner/name")
+		"no --repo given, no git remote for this forge, and no default_repo in .gaia/config.yaml — pass --repo owner/name")
 }
 
 func splitOwnerName(slug, errPrefix string) (string, string, error) {

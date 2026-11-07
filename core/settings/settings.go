@@ -104,6 +104,9 @@ type Inspector interface {
 	// because it can't belong to the active provider, and why
 	// (#412). Empty when the remote was used or absent.
 	GitRemoteSkipped() string
+	// ForgeFromRemote notes that the git remote picked the forge
+	// because config named none (#412). Empty otherwise.
+	ForgeFromRemote() string
 
 	// EnvVars is a presence-only snapshot — names known to be set at
 	// Load time map to true. Values are never exposed. Doctor uses

@@ -45,7 +45,7 @@ func clearTokenEnv(t *testing.T) {
 	t.Helper()
 	for _, n := range []string{
 		"GAIA_PROFILE", "GAIA_PROVIDER", "FORGEJO_API_URL",
-		"FORGEJO_TOKEN", "GITEA_TOKEN", "GITHUB_TOKEN", "GH_TOKEN",
+		"FORGEJO_TOKEN", "GITEA_TOKEN", "GITHUB_TOKEN", "GH_TOKEN", "AIKESTRA_TOKEN",
 		"GAIA_CACHE_ENABLED",
 	} {
 		t.Setenv(n, "")
@@ -460,9 +460,10 @@ func gitRepoWithOrigin(t *testing.T, dir, url string) {
 	}
 }
 
-// #412: an Aikestra profile in a checkout whose origin is a Forgejo
-// remote must take default_repo, not the remote's owner/name.
-func TestLoad_AikestraIgnoresGitRemote(t *testing.T) {
+// #412: config beats the remote. An Aikestra default_profile in a
+// checkout whose origin is on Forgejo takes default_repo; the same
+// checkout under --profile forgejo uses the remote.
+func TestLoad_AikestraSkipsForeignRemote(t *testing.T) {
 	cwd := t.TempDir()
 	pinXDG(t, t.TempDir())
 	clearTokenEnv(t)
@@ -475,14 +476,8 @@ profiles:
   forgejo:  { provider: forgejo,  api_url: https://git.example.com/api/v1 }
 `)
 
-	s, err := settings.Load(settings.Override{Cwd: cwd})
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	owner, name, ok := s.Repo()
-	if !ok || owner != "aikestra" || name != "aikestra" {
-		t.Errorf("Repo: got (%q,%q,%v) want (aikestra,aikestra,true)", owner, name, ok)
-	}
+	s := mustLoad(t, settings.Override{Cwd: cwd})
+	wantRepo(t, s, "aikestra", "aikestra")
 	i := s.Inspector()
 	if i.GitRemoteRepo() != "" {
 		t.Errorf("GitRemoteRepo: got %q, want empty (remote skipped)", i.GitRemoteRepo())
@@ -491,16 +486,133 @@ profiles:
 		t.Errorf("GitRemoteSkipped: want a reason naming the skipped remote")
 	}
 
-	// The forgejo profile in the same checkout still autodetects.
-	s, err = settings.Load(settings.Override{Cwd: cwd, Profile: "forgejo"})
-	if err != nil {
-		t.Fatalf("Load forgejo: %v", err)
-	}
-	owner, name, ok = s.Repo()
-	if !ok || owner != "Gerwood" || name != "aikestra" {
-		t.Errorf("forgejo Repo: got (%q,%q,%v) want (Gerwood,aikestra,true)", owner, name, ok)
-	}
+	s = mustLoad(t, settings.Override{Cwd: cwd, Profile: "forgejo"})
+	wantRepo(t, s, "Gerwood", "aikestra")
 	if s.Inspector().GitRemoteSkipped() != "" {
 		t.Errorf("forgejo: remote should not be skipped, got %q", s.Inspector().GitRemoteSkipped())
+	}
+}
+
+// Aikestra hosts git on the same hostname as its API, so a clone
+// from Aikestra names the Project/Repo directly.
+func TestLoad_AikestraUsesOwnRemote(t *testing.T) {
+	cwd := t.TempDir()
+	pinXDG(t, t.TempDir())
+	clearTokenEnv(t)
+	gitRepoWithOrigin(t, cwd, "ssh://git@localhost:2291/acme/rocket.git")
+	writeFile(t, cwd, ".gaia/config.yaml", `
+default_profile: aikestra
+default_repo: other/thing
+profiles:
+  aikestra: { provider: aikestra, api_url: http://localhost:8091/api/v1 }
+`)
+	wantRepo(t, mustLoad(t, settings.Override{Cwd: cwd}), "acme", "rocket")
+}
+
+// With nothing configured, a github.com remote picks GitHub and the
+// GitHub token env, and the remote supplies the repo.
+func TestLoad_NoConfigGitHubRemotePicksGitHub(t *testing.T) {
+	cwd := t.TempDir()
+	pinXDG(t, t.TempDir())
+	clearTokenEnv(t)
+	t.Setenv("GITHUB_TOKEN", "gh-tok")
+	gitRepoWithOrigin(t, cwd, "git@github.com:stewartbrothers/gaia.git")
+
+	s := mustLoad(t, settings.Override{Cwd: cwd})
+	if s.Provider() != "github" {
+		t.Errorf("Provider: got %q want github", s.Provider())
+	}
+	if s.Token() != "gh-tok" {
+		t.Errorf("Token: want the GITHUB_TOKEN value")
+	}
+	wantRepo(t, s, "stewartbrothers", "gaia")
+	if s.Inspector().ForgeFromRemote() == "" {
+		t.Errorf("ForgeFromRemote: want a note that the remote picked the forge")
+	}
+}
+
+// With nothing configured and several stored logins, the remote's
+// host picks the login on the same hostname (ports ignored: Aikestra
+// serves SSH on a different port from its API).
+func TestLoad_NoConfigRemoteMatchesStoredLogin(t *testing.T) {
+	cwd := t.TempDir()
+	xdg := t.TempDir()
+	pinXDG(t, xdg)
+	clearTokenEnv(t)
+	gitRepoWithOrigin(t, cwd, "ssh://git@localhost:2291/acme/rocket.git")
+	writeFile(t, xdg, "gaia/credentials.yaml", `
+forgejo:
+  git.example.com: { api_url: https://git.example.com/api/v1, token: fj }
+aikestra:
+  localhost:8091: { api_url: http://localhost:8091/api/v1, token: ak }
+`)
+
+	s := mustLoad(t, settings.Override{Cwd: cwd})
+	if s.Provider() != "aikestra" || s.APIURL() != "http://localhost:8091/api/v1" {
+		t.Errorf("forge: got (%q,%q) want (aikestra, http://localhost:8091/api/v1)", s.Provider(), s.APIURL())
+	}
+	if s.Token() != "ak" {
+		t.Errorf("Token: want the aikestra login's token")
+	}
+	wantRepo(t, s, "acme", "rocket")
+}
+
+// A remote that matches no login leaves the sole-login fallback and
+// its remote check in charge, as before.
+func TestLoad_NoConfigUnknownRemoteFallsBackToSoleLogin(t *testing.T) {
+	cwd := t.TempDir()
+	xdg := t.TempDir()
+	pinXDG(t, xdg)
+	clearTokenEnv(t)
+	gitRepoWithOrigin(t, cwd, "git@repo.example.com:Gerwood/gaia.git")
+	writeFile(t, xdg, "gaia/credentials.yaml", `
+forgejo:
+  git.example.com: { api_url: https://git.example.com/api/v1, token: fj }
+`)
+
+	s := mustLoad(t, settings.Override{Cwd: cwd})
+	if s.Provider() != "forgejo" {
+		t.Errorf("Provider: got %q want forgejo (sole login)", s.Provider())
+	}
+	if s.Inspector().ForgeFromRemote() != "" {
+		t.Errorf("ForgeFromRemote: the remote matched nothing, got %q", s.Inspector().ForgeFromRemote())
+	}
+	wantRepo(t, s, "Gerwood", "gaia")
+}
+
+// Config beats the remote for the forge, too: a forgejo
+// default_profile in a github.com checkout stays on Forgejo.
+func TestLoad_DefaultProfileBeatsRemoteForForge(t *testing.T) {
+	cwd := t.TempDir()
+	pinXDG(t, t.TempDir())
+	clearTokenEnv(t)
+	gitRepoWithOrigin(t, cwd, "git@github.com:stewartbrothers/gaia.git")
+	writeFile(t, cwd, ".gaia/config.yaml", `
+default_profile: fj
+default_repo: Gerwood/gaia
+profiles:
+  fj: { provider: forgejo, api_url: https://git.example.com/api/v1 }
+`)
+	s := mustLoad(t, settings.Override{Cwd: cwd})
+	if s.Provider() != "forgejo" {
+		t.Errorf("Provider: got %q want forgejo", s.Provider())
+	}
+	wantRepo(t, s, "Gerwood", "gaia")
+}
+
+func mustLoad(t *testing.T, ov settings.Override) settings.Settings {
+	t.Helper()
+	s, err := settings.Load(ov)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	return s
+}
+
+func wantRepo(t *testing.T, s settings.Settings, owner, name string) {
+	t.Helper()
+	o, n, ok := s.Repo()
+	if !ok || o != owner || n != name {
+		t.Errorf("Repo: got (%q,%q,%v) want (%q,%q,true)", o, n, ok, owner, name)
 	}
 }

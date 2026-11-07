@@ -153,3 +153,10 @@ func profileKeys(cfg *Config) []string {
 	}
 	return out
 }
+
+// TokenFromEnv returns the first set token env var for provider, in
+// the same fallback order Resolve uses. Settings calls it when the
+// forge was picked from the git remote after Resolve ran (#412).
+func TokenFromEnv(provider string) string {
+	return resolveToken(Profile{}, provider)
+}

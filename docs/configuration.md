@@ -150,34 +150,53 @@ cache:                           # optional; see docs/cache.md
 in some setups (dotfile repos, shared homes); env-var-only token
 sourcing keeps tokens out of those exposures.
 
-## Repo resolution order
+## Forge and repo resolution order
 
-For repo-scoped commands (`issue list`, `pr create`, etc.), gaia
-resolves the target `owner/name` in this order (first match wins):
+gaia never manages git remotes. It reads `origin`'s URL (see
+`core/autodetect/parse.go`) and uses its host and `owner/name` as a
+clue to where the forge is (#412).
+
+**Forge** (first match wins):
+
+1. `--provider` / `GAIA_PROVIDER`, or a profile from `--profile`,
+   `GAIA_PROFILE`, or config `default_profile`. Config beats the
+   remote.
+2. **The git remote**, when nothing above names a forge: a stored
+   login (`gaia auth …`) whose API hostname matches the remote's
+   hostname (ports ignored — Aikestra serves SSH on a different port
+   from its API), or GitHub for a `github.com` remote, with the token
+   from `GITHUB_TOKEN` / `GH_TOKEN` if no login is stored. Two logins
+   on different forges for the same hostname are ambiguous and skip
+   this step.
+3. The sole stored login, if there is exactly one.
+4. Otherwise: error — `no provider configured`.
+
+**Repo** (first match wins):
 
 1. **`--repo owner/name`** flag — explicit override.
-2. **Git-remote autodetect** — parses `origin`'s URL from the cwd
-   (see `core/autodetect/parse.go`). Works in any normal git
-   checkout with no extra config. The remote is used only when it
-   can belong to the active provider (#412):
-   - **aikestra** — never; Aikestra doesn't host git, so a remote
-     can't name a Project. Set `default_repo` instead.
-   - **github** — only a `github.com` remote, or one on the GitHub
-     Enterprise host named by `api_url`.
-   - **forgejo** — any remote except `github.com` (split SSH/API
-     hosts such as `repo.`/`git.` still autodetect).
-
-   A skipped remote falls through to step 3; `gaia config doctor`
-   names it and says why. This lets one checkout serve two forges:
-   e.g. issues on an Aikestra default profile (`default_repo:
-   project/repo`) and PRs on `--profile forgejo` (autodetected).
-3. **Project `default_repo`** — load-bearing for forges where the
-   SSH push host and the HTTPS API host differ (e.g.,
-   `repo.example.com` SSH but `git.example.com` API): autodetect
-   parses the SSH host but the credential store is keyed by API
-   host, so step 2 can't resolve a credential. Pinning
-   `default_repo` short-circuits the autodetect fallback.
+2. **The git remote's `owner/name`**, unless the remote plainly
+   belongs to a different forge:
+   - **aikestra** — the remote's hostname must match the API's.
+     Aikestra serves git on its web host
+     (`<web>/git/<project>/<repo>.git` or
+     `ssh://git@<host>:<port>/<project>/<repo>.git`), so a clone from
+     Aikestra names the Project/Repo directly.
+   - **github** — `github.com`, or the GitHub Enterprise host named by
+     `api_url`.
+   - **forgejo** — any remote except `github.com` or another
+     configured forge's host. Split SSH/API hosts (`repo.example.com`
+     SSH, `git.example.com` API) still resolve.
+3. **Project `default_repo`.**
 4. Otherwise: error — `pass --repo owner/name`.
+
+`gaia config doctor` reports which source won, names a skipped
+remote and why, and notes when the remote picked the forge.
+
+Example: one checkout, two forges. With `default_profile: aikestra`,
+`default_repo: aikestra/aikestra`, and a Forgejo `origin`, bare
+`gaia issue …` goes to Aikestra `aikestra/aikestra` (the Forgejo
+remote is skipped), while `gaia --profile forgejo pr …` autodetects
+the Forgejo repo from `origin`.
 
 ## Environment variables
 

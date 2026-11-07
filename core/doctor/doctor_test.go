@@ -614,7 +614,7 @@ func newStore(t *testing.T, provider, host, token string) *auth.Store {
 func TestRepoResolutionSkippedRemoteFallsBackToDefault(t *testing.T) {
 	in := doctor.Inputs{
 		Project:          &config.Config{DefaultRepo: "aikestra/aikestra"},
-		GitRemoteSkipped: "git remote Gerwood/aikestra skipped: the aikestra provider does not host git repos",
+		GitRemoteSkipped: "git remote Gerwood/aikestra skipped: remote host repo.stewartbrothers.com.au is not this Aikestra instance's host",
 	}
 	f := findByCode(t, doctor.Run(in), doctor.CodeRepoResolution)
 	if f == nil {
@@ -634,7 +634,7 @@ func TestRepoResolutionSkippedRemoteFallsBackToDefault(t *testing.T) {
 // repo-scoped command will fail until default_repo is set.
 func TestRepoResolutionSkippedRemoteNoDefaultWarns(t *testing.T) {
 	in := doctor.Inputs{
-		GitRemoteSkipped: "git remote Gerwood/aikestra skipped: the aikestra provider does not host git repos",
+		GitRemoteSkipped: "git remote Gerwood/aikestra skipped: remote host repo.stewartbrothers.com.au is not this Aikestra instance's host",
 	}
 	f := findByCode(t, doctor.Run(in), doctor.CodeRepoResolution)
 	if f == nil {
@@ -645,5 +645,21 @@ func TestRepoResolutionSkippedRemoteNoDefaultWarns(t *testing.T) {
 	}
 	if !strings.Contains(f.Message, "skipped") || !strings.Contains(f.Remediation, "default_repo") {
 		t.Errorf("finding should name the skip and point at default_repo: %+v", f)
+	}
+}
+
+// #412: when no config names a forge and the git remote picked it,
+// the repo-resolution line says so.
+func TestRepoResolutionNotesForgeFromRemote(t *testing.T) {
+	in := doctor.Inputs{
+		GitRemoteRepo:   "stewartbrothers/gaia",
+		ForgeFromRemote: "forge github picked from git remote host github.com",
+	}
+	f := findByCode(t, doctor.Run(in), doctor.CodeRepoResolution)
+	if f == nil {
+		t.Fatal("missing repo-resolution finding")
+	}
+	if !strings.Contains(f.Message, "forge github picked from git remote host github.com") {
+		t.Errorf("message lacks the forge note: %s", f.Message)
 	}
 }

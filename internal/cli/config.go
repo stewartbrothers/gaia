@@ -166,6 +166,7 @@ func buildDoctorInputs(flags *globalFlags) (doctor.Inputs, error) {
 		EnvVars:                i.EnvVars(),
 		GitRemoteRepo:          i.GitRemoteRepo(),
 		GitRemoteSkipped:       i.GitRemoteSkipped(),
+		ForgeFromRemote:        i.ForgeFromRemote(),
 	}, nil
 }
 
